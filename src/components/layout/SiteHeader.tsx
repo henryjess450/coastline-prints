@@ -35,7 +35,7 @@ export function SiteHeader() {
         </nav>
         <div className="flex items-center gap-3">
           <ThemeToggle />
-          {!pathname.startsWith("/order") && (
+          {!pathname.startsWith("/order") && !pathname.startsWith("/admin") && (
             <ButtonLink href="/order" size="sm" className="hidden sm:inline-flex">
               Start an order
             </ButtonLink>

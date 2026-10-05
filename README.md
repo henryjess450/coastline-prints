@@ -37,6 +37,13 @@ automatically. For that to work the domain's A record must point at your public 
 and your router must forward TCP 80 and 443 to the PC. Edit `docker/Caddyfile` to
 change the domain.
 
+## Admin dashboard
+
+Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` in `.env`, restart, then go to `/admin`.
+Orders, status pipeline (moving an order to "Ready for pickup" emails the customer),
+printer queues, STL downloads with 3D preview, and pricing/colour settings.
+Customers check progress at `/status` with their order number and email.
+
 ## Configuration
 
 | What | Where |

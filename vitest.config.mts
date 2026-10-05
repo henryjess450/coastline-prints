@@ -15,7 +15,7 @@ export default defineConfig({
     environment: "node",
     globalSetup: ["tests/helpers/global-setup.ts"],
     // Tests never touch the dev database or real storage.
-    env: { DATABASE_URL: "file:./test.db", STORAGE_DIR: "./storage-test", OWNER_EMAIL: "owner@coastline.test", PICKUP_ADDRESS: "123 Example Street", APP_URL: "https://coastline.test" },
+    env: { DATABASE_URL: "file:./test.db", STORAGE_DIR: "./storage-test", OWNER_EMAIL: "owner@coastline.test", PICKUP_ADDRESS: "123 Example Street", APP_URL: "https://coastline.test", ADMIN_USERNAME: "owner", ADMIN_PASSWORD: "correct horse battery staple" },
     fileParallelism: false,
   },
 });

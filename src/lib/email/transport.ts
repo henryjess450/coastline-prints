@@ -20,8 +20,13 @@ export class PermanentEmailError extends Error {}
  * - Any SMTP server: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM.
  * - Neither, outside production: "preview" mode writes each email to
  *   storage/email-previews/ so you can open it in a browser.
+ *
+ * Outside production, preview mode is ALWAYS used (even with Gmail set up)
+ * so test orders never email anyone. Set EMAIL_SEND_IN_DEV="true" to send
+ * real email while developing.
  */
 export function getMailer(): Mailer {
+  if (process.env.NODE_ENV !== "production" && process.env.EMAIL_SEND_IN_DEV !== "true") return previewMailer();
   const gmailUser = process.env.GMAIL_USER;
   const gmailPass = process.env.GMAIL_APP_PASSWORD?.replace(/\s+/g, "");
   if (gmailUser && gmailPass) {

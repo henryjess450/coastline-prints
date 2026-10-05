@@ -29,11 +29,14 @@ model Upload {
   boundaryEdges  Int
   nonManifold    Int
   warnings       String   @default("[]") // JSON MeshWarning[]
+  /// Set when the stored file is removed by the retention cleanup.
+  fileDeletedAt  DateTime?
   createdAt      DateTime @default(now())
 
   orderItems OrderItem[]
 
   @@index([sha256])
+  @@index([createdAt])
 }
 
 /// A payment attempt. Created PENDING before charging; becomes an Order only
@@ -91,6 +94,7 @@ model Order {
 
   @@index([status])
   @@index([customerEmail])
+  @@index([createdAt])
 }
 
 model OrderItem {
