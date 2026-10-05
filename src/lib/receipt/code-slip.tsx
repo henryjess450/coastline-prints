@@ -6,6 +6,7 @@ import QRCode from "qrcode";
 import { pickup } from "@config/pickup";
 import { legal, site } from "@config/site";
 import { formatCardNumber } from "@/lib/codes/apply";
+import type { PromoCode } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { money } from "@/lib/format";
 import { RECEIPT_WIDTH } from "./render";
@@ -58,9 +59,25 @@ function Heading({ name, text, height, grey = false }: { name: string; text: str
   return <div style={{ display: "flex", fontSize: height * 0.62, fontWeight: 600, color: grey ? "#5a5a5a" : "black" }}>{text}</div>;
 }
 
+type SlipCode = Pick<PromoCode, "code" | "kind" | "pin" | "percentOff" | "amountCents" | "initialCents" | "minOrderCents" | "maxUses" | "expiresAt">;
+
 export async function renderCodeSlipPng(codeId: string) {
   const c = await db.promoCode.findUnique({ where: { id: codeId } });
   if (!c) throw new Error(`Code ${codeId} not found`);
+  return renderSlip(c);
+}
+
+/** Example slips with placeholder numbers, for previewing the design (nothing is saved). */
+export function renderSampleSlipPng(kind: "gift" | "coupon") {
+  const base = { pin: null, percentOff: null, amountCents: null, initialCents: null, minOrderCents: 0, maxUses: null, expiresAt: null };
+  return renderSlip(
+    kind === "gift"
+      ? { ...base, code: "1234567812345678", kind: "GIFT_CARD", pin: "CP12345", initialCents: 2500 }
+      : { ...base, code: "123456781234", kind: "AMOUNT", amountCents: 500, maxUses: 1 },
+  );
+}
+
+async function renderSlip(c: SlipCode) {
   const gift = c.kind === "GIFT_CARD";
 
   const redeemUrl = `${(process.env.APP_URL ?? "https://coastlineprints.ca").replace(/\/$/, "")}/order`;

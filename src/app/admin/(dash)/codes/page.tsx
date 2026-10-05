@@ -23,7 +23,19 @@ export default async function CodesPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-display text-3xl font-bold">Coupons and gift cards</h1>
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h1 className="font-display text-3xl font-bold">Coupons and gift cards</h1>
+        <p className="text-sm text-muted">
+          Example slips:{" "}
+          <a href="/api/admin/slip-sample/gift-card?printed=1" target="_blank" className="text-accent-text hover:underline">
+            gift card
+          </a>{" "}
+          ·{" "}
+          <a href="/api/admin/slip-sample/coupon?printed=1" target="_blank" className="text-accent-text hover:underline">
+            coupon
+          </a>
+        </p>
+      </div>
       <Card className="p-5 sm:p-6">
         <h2 className="mb-4 font-display text-lg font-semibold">Create a code</h2>
         <CreateCodeForm />
