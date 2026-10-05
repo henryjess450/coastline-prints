@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { site, uploads } from "@config/site";
+import { uploads } from "@config/site";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { getEffectiveConfig } from "@/lib/config/effective";
@@ -59,9 +59,6 @@ export default async function Home() {
       <section className="relative overflow-hidden">
         <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 pb-16 pt-14 sm:px-6 sm:pt-20 lg:grid-cols-[1.2fr_1fr]">
           <div>
-            <p className="mb-5 inline-flex items-center gap-2 rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-medium text-muted">
-              <span className="h-2 w-2 rounded-sm bg-success" /> Taking orders · {site.fulfillmentLabel}
-            </p>
             <h1 className="font-display text-5xl font-bold leading-[1.02] tracking-tight sm:text-6xl">
               Upload an STL.
               <br />
