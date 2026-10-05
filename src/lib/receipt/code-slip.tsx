@@ -41,11 +41,17 @@ function montserrat() {
 
 const fmtDate = (d: Date) => new Intl.DateTimeFormat("en-US", { timeZone: pickup.timeZone, month: "long", day: "numeric", year: "numeric" }).format(d);
 
-/** A lettering image scaled to a target height, or bold text if the image isn't there yet. */
+/**
+ * The lettering PNGs were all cut from the same 2000 px design canvas, so one
+ * shared scale keeps every word the same letter size as in the design.
+ */
+const LETTERING_SCALE = 0.285;
+
+/** A lettering image at the shared scale, or bold text if the image isn't there yet. */
 function Heading({ name, text, height, grey = false }: { name: string; text: string; height: number; grey?: boolean }) {
   const img = lettering(name);
   if (img) {
-    const w = Math.min(RECEIPT_WIDTH - 20, Math.round((img.w / img.h) * height));
+    const w = Math.min(RECEIPT_WIDTH - 16, Math.round(img.w * LETTERING_SCALE));
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={img.src} width={w} height={Math.round((w / img.w) * img.h)} alt={text} />;
   }
@@ -76,8 +82,7 @@ export async function renderCodeSlipPng(codeId: string) {
   const tree = (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%", height: "100%", background: "white", color: "black", fontFamily: "Montserrat", padding: "6px 4px" }}>
       {title ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={title.src} width={500} height={Math.round((500 / title.w) * title.h)} alt={site.name} />
+        <Heading name="coastline-prints" text={site.name} height={60} />
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={wordmark} width={204} height={120} alt={site.name} />
