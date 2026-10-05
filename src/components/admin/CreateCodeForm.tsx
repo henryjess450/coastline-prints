@@ -1,6 +1,7 @@
 "use client";
 import { AnimatePresence, motion } from "framer-motion";
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
+import { useFormFeedback } from "@/components/ui/useFormFeedback";
 import { createCodeAction, type CodeActionState } from "@/app/admin/actions";
 import { Button } from "@/components/ui/Button";
 import { Segmented } from "@/components/ui/Segmented";
@@ -11,6 +12,8 @@ type Kind = "PERCENT" | "AMOUNT" | "GIFT_CARD";
 export function CreateCodeForm() {
   const [kind, setKind] = useState<Kind>("PERCENT");
   const [state, action, pending] = useActionState<CodeActionState, FormData>(createCodeAction, {});
+  const create = useRef<HTMLButtonElement>(null);
+  useFormFeedback(state, create);
   const gift = kind === "GIFT_CARD";
   return (
     <form action={action} className="space-y-4">
@@ -63,7 +66,7 @@ export function CreateCodeForm() {
         <input type="checkbox" name="print" defaultChecked className="h-4 w-4 accent-[var(--accent)]" /> Print a {gift ? "gift card" : "coupon"} slip on the receipt printer
       </label>
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" disabled={pending}>
+        <Button ref={create} type="submit" disabled={pending}>
           {pending ? "Creating…" : gift ? "Create gift card" : "Create coupon"}
         </Button>
         {state.error && <span className="text-sm text-danger">{state.error}</span>}

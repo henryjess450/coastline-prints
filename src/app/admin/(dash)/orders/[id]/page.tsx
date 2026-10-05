@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { pickup } from "@config/pickup";
 import { printReceiptAction, retryJobAction } from "@/app/admin/actions";
+import { PrintButton } from "@/components/admin/PrintButton";
 import { OrderItems, type AdminItem } from "@/components/admin/OrderItems";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { StatusControl } from "@/components/admin/StatusControl";
@@ -169,12 +170,11 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
                 </li>
               ))}
             </ul>
-            <form action={printReceiptAction} className="mt-4">
-              <input type="hidden" name="orderId" value={order.id} />
-              <button className="w-full rounded-full border border-line px-4 py-2 text-sm font-medium hover:border-accent-line">
+            <div className="mt-4">
+              <PrintButton action={printReceiptAction} name="orderId" value={order.id} className="w-full rounded-full border border-line px-4 py-2 text-sm font-medium hover:border-accent-line">
                 {process.env.RECEIPT_PRINTER_HOST ? "Print receipt" : "Print receipt (printer not set up)"}
-              </button>
-            </form>
+              </PrintButton>
+            </div>
           </Card>
 
           <Card className="p-5 text-sm">

@@ -103,7 +103,7 @@ export function LibrarySearch({ initialQuery, sources }: { initialQuery: string;
               <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
                 {data.results.map((r, i) => (
                   <motion.li key={`${r.source}-${r.id}`} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 16) * 0.03 }}>
-                    <a href={r.url} target="_blank" rel="noopener noreferrer" className="group block h-full overflow-hidden rounded-2xl border border-line bg-surface transition-colors hover:border-accent-line">
+                    <a href={r.url} target="_blank" rel="noopener noreferrer" className="group block h-full overflow-hidden rounded-2xl border border-line bg-surface transition-[border-color,transform,box-shadow] duration-200 hover:-translate-y-1 hover:border-accent-line hover:shadow-[var(--shadow)]">
                       <div className="aspect-[4/3] overflow-hidden bg-surface-strong">
                         {r.thumbnail ? (
                           // eslint-disable-next-line @next/next/no-img-element

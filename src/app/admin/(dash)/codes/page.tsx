@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { pickup } from "@config/pickup";
 import { printCodeAction, toggleCodeAction } from "@/app/admin/actions";
+import { PrintButton } from "@/components/admin/PrintButton";
 import { CreateCodeForm } from "@/components/admin/CreateCodeForm";
 import { Card } from "@/components/ui/Card";
 import { requireAdmin } from "@/lib/admin/auth";
@@ -88,10 +89,9 @@ export default async function CodesPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold", state === "Active" ? "bg-success/20 text-success" : "bg-surface-strong text-muted")}>{state}</span>
-                        <form action={printCodeAction}>
-                          <input type="hidden" name="id" value={c.id} />
-                          <button className="rounded-full border border-line px-2.5 py-0.5 text-xs hover:border-accent-line">Print</button>
-                        </form>
+                        <PrintButton action={printCodeAction} name="id" value={c.id} className="rounded-full border border-line px-2.5 py-0.5 text-xs hover:border-accent-line">
+                          Print
+                        </PrintButton>
                         <a href={`/api/admin/codes/${c.id}/slip`} target="_blank" className="text-xs text-accent-text hover:underline">
                           View
                         </a>

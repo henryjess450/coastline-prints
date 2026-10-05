@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { pickup } from "@config/pickup";
+import { PrintButton } from "@/components/admin/PrintButton";
 import { StatusBadge } from "@/components/admin/StatusBadge";
+import { AnimatedCount } from "@/components/motion/AnimatedCount";
 import { Card } from "@/components/ui/Card";
 import { requireAdmin } from "@/lib/admin/auth";
 import { getEffectiveConfig } from "@/lib/config/effective";
@@ -68,7 +70,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
       <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filter by status">
         {tabs.map((t) => (
           <Link key={t.id} href={href({ status: t.id, page: undefined })} role="tab" aria-selected={status === t.id} className={cn("rounded-full border px-3 py-1 text-sm transition-colors", status === t.id ? "border-accent-line bg-accent text-accent-ink" : "border-line text-muted hover:text-fg")}>
-            {t.label} <span className="opacity-70">{t.n}</span>
+            {t.label} <AnimatedCount value={t.n} className="opacity-70" />
           </Link>
         ))}
         {status === "EMAIL_FAILED" && <span className="rounded-full border border-danger bg-danger/15 px-3 py-1 text-sm text-danger">Orders with failed emails</span>}
@@ -120,12 +122,9 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <StatusBadge status={o.status} />
-                        <form action={printReceiptAction}>
-                          <input type="hidden" name="orderId" value={o.id} />
-                          <button title="Reprint ticket" aria-label={`Reprint ticket for ${o.orderNumber}`} className="rounded-full border border-line px-2 py-0.5 text-xs text-muted hover:border-accent-line hover:text-fg">
-                            Reprint
-                          </button>
-                        </form>
+                        <PrintButton action={printReceiptAction} name="orderId" value={o.id} label={`Reprint ticket for ${o.orderNumber}`} className="rounded-full border border-line px-2 py-0.5 text-xs text-muted hover:border-accent-line hover:text-fg">
+                          Reprint
+                        </PrintButton>
                       </div>
                     </td>
                   </tr>

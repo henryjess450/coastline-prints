@@ -1,6 +1,7 @@
 "use client";
 import { AnimatePresence, motion } from "framer-motion";
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
+import { useFormFeedback } from "@/components/ui/useFormFeedback";
 import type { ColorConfig, ColorFinish, MaterialConfig } from "@config/materials";
 import { saveMaterialsAction, type ActionState } from "@/app/admin/actions";
 import { Button } from "@/components/ui/Button";
@@ -20,6 +21,8 @@ export function MaterialsEditor({ materials: initial }: { materials: MaterialCon
   const [materials, setMaterials] = useState(initial);
   const [open, setOpen] = useState(initial[0]?.id);
   const [state, action, pending] = useActionState<ActionState, FormData>(saveMaterialsAction, {});
+  const save = useRef<HTMLButtonElement>(null);
+  useFormFeedback(state, save);
 
   const patchMaterial = (id: string, p: Partial<MaterialConfig>) => setMaterials((ms) => ms.map((m) => (m.id === id ? { ...m, ...p } : m)));
   const patchColor = (mid: string, cid: string, p: Partial<ColorConfig>) =>
@@ -127,7 +130,7 @@ export function MaterialsEditor({ materials: initial }: { materials: MaterialCon
 
       <p className="text-xs text-faint">Untick &quot;In stock&quot; to hide a colour temporarily. Existing orders keep their colour name even if you remove it here.</p>
       <div className="flex items-center gap-3">
-        <Button type="submit" disabled={pending}>
+        <Button ref={save} type="submit" disabled={pending}>
           {pending ? "Saving…" : "Save materials"}
         </Button>
         {state.message && <span className="text-sm text-success">{state.message}</span>}

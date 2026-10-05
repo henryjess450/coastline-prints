@@ -287,3 +287,18 @@ body {
     translate: 0 -10px;
   }
 }
+
+/* Canadian flag in the footer: each strip bobs a little later than the last.
+   The far end (bigger --lift) moves most, like cloth on a pole. */
+@keyframes flag-wave {
+  0%,
+  100% {
+    transform: translateY(calc(var(--lift, 2px) * -1));
+  }
+  50% {
+    transform: translateY(var(--lift, 2px));
+  }
+}
+.flag-strip {
+  animation: flag-wave 1.6s ease-in-out infinite;
+}

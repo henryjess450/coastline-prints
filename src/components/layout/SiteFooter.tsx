@@ -2,6 +2,7 @@ import Link from "next/link";
 import { legal, site } from "@config/site";
 import { CircleMark } from "./CircleMark";
 import { Logo } from "./Logo";
+import { ProudlyCanadian } from "./ProudlyCanadian";
 
 const links = [
   { href: "/order", label: "Start an order" },
@@ -37,10 +38,9 @@ export function SiteFooter() {
           </div>
         </div>
       </div>
-      <div className="mx-auto flex max-w-7xl flex-col gap-8 px-4 py-14 sm:px-6 md:flex-row md:items-start md:justify-between">
+      <div className="mx-auto flex max-w-7xl flex-col gap-8 px-4 pb-4 pt-14 sm:px-6 md:flex-row md:items-start md:justify-between">
         <div className="space-y-2">
           <Logo />
-          <p className="max-w-xs text-sm text-muted">Custom 3D printing in PLA, PETG and PLA-CF. {site.fulfillmentLabel} only, no shipping.</p>
         </div>
         <nav aria-label="Footer" className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm text-muted sm:flex sm:flex-wrap sm:gap-x-6">
           {links.map((l) => (
@@ -52,6 +52,10 @@ export function SiteFooter() {
         <p className="text-xs text-faint">
           © {new Date().getFullYear()} {site.name}. Prices in CAD.
         </p>
+      </div>
+      {/* Flagpole sits flush with the very bottom of the page */}
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <ProudlyCanadian />
       </div>
     </footer>
   );

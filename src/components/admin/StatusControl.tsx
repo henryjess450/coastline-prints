@@ -1,18 +1,24 @@
 "use client";
 import { AnimatePresence, motion } from "framer-motion";
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { updateStatusAction, type ActionState } from "@/app/admin/actions";
 import { Button } from "@/components/ui/Button";
+import { useFormFeedback } from "@/components/ui/useFormFeedback";
 import { ORDER_STATUSES } from "@/lib/orders/status";
 import { cn } from "@/lib/cn";
 
-/** Pipeline stepper: click a step, optionally add a note and email the customer. */
+/**
+ * Pipeline stepper: click a step, optionally add a note and email the customer.
+ * The current-step pill and the chosen-step outline slide between steps.
+ */
 export function StatusControl({ orderId, current }: { orderId: string; current: string }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(updateStatusAction, {});
   const currentIdx = ORDER_STATUSES.findIndex((s) => s.id === current);
   const [target, setTarget] = useState<string>(ORDER_STATUSES[Math.min(currentIdx + 1, ORDER_STATUSES.length - 1)].id);
   const ready = target === "READY_FOR_PICKUP";
   const same = target === current;
+  const save = useRef<HTMLButtonElement>(null);
+  useFormFeedback(state, save);
 
   return (
     <form action={action} className="space-y-4">
@@ -30,16 +36,18 @@ export function StatusControl({ orderId, current }: { orderId: string; current: 
                 onClick={() => setTarget(s.id)}
                 aria-pressed={chosen}
                 className={cn(
-                  "flex w-full items-center gap-2 rounded-full border px-3 py-2 text-left text-sm transition-colors",
-                  isCurrent && "border-accent-line bg-accent font-semibold text-accent-ink",
-                  chosen && "border-accent-line bg-accent-soft text-fg",
-                  !isCurrent && !chosen && (done ? "border-line text-muted" : "border-line text-faint hover:text-fg"),
+                  "relative flex w-full items-center gap-2 rounded-full border border-line px-3 py-2 text-left text-sm transition-colors duration-300",
+                  isCurrent && "font-semibold text-accent-ink",
+                  chosen && "text-fg",
+                  !isCurrent && !chosen && (done ? "text-muted" : "text-faint hover:text-fg"),
                 )}
               >
-                <span className={cn("grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold", isCurrent ? "bg-white/20" : done ? "bg-success/20 text-success" : "bg-surface-strong")}>
+                {isCurrent && <motion.span layoutId={`status-current-${orderId}`} className="absolute -inset-px rounded-full border border-accent-line bg-accent" transition={{ type: "spring", stiffness: 380, damping: 30 }} />}
+                {chosen && <motion.span layoutId={`status-target-${orderId}`} className="absolute -inset-px rounded-full border border-accent-line bg-accent-soft" transition={{ type: "spring", stiffness: 420, damping: 32 }} />}
+                <span className={cn("relative grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold", isCurrent ? "bg-white/20" : done ? "bg-success/20 text-success" : "bg-surface-strong")}>
                   {done ? "✓" : i + 1}
                 </span>
-                {s.label}
+                <span className="relative">{s.label}</span>
               </button>
             </li>
           );
@@ -59,7 +67,7 @@ export function StatusControl({ orderId, current }: { orderId: string; current: 
               <input type="checkbox" name="notify" className="h-4 w-4 accent-[var(--accent)]" /> Email the customer about this update
             </label>
           )}
-          <Button type="submit" disabled={pending}>
+          <Button ref={save} type="submit" disabled={pending}>
             {pending ? "Saving…" : ready ? "Mark ready and email customer" : "Update status"}
           </Button>
         </motion.div>

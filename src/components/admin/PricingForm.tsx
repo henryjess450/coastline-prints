@@ -1,13 +1,16 @@
 "use client";
-import { useActionState } from "react";
+import { useActionState, useRef } from "react";
 import { savePricingAction, type ActionState } from "@/app/admin/actions";
 import { Button } from "@/components/ui/Button";
+import { useFormFeedback } from "@/components/ui/useFormFeedback";
 import type { PricingRates } from "@/lib/config/types";
 
 const input = "h-10 w-full rounded-xl border border-line bg-surface px-3 font-mono text-sm outline-none focus:border-accent-line";
 
 export function PricingForm({ pricing }: { pricing: PricingRates }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(savePricingAction, {});
+  const save = useRef<HTMLButtonElement>(null);
+  useFormFeedback(state, save);
   const fields = [
     { name: "baseFee", label: "Order fee ($, once per order)", value: pricing.baseFeeCents / 100, step: "0.01" },
     { name: "pricePerGramCents", label: "Filament (¢ per gram)", value: pricing.pricePerGramCents, step: "0.1" },
@@ -26,7 +29,7 @@ export function PricingForm({ pricing }: { pricing: PricingRates }) {
         ))}
       </div>
       <div className="flex items-center gap-3">
-        <Button type="submit" disabled={pending}>
+        <Button ref={save} type="submit" disabled={pending}>
           {pending ? "Saving…" : "Save pricing"}
         </Button>
         {state.message && <span className="text-sm text-success">{state.message}</span>}
