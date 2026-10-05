@@ -181,3 +181,14 @@ describe("gift card PIN fail-safe", () => {
     expect((await lookupCodes(["4000000000000002:CP12345"])).records).toHaveLength(0);
   });
 });
+
+describe("generated coupon numbers", () => {
+  it("are 12 digits and print in groups of 4", async () => {
+    const { generateCode } = await import("@/lib/codes/server");
+    const { formatCardNumber, normalizeCode } = await import("@/lib/codes/apply");
+    const c = generateCode("AMOUNT");
+    expect(c).toMatch(/^[1-9]\d{11}$/);
+    expect(formatCardNumber(c)).toMatch(/^\d{4} \d{4} \d{4}$/);
+    expect(normalizeCode(formatCardNumber(c))).toBe(c);
+  });
+});

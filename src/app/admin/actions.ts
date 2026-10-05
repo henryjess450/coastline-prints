@@ -161,7 +161,7 @@ export async function createCodeAction(_: CodeActionState, form: FormData): Prom
       });
       if (form.get("print") === "on") await queueCodeSlip(created.id);
       revalidatePath("/admin/codes");
-      const shown = kind === "GIFT_CARD" ? `${formatCardNumber(code)}  ·  PIN ${created.pin}` : code;
+      const shown = kind === "GIFT_CARD" ? `${formatCardNumber(code)}  ·  PIN ${created.pin}` : formatCardNumber(code);
       return { ok: true, created: shown, message: `Created ${shown}` };
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {

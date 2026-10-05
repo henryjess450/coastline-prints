@@ -1,107 +1,115 @@
 import "server-only";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { ImageResponse } from "next/og";
+import QRCode from "qrcode";
 import { pickup } from "@config/pickup";
-import { site } from "@config/site";
+import { legal, site } from "@config/site";
+import { formatCardNumber } from "@/lib/codes/apply";
 import { db } from "@/lib/db";
 import { money } from "@/lib/format";
-import { formatCardNumber } from "@/lib/codes/apply";
-import { loadFonts, RECEIPT_WIDTH, wordmark } from "./render";
+import { RECEIPT_WIDTH } from "./render";
 
-const svg = (s: string) => `data:image/svg+xml;base64,${Buffer.from(s).toString("base64")}`;
+/**
+ * Printed gift card and coupon slips, laid out like the owner's design:
+ * hand-lettered heading, black panel with the number / PIN / amount,
+ * "Can be redeemed at:" + QR code, "Questions or concerns?" + email.
+ *
+ * Hand lettering: drop transparent PNGs into public/brand/lettering/
+ *   coastline-prints.png  gift-card.png  coupon.png  redeem.png  questions.png
+ * Any that are missing are drawn in bold type instead.
+ */
 
-/** Two rows of black waves for the gift card's top and bottom bands. */
-function waveBand(width: number) {
-  const wave = (y: number, w: number) => {
-    let d = `M0 ${y}`;
-    for (let x = 0; x < width; x += 40) d += ` q10 -9 20 0 t20 0`;
-    return `<path d="${d}" fill="none" stroke="black" stroke-width="${w}" stroke-linecap="round"/>`;
-  };
-  return svg(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="34" viewBox="0 0 ${width} 34">${wave(11, 4)}${wave(25, 3)}</svg>`);
+const root = () => process.cwd();
+const dataUri = (file: string) => `data:image/png;base64,${readFileSync(file).toString("base64")}`;
+
+function lettering(name: string): { src: string; w: number; h: number } | null {
+  const file = path.resolve(/* turbopackIgnore: true */ root(), "public/brand/lettering", `${name}.png`);
+  if (!existsSync(file)) return null;
+  const buf = readFileSync(file);
+  // PNG header: width/height at bytes 16-23.
+  return { src: dataUri(file), w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
 }
 
-/** The circle wave mark in black and white. */
-const mark = svg(`<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 32 32">
-  <circle cx="16" cy="16" r="15" fill="black"/>
-  <path d="M5 17c2.2-2 4.4-2 6.6 0s4.4 2 6.6 0 4.4-2 6.6 0 2.2 2 2.2 2" stroke="white" stroke-width="2.4" fill="none" stroke-linecap="round"/>
-  <path d="M7 22.5c1.8-1.5 3.6-1.5 5.4 0s3.6 1.5 5.4 0 3.6-1.5 5.4 0" stroke="white" stroke-width="2.2" fill="none" stroke-linecap="round"/>
-  <circle cx="21.5" cy="10" r="3" fill="white"/></svg>`);
+function montserrat() {
+  const dir = path.resolve(/* turbopackIgnore: true */ root(), "assets/fonts");
+  return [
+    { name: "Montserrat", data: readFileSync(path.join(dir, "montserrat-latin-400-normal.woff")), weight: 400 as const, style: "normal" as const },
+    { name: "Montserrat", data: readFileSync(path.join(dir, "montserrat-latin-600-normal.woff")), weight: 600 as const, style: "normal" as const },
+  ];
+}
 
 const fmtDate = (d: Date) => new Intl.DateTimeFormat("en-US", { timeZone: pickup.timeZone, month: "long", day: "numeric", year: "numeric" }).format(d);
+
+/** A lettering image scaled to a target height, or bold text if the image isn't there yet. */
+function Heading({ name, text, height, grey = false }: { name: string; text: string; height: number; grey?: boolean }) {
+  const img = lettering(name);
+  if (img) {
+    const w = Math.min(RECEIPT_WIDTH - 20, Math.round((img.w / img.h) * height));
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={img.src} width={w} height={Math.round((w / img.w) * img.h)} alt={text} />;
+  }
+  return <div style={{ display: "flex", fontSize: height * 0.62, fontWeight: 600, color: grey ? "#5a5a5a" : "black" }}>{text}</div>;
+}
 
 export async function renderCodeSlipPng(codeId: string) {
   const c = await db.promoCode.findUnique({ where: { id: codeId } });
   if (!c) throw new Error(`Code ${codeId} not found`);
-  const fonts = loadFonts();
   const gift = c.kind === "GIFT_CARD";
-  const w = RECEIPT_WIDTH;
 
-  const tree = gift ? (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", width: "100%", height: "100%", background: "white", color: "black", fontFamily: fonts.family, padding: 4 }}>
-      {/* Double frame, sized to its content so no paper is wasted */}
-      <div style={{ display: "flex", border: "6px solid black", borderRadius: 26, padding: 6 }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, border: "2px solid black", borderRadius: 18, padding: "14px 18px", overflow: "hidden" }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={waveBand(w - 80)} width={w - 80} height={34} alt="" />
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 14 }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={mark} width={84} height={84} alt="" />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={wordmark()} width={160} height={94} alt={site.name} />
-          </div>
-          <div style={{ display: "flex", fontSize: 30, fontWeight: 700, letterSpacing: 14, marginTop: 14 }}>GIFT CARD</div>
-          <div style={{ display: "flex", width: 120, height: 3, background: "black", marginTop: 8 }} />
-          <div style={{ display: "flex", fontSize: 118, fontWeight: 700, lineHeight: 1, marginTop: 18, letterSpacing: -3 }}>{money(c.initialCents ?? 0)}</div>
-          <div style={{ display: "flex", fontSize: 22, marginTop: 8 }}>to spend on custom 3D prints</div>
+  const redeemUrl = `${(process.env.APP_URL ?? "https://coastlineprints.ca").replace(/\/$/, "")}/order`;
+  const qr = await QRCode.toString(redeemUrl, { type: "svg", margin: 0, errorCorrectionLevel: "M", color: { dark: "#000000", light: "#ffffff" } });
+  const qrSrc = `data:image/svg+xml;base64,${Buffer.from(qr).toString("base64")}`;
 
-          <div style={{ display: "flex", flexDirection: "column", alignSelf: "stretch", background: "black", color: "white", borderRadius: 22, padding: "14px 22px", marginTop: 26 }}>
-            <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: 2 }}>GIFTCARD NUMBER:</span>
-            <span style={{ fontSize: 38, fontWeight: 700, letterSpacing: 2, whiteSpace: "nowrap" }}>{formatCardNumber(c.code)}</span>
-            {c.pin && (
-              <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginTop: 10, borderTop: "2px solid white", paddingTop: 10 }}>
-                <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: 2 }}>GIFTCARD PIN:</span>
-                <span style={{ fontSize: 34, fontWeight: 700, letterSpacing: 3 }}>{c.pin}</span>
-              </div>
-            )}
-          </div>
+  const amount = c.kind === "PERCENT" ? `${c.percentOff}% off` : money((gift ? c.initialCents : c.amountCents) ?? 0);
+  const conditions = [
+    c.minOrderCents > 0 ? `On orders of ${money(c.minOrderCents)} or more` : null,
+    !gift && c.maxUses === 1 ? "One-time use" : null,
+    c.expiresAt ? `Valid until ${fmtDate(c.expiresAt)}` : null,
+  ].filter(Boolean) as string[];
 
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", fontSize: 20, marginTop: 22, textAlign: "center" }}>
-            <span>Enter the number and PIN at checkout under</span>
-            <span style={{ fontWeight: 700 }}>&quot;Coupons or Gift Cards? Add them here!&quot;</span>
-            <span>at coastlineprints.ca</span>
-            <span style={{ marginTop: 8 }}>Use it over as many orders as you like until it runs out.</span>
-            <span style={{ marginTop: 8, fontWeight: 700 }}>{c.expiresAt ? `Valid until ${fmtDate(c.expiresAt)}` : "Never expires"}</span>
-          </div>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={waveBand(w - 80)} width={w - 80} height={34} alt="" style={{ marginTop: 18 }} />
-        </div>
+  // Title: one-line hand lettering if provided, else the two-line wordmark.
+  const title = lettering("coastline-prints");
+  const wordmark = dataUri(path.resolve(/* turbopackIgnore: true */ root(), "public/brand/wordmark-black.png"));
+  const line = { display: "flex", justifyContent: "center", whiteSpace: "nowrap" } as const;
+
+  const tree = (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%", height: "100%", background: "white", color: "black", fontFamily: "Montserrat", padding: "6px 4px" }}>
+      {title ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={title.src} width={500} height={Math.round((500 / title.w) * title.h)} alt={site.name} />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={wordmark} width={204} height={120} alt={site.name} />
+      )}
+      <div style={{ display: "flex", marginTop: 4 }}>
+        <Heading name={gift ? "gift-card" : "coupon"} text={gift ? "Gift Card" : "Coupon"} height={76} grey />
       </div>
-    </div>
-  ) : (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", width: "100%", height: "100%", background: "white", color: "black", fontFamily: fonts.family, padding: 4 }}>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", border: "4px dashed black", borderRadius: 22, padding: "16px 20px" }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={wordmark()} width={170} height={100} alt={site.name} />
-        <div style={{ display: "flex", fontSize: 26, fontWeight: 700, letterSpacing: 12, marginTop: 6 }}>COUPON</div>
-        <div style={{ display: "flex", fontSize: 104, fontWeight: 700, lineHeight: 1, marginTop: 12, letterSpacing: -2 }}>{c.kind === "PERCENT" ? `${c.percentOff}% OFF` : `${money(c.amountCents ?? 0)} OFF`}</div>
-        <div style={{ display: "flex", fontSize: 22, marginTop: 6 }}>your custom 3D print order</div>
-        <div style={{ display: "flex", justifyContent: "center", alignSelf: "stretch", background: "black", color: "white", borderRadius: 14, padding: "10px 0", marginTop: 18, fontSize: c.code.length > 14 ? 34 : 46, fontWeight: 700, letterSpacing: c.code.length > 14 ? 1 : 4, whiteSpace: "nowrap" }}>{c.code}</div>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", fontSize: 20, marginTop: 14, textAlign: "center" }}>
-          <span>Add this code at checkout on coastlineprints.ca</span>
-          {c.minOrderCents > 0 && <span>On orders of {money(c.minOrderCents)} or more</span>}
-          {c.maxUses === 1 && <span>One-time use</span>}
-          <span style={{ fontWeight: 700, marginTop: 4 }}>{c.expiresAt ? `Expires ${fmtDate(c.expiresAt)}` : "No expiry date"}</span>
+
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", alignSelf: "stretch", background: "black", color: "white", borderRadius: 34, padding: "22px 12px", marginTop: 18 }}>
+        <div style={{ ...line, fontSize: 25 }}>
+          {gift ? "Giftcard Number: " : "Coupon Number: "}
+          {formatCardNumber(c.code)}
         </div>
+        {gift && c.pin && <div style={{ ...line, fontSize: 25, marginTop: 4 }}>Giftcard Pin: {c.pin}</div>}
+        <div style={{ ...line, fontSize: 25, marginTop: 26 }}>Amount: {amount}</div>
       </div>
+      {conditions.length > 0 && <div style={{ ...line, fontSize: 17, marginTop: 8 }}>{conditions.join("  ·  ")}</div>}
+
+      <div style={{ display: "flex", marginTop: 20 }}>
+        <Heading name="redeem" text="Can be redeemed at:" height={50} />
+      </div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={qrSrc} width={176} height={176} alt={redeemUrl} style={{ marginTop: 10 }} />
+      <div style={{ ...line, fontSize: 18, marginTop: 6 }}>{redeemUrl.replace(/^https?:\/\//, "")}</div>
+
+      <div style={{ display: "flex", marginTop: 22 }}>
+        <Heading name="questions" text="Questions or concerns?" height={50} />
+      </div>
+      <div style={{ ...line, fontSize: 27, marginTop: 4 }}>{legal.contactEmail}</div>
     </div>
   );
 
-  const res = new ImageResponse(tree, {
-    width: w,
-    height: gift ? 1100 : 800, // generous; blank space below the frame is trimmed before printing
-    fonts: [
-      { name: fonts.family, data: fonts.regular, weight: 400, style: "normal" },
-      { name: fonts.family, data: fonts.bold, weight: 700, style: "normal" },
-    ],
-  });
+  const res = new ImageResponse(tree, { width: RECEIPT_WIDTH, height: 1100, fonts: montserrat() });
   return { png: Buffer.from(await res.arrayBuffer()), code: c.code };
 }

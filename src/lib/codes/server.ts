@@ -102,20 +102,16 @@ export async function releaseCodes(checkoutId: string) {
   }
 }
 
-const ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
-function randomBlock(n: number) {
-  return Array.from(randomBytes(n), (b) => ALPHABET[b % ALPHABET.length]).join("");
-}
-
 function randomDigits(n: number) {
   let out = "";
   while (out.length < n) for (const b of randomBytes(n)) if (b < 250 && out.length < n) out += String(b % 10);
   return out;
 }
 
-/** Gift cards: 16-digit number (first digit not 0). Coupons: CP-XXXXXX. */
+/** Gift cards: 16-digit number. Coupons: 12-digit number. First digit never 0. */
 export function generateCode(kind: CodeKind) {
-  return kind === "GIFT_CARD" ? `${1 + (randomBytes(1)[0] % 9)}${randomDigits(15)}` : `CP-${randomBlock(6)}`;
+  const lead = `${1 + (randomBytes(1)[0] % 9)}`;
+  return kind === "GIFT_CARD" ? `${lead}${randomDigits(15)}` : `${lead}${randomDigits(11)}`;
 }
 
 /** Gift card PIN: "CP" + 5 digits. */

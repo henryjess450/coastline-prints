@@ -35,9 +35,9 @@ export function isCardNumber(raw: string) {
   return /^\d{16}$/.test(raw.replace(/[\s-]/g, ""));
 }
 
-/** "1234567812345678" → "1234 5678 1234 5678" */
+/** Number codes in groups of 4: "1234567812345678" → "1234 5678 1234 5678" (also 12-digit coupons). */
 export function formatCardNumber(code: string) {
-  return /^\d{16}$/.test(code) ? code.replace(/(\d{4})(?=\d)/g, "$1 ") : code;
+  return /^\d{12}(\d{4})?$/.test(code) ? code.replace(/(\d{4})(?=\d)/g, "$1 ") : code;
 }
 
 /** "cp 12345" / "12345" → "CP12345" */
