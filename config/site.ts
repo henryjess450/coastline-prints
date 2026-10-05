@@ -7,11 +7,6 @@ export const site = {
   shortName: "Coastline Prints",
   /** Brand colour. Also set as --accent in src/app/globals.css. */
   brandColor: "#0e4471",
-  /**
-   * Logo image in /public (e.g. "/brand/logo.svg"). While null, a placeholder
-   * wave mark is drawn instead.
-   */
-  logoSrc: null as string | null,
   tagline: "Custom 3D printing in PLA, PETG and PLA-CF.",
   fulfillmentLabel: "Local pickup",
 };

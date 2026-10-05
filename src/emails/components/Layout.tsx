@@ -1,4 +1,4 @@
-import { Body, Container, Head, Hr, Html, Link, Preview, Section, Text } from "@react-email/components";
+import { Body, Container, Head, Hr, Html, Img, Link, Preview, Section, Text } from "@react-email/components";
 import { site } from "@config/site";
 
 export const colors = {
@@ -22,9 +22,7 @@ export function EmailLayout({ preview, children, footerNote }: { preview: string
       <Body style={{ backgroundColor: colors.bg, margin: 0, padding: "24px 0", fontFamily: font, color: colors.text }}>
         <Container style={{ maxWidth: 600, margin: "0 auto", backgroundColor: "#ffffff", borderRadius: 16, overflow: "hidden", border: `1px solid ${colors.line}` }}>
           <Section style={{ backgroundColor: colors.brand, padding: "20px 28px" }}>
-            <Text style={{ margin: 0, color: "#ffffff", fontSize: 20, fontWeight: 700, letterSpacing: "-0.2px" }}>
-              Coastline <span style={{ color: "#86bbea" }}>Prints</span>
-            </Text>
+            <Img src={`${(process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "")}/brand/wordmark-white.png`} alt={site.name} height={56} style={{ display: "block", height: 56, width: "auto", color: "#ffffff", fontSize: 20, fontWeight: 700 }} />
           </Section>
           <Section style={{ padding: "28px" }}>{children}</Section>
           <Hr style={{ borderColor: colors.line, margin: 0 }} />

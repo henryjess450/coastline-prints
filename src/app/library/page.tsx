@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { configuredProviders } from "@/lib/library/providers";
+import { DownloadGuide } from "./DownloadGuide";
 import { LibrarySearch } from "./LibrarySearch";
 
 export const metadata: Metadata = {
@@ -17,6 +18,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
         Don&apos;t have an STL? Search the big 3D model sites. Download the file from the design&apos;s page, then upload it here to get your price.
       </p>
       <LibrarySearch initialQuery={q?.slice(0, 80) ?? ""} sources={configuredProviders().map((p) => p.name)} />
+      <DownloadGuide />
     </div>
   );
 }

@@ -75,6 +75,16 @@ function loadFonts() {
   return { family: "Arimo", regular: readFileSync(path.join(bundled, "Arimo-Regular.ttf")), bold: readFileSync(path.join(bundled, "Arimo-Bold.ttf")) };
 }
 
+/** The black wordmark as a data URI (falls back to text if the file is missing). */
+let wordmarkCache: string | null = null;
+function wordmark() {
+  if (!wordmarkCache) {
+    const file = path.resolve(/* turbopackIgnore: true */ process.cwd(), "public/brand/wordmark-black.png");
+    wordmarkCache = `data:image/png;base64,${readFileSync(file).toString("base64")}`;
+  }
+  return wordmarkCache;
+}
+
 const Rule = ({ thick = false }: { thick?: boolean }) => <div style={{ display: "flex", height: thick ? 4 : 2, background: "black", margin: "14px 0" }} />;
 
 const Row = ({ left, right, size = 24, bold = false }: { left: string; right: string; size?: number; bold?: boolean }) => (
@@ -90,14 +100,17 @@ const Label = ({ children }: { children: string }) => <div style={{ display: "fl
 export async function renderReceiptPng(d: ReceiptData, opts: { test?: boolean } = {}): Promise<Buffer> {
   const fonts = loadFonts();
   const noteLines = d.notes ? Math.ceil(d.notes.length / 34) + d.notes.split("\n").length : 0;
-  const height = Math.min(4000, 1050 + d.items.length * 120 + noteLines * 30 + (d.minimumAdjCents ? 34 : 0) + (opts.test ? 80 : 0));
+  const height = Math.min(4000, 1190 + d.items.length * 120 + noteLines * 30 + (d.minimumAdjCents ? 34 : 0) + (opts.test ? 80 : 0));
 
   const tree = (
     <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", background: "white", color: "black", fontFamily: fonts.family, padding: "8px 6px", fontSize: 24 }}>
       {opts.test && (
         <div style={{ display: "flex", justifyContent: "center", border: "4px solid black", padding: 8, fontSize: 34, fontWeight: 700, marginBottom: 12 }}>TEST PRINT</div>
       )}
-      <div style={{ display: "flex", justifyContent: "center", fontSize: 46, fontWeight: 700 }}>{site.name.toUpperCase()}</div>
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={wordmark()} width={306} height={180} alt={site.name} />
+      </div>
       <div style={{ display: "flex", justifyContent: "center", fontSize: 26, marginTop: 2 }}>Official Order Receipt</div>
       <div style={{ display: "flex", justifyContent: "center", fontSize: 20, marginTop: 4 }}>coastlineprints.ca · {legal.contactEmail}</div>
       <Rule thick />
