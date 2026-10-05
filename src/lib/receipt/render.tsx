@@ -61,7 +61,8 @@ export async function loadReceiptData(orderId: string): Promise<ReceiptData | nu
  * (default ./fonts), otherwise the bundled Arimo (metric-identical to Arial).
  */
 function loadFonts() {
-  const dir = path.resolve(process.env.RECEIPT_FONT_DIR ?? "./fonts");
+  // Runtime-only paths: tell the bundler not to trace the whole project.
+  const dir = path.resolve(/* turbopackIgnore: true */ process.cwd(), process.env.RECEIPT_FONT_DIR ?? "fonts");
   const find = (name: string) => {
     if (!existsSync(dir)) return null;
     const hit = readdirSync(dir).find((f) => f.toLowerCase() === name);
@@ -70,7 +71,7 @@ function loadFonts() {
   const regular = find("arial.ttf");
   const bold = find("arialbd.ttf");
   if (regular && bold) return { family: "Arial", regular, bold };
-  const bundled = path.resolve("assets/fonts");
+  const bundled = path.resolve(/* turbopackIgnore: true */ process.cwd(), "assets/fonts");
   return { family: "Arimo", regular: readFileSync(path.join(bundled, "Arimo-Regular.ttf")), bold: readFileSync(path.join(bundled, "Arimo-Bold.ttf")) };
 }
 
