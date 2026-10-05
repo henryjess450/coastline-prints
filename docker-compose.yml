@@ -1,0 +1,42 @@
+# Runs the site and Caddy (HTTPS) together:
+#   docker compose up -d --build
+# Your settings and passwords come from .env (never committed).
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Paths inside the container (these override the values in .env).
+      DATABASE_URL: file:/app/data/coastline.db
+      STORAGE_DIR: /app/storage
+      HOST: 0.0.0.0
+      PORT: "3100"
+      OUTBOX_WORKER: "on"
+    volumes:
+      - coastline-data:/app/data # database
+      - coastline-storage:/app/storage # uploaded STL files
+      - ./backups:/app/backups # backups appear in this folder on your PC
+    ports:
+      # Only for checking at http://localhost:3100 on the PC itself.
+      - "127.0.0.1:3100:3100"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data # HTTPS certificates
+      - caddy-config:/config
+
+volumes:
+  coastline-data:
+  coastline-storage:
+  caddy-data:
+  caddy-config:

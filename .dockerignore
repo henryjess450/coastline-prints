@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.env
+.env.*
+!.env.example
+*.db
+*.db-journal
+storage
+storage-test
+backups
+data
+coverage
+src/generated
+windows/caddy.exe

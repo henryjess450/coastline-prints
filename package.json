@@ -1,0 +1,57 @@
+{
+  "name": "coastline-prints",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "node scripts/start.mjs",
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "samples": "tsx scripts/make-samples.ts",
+    "db:migrate": "prisma migrate dev",
+    "postinstall": "prisma generate",
+    "setup": "npm ci && prisma migrate deploy && next build",
+    "db:deploy": "prisma migrate deploy",
+    "backup": "node scripts/backup.mjs"
+  },
+  "dependencies": {
+    "@prisma/adapter-better-sqlite3": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "@react-email/components": "^1.0.12",
+    "@react-email/render": "^2.1.0",
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.1",
+    "clsx": "^2.1.1",
+    "dotenv": "^18.0.5",
+    "framer-motion": "^14.0.0",
+    "next": "16.3.8",
+    "nodemailer": "^10.0.14",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "server-only": "^0.0.1",
+    "square": "^46.0.0",
+    "three": "^0.186.1",
+    "zod": "^4.6.5",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^24.19.1",
+    "@types/nodemailer": "^8.0.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/three": "^0.186.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.8",
+    "prisma": "^7.10.0",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.0.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

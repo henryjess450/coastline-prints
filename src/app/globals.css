@@ -1,0 +1,289 @@
+@import "tailwindcss";
+
+/* Theme: dark by default; html[data-theme="light"] switches. Solid colours only. */
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+
+:root {
+  /* Coastline Prints brand: #0e4471. Dark theme is navy-tinted. */
+  --bg: #0a1520;
+  --bg-elev: #0f1f2f;
+  --surface: rgb(255 255 255 / 0.04);
+  --surface-strong: rgb(255 255 255 / 0.08);
+  --border: #1d3347;
+  --border-strong: #2d4a65;
+  --text: #eef3f8;
+  --muted: #a5b6c7;
+  --faint: #71859a;
+  --accent: #0e4471; /* brand: button fills */
+  --accent-ink: #ffffff; /* text on brand */
+  --accent-text: #86bbea; /* brand tint, readable as text on dark */
+  --accent-line: #3d7bb8; /* brand tint for outlines/fills on dark */
+  --accent-soft: rgb(14 68 113 / 0.45);
+  --sand: #e9c46a;
+  --seafoam: #4fb3a9;
+  --danger: #ff5c6c;
+  --success: #3ccf8e;
+  --warning: #f2c14e;
+  --ring: #86bbea;
+  --shadow: 0 12px 32px -14px rgb(0 0 0 / 0.7);
+  --btn-glow: 0 8px 22px -8px rgb(61 123 184 / 0.75);
+  --viewer-bg: #0d1a27;
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --bg: #f5f8fb;
+  --bg-elev: #ffffff;
+  --surface: rgb(255 255 255 / 0.8);
+  --surface-strong: #e9eff5;
+  --border: #dbe3eb;
+  --border-strong: #bccad8;
+  --text: #0b1622;
+  --muted: #475a6d;
+  --faint: #718399;
+  --accent: #0e4471;
+  --accent-ink: #ffffff;
+  --accent-text: #0e4471;
+  --accent-line: #0e4471;
+  --accent-soft: rgb(14 68 113 / 0.1);
+  --sand: #c99a1e;
+  --seafoam: #1f857b;
+  --danger: #d12c3e;
+  --success: #12804f;
+  --warning: #9a6700;
+  --ring: #0e4471;
+  --shadow: 0 12px 30px -18px rgb(14 68 113 / 0.35);
+  --btn-glow: 0 8px 20px -8px rgb(14 68 113 / 0.55);
+  --viewer-bg: #e8eef4;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-elev: var(--bg-elev);
+  --color-surface: var(--surface);
+  --color-surface-strong: var(--surface-strong);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-fg: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-text: var(--accent-text);
+  --color-accent-line: var(--accent-line);
+  --color-accent-soft: var(--accent-soft);
+  --color-sand: var(--sand);
+  --color-seafoam: var(--seafoam);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-space-grotesk);
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+::selection {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 3px;
+}
+
+@layer components {
+  .glass {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(16px) saturate(130%);
+    -webkit-backdrop-filter: blur(16px) saturate(130%);
+    box-shadow: var(--shadow);
+  }
+
+  /* Highlighted card: solid accent outline. */
+  .card-accent {
+    border-color: var(--accent-line);
+    box-shadow: 0 0 0 1px var(--accent-line), var(--shadow);
+  }
+
+  /*
+   * Pill buttons. Hover lifts the button with a soft brand glow; a click
+   * plays a quick squash-and-bounce.
+   */
+  .btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    white-space: nowrap;
+    user-select: none;
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    transform: translateY(0);
+    transition:
+      transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow 0.2s ease,
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
+  }
+  .btn:hover {
+    transform: translateY(-2px);
+  }
+  .btn:active {
+    transform: translateY(1px) scale(0.97);
+    transition-duration: 0.08s;
+  }
+  .btn:disabled,
+  .btn[aria-disabled="true"] {
+    opacity: 0.45;
+    pointer-events: none;
+  }
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent-line);
+    color: var(--accent-ink);
+  }
+  .btn-primary:hover {
+    box-shadow: var(--btn-glow);
+  }
+  .btn-secondary {
+    background: var(--bg-elev);
+    border-color: var(--border-strong);
+    color: var(--text);
+  }
+  .btn-secondary:hover {
+    border-color: var(--accent-line);
+  }
+  .btn-danger {
+    background: var(--danger);
+    color: #fff;
+  }
+  .btn-ghost {
+    color: var(--muted);
+    background: transparent;
+  }
+  .btn-ghost:hover {
+    color: var(--text);
+    background: var(--surface-strong);
+    transform: translateY(-1px);
+  }
+  /* Click "squash" played once per press. */
+  .btn.is-squash {
+    animation: squash 0.36s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: var(--surface-strong);
+    border-radius: 10px;
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 40%;
+    background: rgb(255 255 255 / 0.06);
+    animation: shimmer 1.3s ease-in-out infinite;
+  }
+
+  input[type="range"].range {
+    appearance: none;
+    height: 6px;
+    border-radius: 9999px;
+    /* Hard colour stop = solid filled track, no blending. */
+    background: linear-gradient(90deg, var(--accent-line) 0 var(--fill, 50%), var(--surface-strong) var(--fill, 50%) 100%);
+    cursor: pointer;
+  }
+  input[type="range"].range::-webkit-slider-thumb {
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 9999px;
+    background: #ffffff;
+    border: 3px solid var(--accent-line);
+    box-shadow: 0 0 0 4px var(--accent-soft);
+    transition: transform 0.15s ease;
+  }
+  input[type="range"].range:active::-webkit-slider-thumb {
+    transform: scale(1.18);
+  }
+  input[type="range"].range::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 9999px;
+    background: #ffffff;
+    border: 3px solid var(--accent-line);
+  }
+}
+
+@keyframes shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(260%);
+  }
+}
+
+@keyframes squash {
+  0% {
+    scale: 1 1;
+  }
+  35% {
+    scale: 1.06 0.88;
+  }
+  65% {
+    scale: 0.97 1.05;
+  }
+  100% {
+    scale: 1 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@keyframes layer-in {
+  from {
+    opacity: 0;
+    transform: translateY(-28px) scaleX(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scaleX(1);
+  }
+}
+
+@keyframes bob {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -10px;
+  }
+}
