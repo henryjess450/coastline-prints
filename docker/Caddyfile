@@ -1,5 +1,5 @@
-# HTTPS for the public site. Caddy gets and renews the certificate itself.
-comissions.henryjess.ca {
+# HTTPS for the public site. Caddy gets and renews the certificates itself.
+coastlineprints.ca {
 	encode zstd gzip
 
 	# STL uploads can be up to 100 MB.
@@ -8,4 +8,9 @@ comissions.henryjess.ca {
 	}
 
 	reverse_proxy app:3100
+}
+
+# www.coastlineprints.ca sends visitors to the main address.
+www.coastlineprints.ca {
+	redir https://coastlineprints.ca{uri} permanent
 }

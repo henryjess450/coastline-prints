@@ -1,7 +1,7 @@
 # Running Coastline Prints on a Windows PC
 
 The site runs on your PC on port **3100** (only reachable from the PC itself).
-**Caddy** (free) sits in front of it: it answers `https://comissions.henryjess.ca`
+**Caddy** (free) sits in front of it: it answers `https://coastlineprints.ca`
 on ports 80/443, gets and renews the HTTPS certificate automatically, and passes
 visitors through to the site. Your router forwards ports 80 and 443 to the PC.
 
@@ -46,18 +46,19 @@ that IP:
 Do **not** forward 3100.
 
 **c. Point the domain at your home.** Find your public IP at <https://whatismyipaddress.com>.
-Where you manage DNS for `henryjess.ca`, add an **A record**: name `comissions`, value
-= that IP. Most home internet IPs change occasionally; if your registrar offers
+Where you bought `coastlineprints.ca`, open its DNS settings and add two records:
+an **A record** with name `@` (the bare domain) and value = that IP, and a
+**CNAME record** with name `www` and value `coastlineprints.ca`. Most home internet IPs change occasionally; if your registrar offers
 Dynamic DNS, turn it on, otherwise update this record if the site goes offline.
 
 **d. Install Caddy.** Download **Windows amd64** from <https://caddyserver.com/download>,
 rename the file to `caddy.exe` and put it in `C:\CoastlinePrints\windows\`.
-`windows\Caddyfile` is already set up for `comissions.henryjess.ca`.
+`windows\Caddyfile` is already set up for `coastlineprints.ca` (and redirects `www`).
 
 **e. Start it.** With `2-start.bat` running, double-click `windows\4-start-caddy.bat`.
 When Windows Firewall asks, click **Allow** (Private and Public). The first start
 fetches the HTTPS certificate (takes up to a minute). Then visit
-<https://comissions.henryjess.ca> from your phone **on mobile data** (Wi-Fi at home
+<https://coastlineprints.ca> from your phone **on mobile data** (Wi-Fi at home
 sometimes can't reach your own public address).
 
 If the certificate step fails, the window says why. Most often: the A record hasn't
@@ -88,7 +89,7 @@ Your `.env` uses **Production** keys, so set this up on the **Production** side 
 Square Developer Console (see `SETUP.md` section 3):
 
 - Name: `Coastline Prints payments`
-- Notification URL: `https://comissions.henryjess.ca/api/webhooks/square`
+- Notification URL: `https://coastlineprints.ca/api/webhooks/square`
 - API version: `2026-09-16`
 - Events: `payment.created`, `payment.updated`
 

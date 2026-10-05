@@ -1,7 +1,5 @@
-# Caddy reverse proxy for Coastline Prints.
-# Gets and renews the HTTPS certificate for the domain automatically, and
-# forwards visitors to the site running on this PC at port 3100.
-comissions.henryjess.ca {
+# HTTPS for the public site. Caddy gets and renews the certificates itself.
+coastlineprints.ca {
 	encode zstd gzip
 
 	# STL uploads can be up to 100 MB.
@@ -10,4 +8,9 @@ comissions.henryjess.ca {
 	}
 
 	reverse_proxy 127.0.0.1:3100
+}
+
+# www.coastlineprints.ca sends visitors to the main address.
+www.coastlineprints.ca {
+	redir https://coastlineprints.ca{uri} permanent
 }

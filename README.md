@@ -26,7 +26,7 @@ powershell -ExecutionPolicy Bypass -File windows\new-env.ps1
 ```
 
 - Site on the PC: <http://localhost:3100>
-- Public site (after DNS + port forwarding, see below): <https://comissions.henryjess.ca>
+- Public site (after DNS + port forwarding, see below): <https://coastlineprints.ca>
 - Logs: `docker compose logs -f app`
 - Stop: `docker compose down` (your data is kept)
 - Update to the latest code: `git pull` then `docker compose up -d --build`
