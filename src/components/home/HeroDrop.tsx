@@ -1,10 +1,10 @@
 "use client";
 import { AnimatePresence, motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AppConfig } from "@/lib/config/types";
 import { useOrder } from "@/lib/order/store";
-import { HeroWater } from "./HeroWater";
+import { HeroWater, SAIL_EVENT } from "./HeroWater";
 
 /**
  * The hero section. Dropping an STL anywhere on it adds the file to the cart
@@ -15,6 +15,13 @@ export function HeroDrop({ config, children }: { config: AppConfig; children: Re
   const addFiles = useOrder((s) => s.addFiles);
   const [over, setOver] = useState(false);
   const depth = useRef(0);
+  // The headline and buttons drift away while the Benchy sails off.
+  const [leaving, setLeaving] = useState(false);
+  useEffect(() => {
+    const go = () => setLeaving(true);
+    window.addEventListener(SAIL_EVENT, go);
+    return () => window.removeEventListener(SAIL_EVENT, go);
+  }, []);
   const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
 
   return (
@@ -45,7 +52,13 @@ export function HeroDrop({ config, children }: { config: AppConfig; children: Re
       }}
     >
       <HeroWater />
-      <div className="mx-auto w-full max-w-7xl px-4 pb-20 pt-20 sm:px-6 sm:pb-28 sm:pt-32">{children}</div>
+      <motion.div
+        className="mx-auto w-full max-w-7xl px-4 pb-20 pt-20 sm:px-6 sm:pb-28 sm:pt-32"
+        animate={leaving ? { opacity: 0, x: 40 } : { opacity: 1, x: 0 }}
+        transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
+      >
+        {children}
+      </motion.div>
 
       <AnimatePresence>
         {over && (

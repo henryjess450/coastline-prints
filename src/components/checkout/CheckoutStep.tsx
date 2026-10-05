@@ -2,12 +2,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { site } from "@config/site";
 import { useConfig } from "@/components/ConfigProvider";
 import { AnimatedNumber } from "@/components/motion/AnimatedNumber";
 import { PrintingLoader } from "@/components/motion/PrintingLoader";
-import { Button } from "@/components/ui/Button";
+import { bounce, Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { customerSchema } from "@/lib/checkout/schema";
 import { cn } from "@/lib/cn";
@@ -19,7 +19,14 @@ import { PickupPicker, type PickupChoice } from "./PickupPicker";
 import { CodeBox } from "./CodeBox";
 import { applyCodes, codeEntry, type CodeInfo } from "@/lib/codes/apply";
 
-type Contact = { name: string; email: string; phone: string; notes: string; pickupAcknowledged: boolean; termsAccepted: boolean };
+type Contact = {
+  name: string;
+  email: string;
+  phone: string;
+  notes: string;
+  pickupAcknowledged: boolean;
+  termsAccepted: boolean;
+};
 type FieldErrors = Partial<Record<keyof Contact, string>>;
 
 const formatTotal = (v: number) => money(Math.round(v));
@@ -30,12 +37,22 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
   const router = useRouter();
   const resetCart = useOrder((s) => s.reset);
   const payRef = useRef<PaymentMethodsHandle>(null);
-  const [contact, setContact] = useState<Contact>({ name: "", email: "", phone: "", notes: "", pickupAcknowledged: false, termsAccepted: false });
+  const [contact, setContact] = useState<Contact>({
+    name: "",
+    email: "",
+    phone: "",
+    notes: "",
+    pickupAcknowledged: false,
+    termsAccepted: false,
+  });
   const [errors, setErrors] = useState<FieldErrors>({});
   const [pickup, setPickup] = useState<PickupChoice>(null);
   const [pickupError, setPickupError] = useState<string>();
   const [busy, setBusy] = useState<false | "verifying" | "charging" | "processing">(false);
-  const [payError, setPayError] = useState<{ message: string; n: number } | null>(null);
+  const [payError, setPayError] = useState<{
+    message: string;
+    n: number;
+  } | null>(null);
 
   const quote = cartQuote.quote;
   const [codes, setCodes] = useState<CodeInfo[]>([]);
@@ -44,6 +61,14 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
   const total = discount.totalCents;
   const covered = !!quote?.ok && total === 0;
   const canPay = (!!square || covered) && !!quote?.ok && cartQuote.confirmed && !busy;
+
+  // The pay button hops once when everything is ready.
+  const payButton = useRef<HTMLButtonElement>(null);
+  const wasPayable = useRef(canPay);
+  useEffect(() => {
+    if (canPay && !wasPayable.current) bounce(payButton.current);
+    wasPayable.current = canPay;
+  }, [canPay]);
 
   const set = <K extends keyof Contact>(k: K, v: Contact[K]) => {
     setContact((c) => ({ ...c, [k]: v }));
@@ -92,7 +117,13 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
         amount: (total / 100).toFixed(2),
         currencyCode: "CAD",
         intent: "CHARGE",
-        billingContact: { givenName, familyName: rest.join(" ") || undefined, email: customer.email, phone: customer.phone, countryCode: "CA" },
+        billingContact: {
+          givenName,
+          familyName: rest.join(" ") || undefined,
+          email: customer.email,
+          phone: customer.phone,
+          countryCode: "CA",
+        },
         customerInitiated: true,
         sellerKeyedIn: false,
       });
@@ -112,13 +143,25 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
   async function submit(sourceId: string, customer: ReturnType<typeof customerSchema.parse>) {
     setBusy("charging");
     const attemptId = crypto.randomUUID();
-    const body = JSON.stringify({ attemptId, sourceId, customer, pickup, items: cartPayload(items), expectedTotalCents: total, codes: codes.map(codeEntry) });
+    const body = JSON.stringify({
+      attemptId,
+      sourceId,
+      customer,
+      pickup,
+      items: cartPayload(items),
+      expectedTotalCents: total,
+      codes: codes.map(codeEntry),
+    });
 
     // One automatic retry on a lost connection. The same attempt id means Square won't charge twice.
     for (let attempt = 0; attempt < 2; attempt++) {
       let res: Response;
       try {
-        res = await fetch("/api/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+        res = await fetch("/api/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+        });
       } catch {
         if (attempt === 0) {
           await sleep(1500);
@@ -164,27 +207,62 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
   }
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
-      <div className="min-w-0 space-y-4">
-        <Card className="p-5 sm:p-6">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[minmax(0,1fr)_420px] lg:gap-10">
+      <div className="min-w-0 space-y-6">
+        <Card flat className="p-6 sm:p-8">
           <h2 className="font-display text-xl font-bold">Your details</h2>
-          <p className="mt-1 text-sm text-muted">We use these to send your receipt and tell you when your order is ready.</p>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <Field id="co-name" label="Full name" error={errors.name} className="sm:col-span-2">
-              <input id="co-name" autoComplete="name" value={contact.name} onChange={(e) => set("name", e.target.value)} className={inputClass(errors.name)} aria-invalid={!!errors.name} aria-describedby="co-name-err" />
+          <p className="mt-2 text-sm leading-relaxed text-muted">We use these to send your receipt and tell you when your order is ready.</p>
+          <div className="mt-6 grid gap-5 sm:grid-cols-2">
+            <Field id="co-name" label="Full name" error={errors.name} valid={contact.name.trim().length >= 2} className="sm:col-span-2">
+              <input
+                id="co-name"
+                autoComplete="name"
+                value={contact.name}
+                onChange={(e) => set("name", e.target.value)}
+                className={inputClass(errors.name)}
+                aria-invalid={!!errors.name}
+                aria-describedby="co-name-err"
+              />
             </Field>
-            <Field id="co-email" label="Email" error={errors.email}>
-              <input id="co-email" type="email" autoComplete="email" value={contact.email} onChange={(e) => set("email", e.target.value)} className={inputClass(errors.email)} aria-invalid={!!errors.email} aria-describedby="co-email-err" />
+            <Field id="co-email" label="Email" error={errors.email} valid={/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(contact.email.trim())}>
+              <input
+                id="co-email"
+                type="email"
+                autoComplete="email"
+                value={contact.email}
+                onChange={(e) => set("email", e.target.value)}
+                className={inputClass(errors.email)}
+                aria-invalid={!!errors.email}
+                aria-describedby="co-email-err"
+              />
             </Field>
-            <Field id="co-phone" label="Phone" error={errors.phone}>
-              <input id="co-phone" type="tel" autoComplete="tel" placeholder="604 555 0123" value={contact.phone} onChange={(e) => set("phone", e.target.value)} className={inputClass(errors.phone)} aria-invalid={!!errors.phone} aria-describedby="co-phone-err" />
+            <Field id="co-phone" label="Phone" error={errors.phone} valid={contact.phone.replace(/\D/g, "").length >= 10}>
+              <input
+                id="co-phone"
+                type="tel"
+                autoComplete="tel"
+                placeholder="604 555 0123"
+                value={contact.phone}
+                onChange={(e) => set("phone", e.target.value)}
+                className={inputClass(errors.phone)}
+                aria-invalid={!!errors.phone}
+                aria-describedby="co-phone-err"
+              />
             </Field>
             <Field id="co-notes" label="Notes (optional)" className="sm:col-span-2">
-              <textarea id="co-notes" rows={3} maxLength={1000} placeholder="Anything we should know about your print?" value={contact.notes} onChange={(e) => set("notes", e.target.value)} className={cn(inputClass(), "h-auto py-2.5")} />
+              <textarea
+                id="co-notes"
+                rows={3}
+                maxLength={1000}
+                placeholder="Anything we should know about your print?"
+                value={contact.notes}
+                onChange={(e) => set("notes", e.target.value)}
+                className={cn(inputClass(), "h-auto py-2.5")}
+              />
             </Field>
           </div>
 
-          <div className="mt-5 space-y-3">
+          <div className="mt-6 space-y-4">
             <Check id="co-pickupAcknowledged" checked={contact.pickupAcknowledged} onChange={(v) => set("pickupAcknowledged", v)} error={errors.pickupAcknowledged}>
               I understand this order is <strong className="text-fg">local pickup only</strong>. The pickup address is shown after payment and in my receipt email.
             </Check>
@@ -202,9 +280,9 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
           </div>
         </Card>
 
-        <Card id="co-pickup" className="p-5 sm:p-6">
+        <Card flat id="co-pickup" className="p-6 sm:p-8">
           <h2 className="font-display text-xl font-bold">Pickup time</h2>
-          <div className="mt-2">
+          <div className="mt-3">
             <PickupPicker
               value={pickup}
               onChange={(v) => {
@@ -216,9 +294,9 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
           </div>
         </Card>
 
-        <Card className="relative overflow-hidden p-5 sm:p-6">
+        <Card flat className="relative overflow-hidden p-6 sm:p-8">
           <h2 className="font-display text-xl font-bold">Payment</h2>
-          <div className="mt-4">
+          <div className="mt-5">
             {covered ? (
               <p className="rounded-xl bg-success/15 p-3 text-sm text-success">Your gift card covers this whole order. No card needed.</p>
             ) : square ? (
@@ -249,14 +327,20 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
             )}
           </AnimatePresence>
 
-          <Button size="lg" className="mt-5 w-full" disabled={!canPay} onClick={payWithCard}>
+          <Button ref={payButton} size="lg" className="mt-6 w-full" disabled={!canPay} onClick={payWithCard}>
             {covered ? "Place order" : `Pay ${quote?.ok ? money(total) : ""}`}
           </Button>
           {!cartQuote.confirmed && <p className="mt-2 text-center text-xs text-faint">Confirming your price…</p>}
 
           <AnimatePresence>
             {busy && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-10 grid place-items-center bg-bg/85 backdrop-blur-sm" aria-live="assertive">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 z-10 grid place-items-center bg-bg/85 backdrop-blur-sm"
+                aria-live="assertive"
+              >
                 <PrintingLoader label={busy === "verifying" ? "Checking your card…" : busy === "processing" ? "Waiting for the bank…" : "Processing payment…"} />
               </motion.div>
             )}
@@ -264,20 +348,20 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
         </Card>
       </div>
 
-      <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:self-start">
-        <Card highlight className="p-5">
+      <div className="min-w-0 space-y-6 lg:sticky lg:top-24 lg:self-start">
+        <Card flat highlight className="p-6 sm:p-8">
           <div className="flex items-baseline justify-between">
             <h2 className="font-display text-lg font-semibold">Order summary</h2>
             <button type="button" onClick={onBack} className="text-sm text-accent-text underline underline-offset-4" disabled={!!busy}>
               Edit
             </button>
           </div>
-          <ul className="mt-4 space-y-3 text-sm">
+          <ul className="mt-5 space-y-4 text-sm">
             {items.map((item, i) => {
               const q = quote?.items[i];
               const color = cfg.materials.find((m) => m.id === item.material)?.colors.find((c) => c.id === item.colorId);
               return (
-                <li key={item.key} className="flex gap-3">
+                <motion.li key={item.key} className="flex gap-3" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 + i * 0.06 }}>
                   <span className="mt-0.5 h-4 w-4 shrink-0 rounded-full border border-line-strong" style={{ background: color?.hex }} aria-hidden />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">
@@ -288,17 +372,18 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
                       {q?.ok && (
                         <>
                           {" "}
-                          · {q.assignment.orientedSize.x.toFixed(0)}×{q.assignment.orientedSize.y.toFixed(0)}×{q.assignment.orientedSize.z.toFixed(0)} mm · about {hours(q.hoursTotal)}
+                          · {q.assignment.orientedSize.x.toFixed(0)}×{q.assignment.orientedSize.y.toFixed(0)}×{q.assignment.orientedSize.z.toFixed(0)} mm · about{" "}
+                          {hours(q.hoursTotal)}
                         </>
                       )}
                     </p>
                   </div>
                   <span className="shrink-0 font-mono tabular-nums">{q?.ok ? money(q.lineCents) : "…"}</span>
-                </li>
+                </motion.li>
               );
             })}
           </ul>
-          <dl className="mt-4 space-y-1 border-t border-line pt-3 text-sm">
+          <dl className="mt-5 space-y-1.5 border-t border-line pt-4 text-sm">
             <div className="flex justify-between">
               <dt className="text-muted">Order fee</dt>
               <dd className="font-mono">{quote ? money(quote.baseFeeCents) : "…"}</dd>
@@ -313,17 +398,25 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
               <dt className="text-muted">{site.fulfillmentLabel}</dt>
               <dd className="font-mono">Free</dd>
             </div>
-            {discount.applied.map((a) => (
-              <div key={a.code} className="flex justify-between text-success">
-                <dt>{a.label}</dt>
-                <dd className="font-mono">−{money(a.amountCents)}</dd>
-              </div>
-            ))}
+            <AnimatePresence initial={false}>
+              {discount.applied.map((a) => (
+                <motion.div
+                  key={a.code}
+                  className="flex justify-between overflow-hidden text-success"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                >
+                  <dt>{a.label}</dt>
+                  <dd className="font-mono">−{money(a.amountCents)}</dd>
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </dl>
           <CodeBox orderTotalCents={orderTotal} codes={codes} result={discount} onChange={setCodes} disabled={!!busy || !quote?.ok} />
-          <div className="mt-3 flex items-end justify-between border-t-2 border-line-strong pt-3">
+          <div className="mt-4 flex items-end justify-between border-t-2 border-line-strong pt-4">
             <span className="text-sm text-muted">Total (CAD)</span>
-            <AnimatedNumber value={total} format={formatTotal} className="font-display text-3xl font-bold tabular-nums" />
+            <AnimatedNumber value={total} format={formatTotal} className="font-display text-3xl font-bold tabular-nums" pulse />
           </div>
         </Card>
       </div>
@@ -333,21 +426,46 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
 
 function inputClass(error?: string) {
   return cn(
-    "h-11 w-full rounded-xl border bg-surface px-3 text-sm text-fg outline-none transition-[border-color,box-shadow] placeholder:text-faint focus:border-accent-line focus:shadow-[0_0_0_4px_var(--accent-soft)]",
+    "h-11 w-full rounded-xl border bg-surface px-3.5 pr-10 text-sm text-fg outline-none transition-[border-color,box-shadow] placeholder:text-faint focus:border-accent-line focus:shadow-[0_0_0_4px_var(--accent-soft)]",
     error ? "border-danger/60" : "border-line",
   );
 }
 
-function Field({ id, label, error, className, children }: { id: string; label: string; error?: string; className?: string; children: React.ReactNode }) {
+function Field({ id, label, error, valid, className, children }: { id: string; label: string; error?: string; valid?: boolean; className?: string; children: React.ReactNode }) {
   return (
     <div className={className}>
-      <label htmlFor={id} className="mb-1 block text-xs font-medium text-muted">
+      <label htmlFor={id} className="mb-1.5 block text-xs font-medium text-muted">
         {label}
       </label>
-      {children}
+      <div className="relative">
+        {children}
+        {/* A small tick pops in once the field looks right */}
+        <AnimatePresence>
+          {valid && !error && (
+            <motion.span
+              className="pointer-events-none absolute right-3 top-3 grid h-5 w-5 place-items-center rounded-full bg-success/15 text-success"
+              initial={{ scale: 0, rotate: -45 }}
+              animate={{ scale: 1, rotate: 0 }}
+              exit={{ scale: 0 }}
+              transition={{ type: "spring", stiffness: 500, damping: 18 }}
+              aria-hidden
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                <motion.path d="M5 13l4 4L19 7" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ delay: 0.1, duration: 0.25 }} />
+              </svg>
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </div>
       <AnimatePresence>
         {error && (
-          <motion.p id={`${id}-err`} initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mt-1 text-xs text-danger">
+          <motion.p
+            id={`${id}-err`}
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0, x: [0, -4, 4, -2, 0] }}
+            exit={{ opacity: 0 }}
+            className="mt-1.5 text-xs text-danger"
+          >
             {error}
           </motion.p>
         )}
@@ -367,11 +485,33 @@ function Check({ id, checked, onChange, error, children }: { id: string; checked
             checked={checked}
             onChange={(e) => onChange(e.target.checked)}
             aria-invalid={!!error}
-            className={cn("peer h-5 w-5 appearance-none rounded-md border-2 transition-colors checked:border-accent-line checked:bg-accent", error ? "border-danger" : "border-line-strong")}
+            className={cn(
+              "peer h-5 w-5 appearance-none rounded-md border-2 transition-[background-color,border-color,transform] duration-150 checked:border-accent-line checked:bg-accent active:scale-90",
+              error ? "border-danger" : "border-line-strong",
+            )}
           />
-          <motion.svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="4" className="pointer-events-none absolute" aria-hidden initial={false} animate={{ scale: checked ? 1 : 0 }}>
-            <path d="M5 13l4 4L19 7" />
-          </motion.svg>
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="white"
+            strokeWidth="4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="pointer-events-none absolute"
+            aria-hidden
+          >
+            <motion.path
+              d="M5 13l4 4L19 7"
+              initial={false}
+              animate={{
+                pathLength: checked ? 1 : 0,
+                opacity: checked ? 1 : 0,
+              }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+            />
+          </svg>
         </span>
         <span>{children}</span>
       </label>

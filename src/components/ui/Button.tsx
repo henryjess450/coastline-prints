@@ -16,8 +16,17 @@ export function buttonClass(variant: Variant = "primary", size: Size = "md", cla
   return cn("btn", `btn-${variant}`, sizes[size], className);
 }
 
+/** A happy little bounce for success moments (code applied, ready to pay). */
+export function bounce(el: HTMLElement | null) {
+  if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  el.animate(
+    [{ transform: "translateY(0) scale(1)" }, { transform: "translateY(-5px) scale(1.04)" }, { transform: "translateY(1px) scale(0.98)" }, { transform: "translateY(0) scale(1)" }],
+    { duration: 480, easing: "cubic-bezier(0.34, 1.56, 0.64, 1)" },
+  );
+}
+
 /** Replays the CSS squash animation on every click. */
-function squash(el: HTMLElement) {
+export function squash(el: HTMLElement) {
   el.classList.remove("is-squash");
   void el.offsetWidth; // restart the animation
   el.classList.add("is-squash");

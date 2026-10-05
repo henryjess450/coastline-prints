@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { pickup } from "@config/pickup";
 import { privateSite } from "@config/private.server";
 import { site } from "@config/site";
+import { Reveal } from "@/components/home/Reveal";
 import { Celebration } from "@/components/motion/Celebration";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -31,18 +32,18 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
   const statusHref = `/status?order=${encodeURIComponent(order.orderNumber)}`;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 pb-8 pt-10 sm:px-6">
+    <div className="mx-auto max-w-3xl px-4 pb-12 pt-12 sm:px-6 sm:pt-16">
       <div className="text-center">
         <Celebration />
-        <h1 className="mt-6 font-display text-3xl font-bold tracking-tight sm:text-4xl">Thanks, {firstName}! Your order is in.</h1>
-        <p className="mt-2 text-muted">
+        <h1 className="mt-8 font-display text-3xl font-bold tracking-tight sm:text-4xl">Thanks, {firstName}! Your order is in.</h1>
+        <p className="mt-3 text-muted">
           Order <span className="font-mono font-semibold text-fg">{order.orderNumber}</span> · paid {money(order.totalCents)} CAD
         </p>
         <p className="mt-1 text-sm text-faint">A receipt is on its way to {order.customerEmail}.</p>
       </div>
 
-      <div className="mt-10 grid gap-4 md:grid-cols-2">
-        <Card highlight className="p-5">
+      <div className="mt-14 grid gap-6 md:grid-cols-2">
+        <Card flat highlight className="p-6 sm:p-8">
           <h2 className="font-display text-lg font-semibold">Pickup</h2>
           <p className="mt-2 text-sm text-muted">{site.fulfillmentLabel}. We&apos;ll email you when your order is ready, before your pickup time.</p>
           {pickupWhen && (
@@ -58,20 +59,20 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
           <p className="mt-2 text-xs text-faint">Please keep this address private. Need a different time? Reply to your receipt email.</p>
         </Card>
 
-        <Card className="p-5">
+        <Card flat className="p-6 sm:p-8">
           <h2 className="font-display text-lg font-semibold">What happens next</h2>
-          <ol className="mt-3 space-y-2 text-sm text-muted">
+          <ol className="mt-4 space-y-3 text-sm leading-relaxed text-muted">
             {["We check your files and queue them on the right printer.", "Your parts are printed and cleaned up.", "You get a “ready for pickup” email.", "Collect your order at your pickup time."].map((t, i) => (
-              <li key={t} className="flex gap-3">
+              <Reveal as="li" key={t} className="flex gap-3" delay={0.5 + i * 0.1}>
                 <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-accent text-xs font-bold text-accent-ink">{i + 1}</span>
                 {t}
-              </li>
+              </Reveal>
             ))}
           </ol>
         </Card>
       </div>
 
-      <Card className="mt-4 p-5">
+      <Card flat className="mt-6 p-6 sm:p-8">
         <h2 className="font-display text-lg font-semibold">Your order</h2>
         <ul className="mt-3 divide-y divide-line text-sm">
           {order.items.map((it) => (
@@ -104,13 +105,13 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
         )}
       </Card>
 
-      <div className="mt-8 flex flex-wrap justify-center gap-3">
+      <div className="mt-12 flex flex-wrap justify-center gap-4">
         <ButtonLink href={statusHref}>Track this order</ButtonLink>
         <ButtonLink href="/order" variant="secondary">
           Start another order
         </ButtonLink>
       </div>
-      <p className="mt-6 text-center text-xs text-faint">
+      <p className="mt-8 text-center text-xs text-faint">
         Bookmark this page to see these details again. Questions? See the <Link href="/terms" className="underline">Terms</Link> or reply to your receipt email.
       </p>
     </div>

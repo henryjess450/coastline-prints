@@ -15,16 +15,22 @@ export function OptionsPanel({ item }: { item: CartItem }) {
   const selectedColor = colors.find((c) => c.id === item.colorId);
 
   return (
-    <div className="space-y-5">
-      <div className="space-y-2">
+    <div className="space-y-7">
+      <div className="space-y-2.5">
         <span className="text-sm font-medium text-fg">Material</span>
         <Segmented<MaterialId>
           label="Material"
           value={item.material}
           onChange={(v) => s.setMaterial(item.key, v, cfg)}
-          options={cfg.materials.map((m) => ({ value: m.id, label: m.name, hint: m.description }))}
+          options={cfg.materials.map((m) => ({
+            value: m.id,
+            label: m.name,
+            hint: m.description,
+          }))}
         />
-        <p className="text-xs text-muted">{mat.description}</p>
+        <motion.p key={mat.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="text-xs leading-relaxed text-muted">
+          {mat.description}
+        </motion.p>
       </div>
 
       <div className="space-y-2">
@@ -37,7 +43,7 @@ export function OptionsPanel({ item }: { item: CartItem }) {
             {selectedColor?.pricePerGramCents != null && ` · ${selectedColor.pricePerGramCents}¢/g`}
           </motion.span>
         </div>
-        <div role="radiogroup" aria-labelledby={`color-label-${item.key}`} className="flex flex-wrap gap-2">
+        <div role="radiogroup" aria-labelledby={`color-label-${item.key}`} className="flex flex-wrap gap-2.5">
           {colors.map((c) => {
             const active = c.id === item.colorId;
             return (
@@ -51,11 +57,15 @@ export function OptionsPanel({ item }: { item: CartItem }) {
                 onClick={() => s.update(item.key, { colorId: c.id })}
                 whileHover={{ y: -3, rotate: -6 }}
                 whileTap={{ scale: 0.85 }}
-                animate={{ y: active ? -2 : 0 }}
-                className={cn(
-                  "relative h-9 w-9 overflow-hidden rounded-full border-2",
-                  active ? "border-white outline-2 outline-offset-2 outline-accent-line" : "border-line",
-                )}
+                animate={{
+                  y: active ? -2 : 0,
+                  scale: active ? [1, 1.2, 1] : 1,
+                }}
+                transition={{
+                  scale: { duration: 0.3 },
+                  y: { type: "spring", stiffness: 400, damping: 18 },
+                }}
+                className={cn("relative h-9 w-9 overflow-hidden rounded-full border-2", active ? "border-white outline-2 outline-offset-2 outline-accent-line" : "border-line")}
                 style={swatchStyle(c)}
               >
                 {c.finish === "translucent" && <span className="absolute inset-y-0 right-0 w-1/3 bg-white/35" aria-hidden />}
@@ -66,14 +76,18 @@ export function OptionsPanel({ item }: { item: CartItem }) {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
+      <div className="grid gap-6 sm:grid-cols-2">
+        <div className="space-y-2.5">
           <span className="text-sm font-medium text-fg">Quality</span>
           <Segmented
             label="Print quality"
             value={item.quality}
             onChange={(v) => s.update(item.key, { quality: v })}
-            options={cfg.qualityPresets.map((q) => ({ value: q.id, label: q.name, hint: `${q.layerHeightMm} mm layers. ${q.description}` }))}
+            options={cfg.qualityPresets.map((q) => ({
+              value: q.id,
+              label: q.name,
+              hint: `${q.layerHeightMm} mm layers. ${q.description}`,
+            }))}
           />
         </div>
         <div className="space-y-2">
@@ -88,7 +102,11 @@ export function OptionsPanel({ item }: { item: CartItem }) {
           label="Infill"
           value={item.infill}
           onChange={(v) => s.update(item.key, { infill: v })}
-          options={cfg.infillPresets.map((p) => ({ value: p.id, label: p.name, hint: `${Math.round(p.infillFraction * 100)}% infill. ${p.description}` }))}
+          options={cfg.infillPresets.map((p) => ({
+            value: p.id,
+            label: p.name,
+            hint: `${Math.round(p.infillFraction * 100)}% infill. ${p.description}`,
+          }))}
         />
       </div>
     </div>
@@ -100,13 +118,34 @@ function QuantityStepper({ value, onChange }: { value: number; onChange: (v: num
   const btn = "grid h-9 w-9 place-items-center rounded-full text-lg font-bold text-fg transition-colors hover:bg-accent hover:text-accent-ink disabled:opacity-30";
   return (
     <div className="flex items-center justify-between rounded-full border-2 border-line bg-surface p-0.5">
-      <motion.button type="button" whileTap={{ scale: 0.8, rotate: -10 }} className={btn} onClick={() => onChange(Math.max(1, value - 1))} disabled={value <= 1} aria-label="Decrease quantity">
+      <motion.button
+        type="button"
+        whileTap={{ scale: 0.8, rotate: -10 }}
+        className={btn}
+        onClick={() => onChange(Math.max(1, value - 1))}
+        disabled={value <= 1}
+        aria-label="Decrease quantity"
+      >
         −
       </motion.button>
-      <motion.output key={value} initial={{ y: -10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="font-mono text-sm font-semibold tabular-nums" aria-live="polite" aria-label="Quantity">
+      <motion.output
+        key={value}
+        initial={{ y: -10, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        className="font-mono text-sm font-semibold tabular-nums"
+        aria-live="polite"
+        aria-label="Quantity"
+      >
         {value}
       </motion.output>
-      <motion.button type="button" whileTap={{ scale: 0.8, rotate: 10 }} className={btn} onClick={() => onChange(Math.min(max, value + 1))} disabled={value >= max} aria-label="Increase quantity">
+      <motion.button
+        type="button"
+        whileTap={{ scale: 0.8, rotate: 10 }}
+        className={btn}
+        onClick={() => onChange(Math.min(max, value + 1))}
+        disabled={value >= max}
+        aria-label="Increase quantity"
+      >
         +
       </motion.button>
     </div>
@@ -117,8 +156,7 @@ function QuantityStepper({ value, onChange }: { value: number; onChange: (v: num
 function swatchStyle(c: ColorConfig): React.CSSProperties {
   if (c.finish === "gradient") {
     return {
-      background:
-        "conic-gradient(#e63946 0 60deg, #f77f00 60deg 120deg, #fcbf49 120deg 180deg, #2a9d8f 180deg 240deg, #3a86ff 240deg 300deg, #8338ec 300deg 360deg)",
+      background: "conic-gradient(#e63946 0 60deg, #f77f00 60deg 120deg, #fcbf49 120deg 180deg, #2a9d8f 180deg 240deg, #3a86ff 240deg 300deg, #8338ec 300deg 360deg)",
     };
   }
   if (c.finish === "translucent") return { background: c.hex, opacity: 0.85 };

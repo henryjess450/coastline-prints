@@ -2,8 +2,24 @@
 import { animate, useReducedMotion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 
-/** Tweens between values (e.g. prices) instead of jumping. */
-export function AnimatedNumber({ value, format, className }: { value: number; format: (v: number) => string; className?: string }) {
+/**
+ * Tweens between values (e.g. prices) instead of jumping. `pulse` gives the
+ * number a small bump when it changes; `live` announces changes to screen
+ * readers (turn it off for secondary numbers).
+ */
+export function AnimatedNumber({
+  value,
+  format,
+  className,
+  pulse,
+  live = true,
+}: {
+  value: number;
+  format: (v: number) => string;
+  className?: string;
+  pulse?: boolean;
+  live?: boolean;
+}) {
   const ref = useRef<HTMLSpanElement>(null);
   const from = useRef(value);
   const reduce = useReducedMotion();
@@ -19,6 +35,7 @@ export function AnimatedNumber({ value, format, className }: { value: number; fo
       from.current = value;
       return;
     }
+    if (pulse && from.current !== value) el.animate([{ transform: "scale(1)" }, { transform: "scale(1.07)" }, { transform: "scale(1)" }], { duration: 420, easing: "cubic-bezier(0.34, 1.56, 0.64, 1)" });
     const controls = animate(from.current, value, {
       duration: 0.6,
       ease: [0.22, 1, 0.36, 1],
@@ -28,10 +45,10 @@ export function AnimatedNumber({ value, format, className }: { value: number; fo
       },
     });
     return () => controls.stop();
-  }, [value, format, reduce]);
+  }, [value, format, reduce, pulse]);
 
   return (
-    <span ref={ref} className={className} aria-live="polite">
+    <span ref={ref} className={pulse ? `inline-block ${className ?? ""}` : className} aria-live={live ? "polite" : undefined}>
       {initial}
     </span>
   );

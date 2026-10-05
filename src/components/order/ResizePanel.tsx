@@ -23,9 +23,9 @@ export function ResizePanel({ item, derived }: { item: CartItem; derived: ItemDe
   const notFitting = derived.assignment && !derived.assignment.ok && derived.assignment.reason === "too-large" ? derived.assignment : null;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div>
-        <div className="mb-2 flex items-center justify-between">
+        <div className="mb-3 flex items-center justify-between">
           <label htmlFor={`scale-${item.key}`} className="text-sm font-medium text-fg">
             Scale
           </label>
@@ -77,7 +77,7 @@ export function ResizePanel({ item, derived }: { item: CartItem; derived: ItemDe
             {item.lockAspect ? "Proportions locked" : "Proportions unlocked"}
           </motion.button>
         </div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-3">
           {(["x", "y", "z"] as const).map((axis) => (
             <NumberField
               key={axis}
@@ -117,7 +117,7 @@ export function ResizePanel({ item, derived }: { item: CartItem; derived: ItemDe
             exit={{ opacity: 0, y: -6 }}
             transition={{ x: { duration: 0.45 } }}
             role="alert"
-            className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm"
+            className="rounded-2xl border border-danger/40 bg-danger/10 p-4 text-sm"
           >
             <p className="text-danger">{notFitting.message}</p>
             {notFitting.maxScale ? (

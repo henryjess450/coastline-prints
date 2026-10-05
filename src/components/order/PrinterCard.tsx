@@ -1,6 +1,7 @@
 "use client";
 import { AnimatePresence, motion } from "framer-motion";
 import { useConfig } from "@/components/ConfigProvider";
+import { AnimatedNumber } from "@/components/motion/AnimatedNumber";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/lib/cn";
 import { hours } from "@/lib/format";
@@ -14,7 +15,7 @@ export function PrinterCard({ quote }: { quote: ItemQuote | null }) {
   const key = printer?.id ?? (quote && !quote.ok ? "none" : "pending");
 
   return (
-    <Card className={cn("overflow-hidden p-0", quote && !quote.ok && "border-danger/60")}>
+    <Card flat className={cn("overflow-hidden p-0", quote && !quote.ok && "border-danger/60")}>
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={key}
@@ -22,7 +23,7 @@ export function PrinterCard({ quote }: { quote: ItemQuote | null }) {
           animate={{ opacity: 1, y: 0, rotate: 0 }}
           exit={{ opacity: 0, y: -14, rotate: 1.5 }}
           transition={{ type: "spring", stiffness: 380, damping: 28 }}
-          className="flex items-center gap-4 p-4"
+          className="flex items-center gap-5 p-6"
         >
           <PrinterIcon active={!!printer} big={printer ? printer.buildVolume.x > 200 : false} />
           <div className="min-w-0 flex-1">
@@ -44,8 +45,8 @@ export function PrinterCard({ quote }: { quote: ItemQuote | null }) {
       </AnimatePresence>
       {quote?.ok && (
         <dl className="grid grid-cols-3 border-t border-line text-center">
-          <Stat label="Filament" value={`${quote.gramsEach < 10 ? quote.gramsEach.toFixed(1) : Math.round(quote.gramsEach)} g`} sub="each" />
-          <Stat label="Print time" value={hours(quote.hoursTotal)} sub="estimate" />
+          <Stat label="Filament" value={<AnimatedNumber value={quote.gramsEach} format={grams} live={false} />} sub="each" />
+          <Stat label="Print time" value={<AnimatedNumber value={quote.hoursTotal} format={hours} live={false} />} sub="estimate" />
           <Stat label="Orientation" value={quote.assignment.autoOriented ? "Rotated" : "As uploaded"} sub={quote.assignment.autoOriented ? "to fit" : ""} />
         </dl>
       )}
@@ -53,9 +54,11 @@ export function PrinterCard({ quote }: { quote: ItemQuote | null }) {
   );
 }
 
-function Stat({ label, value, sub }: { label: string; value: string; sub: string }) {
+const grams = (g: number) => `${g < 10 ? g.toFixed(1) : Math.round(g)} g`;
+
+function Stat({ label, value, sub }: { label: string; value: React.ReactNode; sub: string }) {
   return (
-    <div className="border-line px-2 py-3 [&:not(:last-child)]:border-r">
+    <div className="border-line px-2 py-4 [&:not(:last-child)]:border-r">
       <dt className="text-[11px] text-faint">{label}</dt>
       <dd className="font-mono text-sm font-semibold tabular-nums">{value}</dd>
       {sub && <dd className="text-[10px] text-faint">{sub}</dd>}

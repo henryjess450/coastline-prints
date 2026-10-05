@@ -25,7 +25,7 @@ export function MeshWarnings({ item }: { item: CartItem }) {
           <div
             role={w.severity === "error" ? "alert" : "status"}
             className={cn(
-              "mb-2 flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2.5 text-sm",
+              "mb-2 flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 text-sm leading-relaxed",
               w.severity === "error" && "border-danger/35 bg-danger/10 text-danger",
               w.severity === "warning" && "border-warning/35 bg-warning/10 text-fg",
               w.severity === "info" && "border-line bg-surface text-muted",

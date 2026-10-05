@@ -48,9 +48,9 @@ export function Dropzone({ compact = false }: { compact?: boolean }) {
         whileHover={{ scale: over ? 1.015 : 1.004 }}
         transition={{ type: "spring", stiffness: 300, damping: 22 }}
         className={cn(
-          "group relative cursor-pointer overflow-hidden rounded-3xl border-[3px] border-dashed text-center outline-none transition-colors",
+          "group relative cursor-pointer overflow-hidden rounded-3xl border-2 border-dashed text-center outline-none transition-colors",
           over ? "border-accent-line bg-accent-soft" : "border-line-strong bg-surface hover:border-accent-line",
-          compact ? "px-4 py-5" : "px-6 py-16 sm:py-24",
+          compact ? "px-5 py-4" : "px-6 py-16 sm:py-24",
         )}
       >
         <AnimatePresence>
@@ -65,14 +65,11 @@ export function Dropzone({ compact = false }: { compact?: boolean }) {
           )}
         </AnimatePresence>
 
-        <div className={cn("relative flex items-center justify-center gap-4", compact ? "flex-row" : "flex-col")}>
+        <div className={cn("relative flex items-center justify-center", compact ? "flex-row gap-4" : "flex-col gap-6")}>
           <motion.div
             animate={over ? { y: [-5, 5, -5], rotate: [-4, 4, -4] } : { y: 0, rotate: 0 }}
             transition={over ? { duration: 0.9, repeat: Infinity, ease: "easeInOut" } : {}}
-            className={cn(
-              "grid place-items-center rounded-full bg-accent text-accent-ink",
-              compact ? "h-10 w-10" : "h-16 w-16",
-            )}
+            className={cn("grid place-items-center rounded-full bg-accent text-accent-ink", compact ? "h-10 w-10" : "h-16 w-16")}
           >
             <svg width={compact ? 20 : 30} height={compact ? 20 : 30} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
               <path d="M12 16V4M6 10l6-6 6 6M4 20h16" />

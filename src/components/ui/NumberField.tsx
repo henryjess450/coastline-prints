@@ -1,10 +1,12 @@
 "use client";
-import { useRef, useState } from "react";
+import { animate, useReducedMotion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 
 /**
  * Number input that lets the user type freely and commits on blur/Enter,
- * so partially typed values ("1.") don't fight the live model.
+ * so partially typed values ("1.") don't fight the live model. When the value
+ * changes from elsewhere (slider, fit to max) the number ticks to it.
  */
 export function NumberField({
   label,
@@ -32,6 +34,7 @@ export function NumberField({
   // Only holds text while the field is being edited; otherwise shows `value`.
   const [draft, setDraft] = useState<string | null>(null);
   const cancelled = useRef(false);
+  const shown = useTicker(value);
 
   /** Reads the input's own value so a stale render can't drop an edit. */
   function commit(raw: string) {
@@ -58,7 +61,7 @@ export function NumberField({
           inputMode="decimal"
           aria-label={srLabel ?? label}
           aria-invalid={invalid || undefined}
-          value={draft ?? format(value, decimals)}
+          value={draft ?? format(shown, decimals)}
           onFocus={(e) => {
             setDraft(format(value, decimals));
             e.currentTarget.select();
@@ -81,3 +84,27 @@ export function NumberField({
 }
 
 const format = (v: number, d: number) => (Number.isFinite(v) ? Number(v.toFixed(d)).toString() : "");
+
+/** Follows `value`, easing over a short moment instead of jumping. */
+function useTicker(value: number) {
+  const reduce = useReducedMotion();
+  const [shown, setShown] = useState(value);
+  const from = useRef(value);
+  useEffect(() => {
+    if (reduce || !Number.isFinite(from.current) || !Number.isFinite(value)) {
+      from.current = value;
+      setShown(value);
+      return;
+    }
+    const controls = animate(from.current, value, {
+      duration: 0.35,
+      ease: [0.22, 1, 0.36, 1],
+      onUpdate: (v) => {
+        from.current = v;
+        setShown(v);
+      },
+    });
+    return () => controls.stop();
+  }, [value, reduce]);
+  return shown;
+}

@@ -4,7 +4,7 @@ import { useMemo } from "react";
 
 const COLORS = ["#0e4471", "#3d7bb8", "#86bbea", "#e9c46a", "#4fb3a9", "#ffffff"];
 
-/** Animated checkmark with a one-time confetti burst (skipped for reduced motion). */
+/** The circle mark drawing itself in, with a check and a one-time confetti burst (skipped for reduced motion). */
 export function Celebration() {
   const reduce = useReducedMotion();
   const pieces = useMemo(
@@ -34,22 +34,82 @@ export function Celebration() {
           <motion.span
             key={i}
             className="pointer-events-none absolute left-1/2 top-1/2"
-            style={{ width: p.w, height: p.h, background: p.color, borderRadius: p.round ? 999 : 2 }}
+            style={{
+              width: p.w,
+              height: p.h,
+              background: p.color,
+              borderRadius: p.round ? 999 : 2,
+            }}
             initial={{ x: 0, y: 0, opacity: 1, rotate: 0, scale: 0.4 }}
-            animate={{ x: [0, p.x, p.x * 1.1], y: [0, p.y, p.y + p.fall], opacity: [1, 1, 0], rotate: p.rotate, scale: 1 }}
-            transition={{ duration: 1.8, delay: 0.25 + p.delay, ease: ["easeOut", "easeIn"], times: [0, 0.35, 1] }}
+            animate={{
+              x: [0, p.x, p.x * 1.1],
+              y: [0, p.y, p.y + p.fall],
+              opacity: [1, 1, 0],
+              rotate: p.rotate,
+              scale: 1,
+            }}
+            transition={{
+              duration: 1.8,
+              delay: 0.25 + p.delay,
+              ease: ["easeOut", "easeIn"],
+              times: [0, 0.35, 1],
+            }}
           />
         ))}
-      <motion.div
-        className="grid h-24 w-24 place-items-center rounded-full bg-accent shadow-[var(--btn-glow)]"
+      {/* The circle mark: it pops in, its waves draw once, the sun rises, then a check lands. */}
+      <motion.svg
+        width="104"
+        height="104"
+        viewBox="0 0 32 32"
+        className="overflow-visible"
         initial={{ scale: reduce ? 1 : 0 }}
         animate={{ scale: 1 }}
         transition={{ type: "spring", stiffness: 260, damping: 16 }}
       >
-        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-          <motion.path d="M5 13l4 4L19 7" initial={{ pathLength: reduce ? 1 : 0 }} animate={{ pathLength: 1 }} transition={{ delay: 0.25, duration: 0.45, ease: "easeOut" }} />
-        </svg>
-      </motion.div>
+        <circle cx="16" cy="16" r="15" fill="#0e4471" />
+        <motion.circle
+          cx="21.5"
+          r="3"
+          fill="#e9c46a"
+          initial={{ cy: reduce ? 10 : 15, opacity: reduce ? 1 : 0 }}
+          animate={{ cy: 10, opacity: 1 }}
+          transition={{ delay: 0.75, duration: 0.5, ease: "easeOut" }}
+        />
+        <motion.path
+          d="M5 17c2.2-2 4.4-2 6.6 0s4.4 2 6.6 0 4.4-2 6.6 0 2.2 2 2.2 2"
+          stroke="#ffffff"
+          strokeWidth="2.4"
+          fill="none"
+          strokeLinecap="round"
+          initial={{ pathLength: reduce ? 1 : 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ delay: 0.3, duration: 0.55, ease: "easeInOut" }}
+        />
+        <motion.path
+          d="M7 22.5c1.8-1.5 3.6-1.5 5.4 0s3.6 1.5 5.4 0 3.6-1.5 5.4 0"
+          stroke="#86bbea"
+          strokeWidth="2.2"
+          fill="none"
+          strokeLinecap="round"
+          initial={{ pathLength: reduce ? 1 : 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ delay: 0.5, duration: 0.5, ease: "easeInOut" }}
+        />
+        <motion.g
+          initial={{ scale: reduce ? 1 : 0 }}
+          animate={{ scale: 1 }}
+          transition={{
+            delay: 1.1,
+            type: "spring",
+            stiffness: 500,
+            damping: 14,
+          }}
+          style={{ originX: "27px", originY: "27px" }}
+        >
+          <circle cx="27" cy="27" r="5" fill="var(--success)" stroke="var(--bg)" strokeWidth="1.2" />
+          <path d="M24.8 27.1l1.5 1.5 3-3.2" fill="none" stroke="#ffffff" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+        </motion.g>
+      </motion.svg>
     </div>
   );
 }

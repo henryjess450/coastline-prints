@@ -22,7 +22,7 @@ export function ViewerPanel({ item, derived }: { item: CartItem | undefined; der
 
   return (
     <div
-      className="relative h-[52vh] min-h-[340px] w-full overflow-hidden rounded-3xl border-2 border-line bg-[var(--viewer-bg)] lg:h-[calc(100vh-11rem)] lg:min-h-[520px]"
+      className="relative h-[52vh] min-h-[340px] w-full overflow-hidden rounded-3xl border border-line bg-[var(--viewer-bg)] lg:h-[calc(100vh-11rem)] lg:min-h-[520px]"
     >
       <AnimatePresence mode="wait">
         {ready && item && derived && bedSize ? (
@@ -54,7 +54,7 @@ export function ViewerPanel({ item, derived }: { item: CartItem | undefined; der
       </AnimatePresence>
 
       {/* Overlay chips */}
-      <div className="pointer-events-none absolute left-3 top-3 flex flex-wrap gap-2">
+      <div className="pointer-events-none absolute left-4 top-4 flex flex-wrap gap-2">
         <AnimatePresence>
           {assignment?.ok && (
             <motion.span
@@ -62,19 +62,19 @@ export function ViewerPanel({ item, derived }: { item: CartItem | undefined; der
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              className="rounded-md border border-line bg-bg/80 px-2.5 py-1 text-xs font-medium text-fg backdrop-blur"
+              className="rounded-full border border-line bg-bg/80 px-3 py-1 text-xs font-medium text-fg backdrop-blur"
             >
               {assignment.printer.name} · {assignment.printer.buildVolume.x}³ mm
             </motion.span>
           )}
           {assignment?.ok && assignment.autoOriented && (
-            <motion.span key="rot" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="rounded-md  bg-sand px-2.5 py-0.5 text-xs font-semibold text-black">
+            <motion.span key="rot" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="rounded-full bg-sand px-3 py-1 text-xs font-semibold text-black">
               Auto-rotated to fit
             </motion.span>
           )}
         </AnimatePresence>
       </div>
-      <p className="pointer-events-none absolute bottom-3 right-4 text-[11px] text-faint">Drag to orbit · pinch or scroll to zoom</p>
+      <p className="pointer-events-none absolute bottom-4 right-5 text-[11px] text-faint">Drag to orbit · pinch or scroll to zoom</p>
     </div>
   );
 }

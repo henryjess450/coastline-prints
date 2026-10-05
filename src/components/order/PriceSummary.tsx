@@ -1,9 +1,9 @@
 "use client";
 import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useConfig } from "@/components/ConfigProvider";
 import { AnimatedNumber } from "@/components/motion/AnimatedNumber";
-import { Button } from "@/components/ui/Button";
+import { bounce, Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/lib/cn";
 import { hours, money } from "@/lib/format";
@@ -18,6 +18,14 @@ export function PriceSummary({ items, cartQuote, onCheckout }: { items: CartItem
   const [open, setOpen] = useState<string | null>(null);
 
   const blocked = !quote || !quote.ok;
+  const canContinue = !blocked && confirmed && !!onCheckout;
+  // The checkout button hops once when it becomes available.
+  const button = useRef<HTMLButtonElement>(null);
+  const wasReady = useRef(canContinue);
+  useEffect(() => {
+    if (canContinue && !wasReady.current) bounce(button.current);
+    wasReady.current = canContinue;
+  }, [canContinue]);
   const status = !ready
     ? "Waiting for uploads to finish…"
     : server.status === "error"
@@ -25,11 +33,11 @@ export function PriceSummary({ items, cartQuote, onCheckout }: { items: CartItem
       : quote && !quote.ok
         ? "Fix the items marked “Can't print” to continue"
         : confirmed
-        ? "Price checked on our server"
-        : "Checking price…";
+          ? "Price checked on our server"
+          : "Checking price…";
 
   return (
-    <Card highlight className="p-5">
+    <Card flat highlight className="p-6 sm:p-8">
       <div className="flex items-baseline justify-between">
         <h2 className="font-display text-lg font-semibold">Your price</h2>
         <span className={cn("flex items-center gap-1.5 text-right text-xs", server.status === "error" || blocked ? "text-danger" : "text-faint")} aria-live="polite">
@@ -38,7 +46,7 @@ export function PriceSummary({ items, cartQuote, onCheckout }: { items: CartItem
         </span>
       </div>
 
-      <ul className="mt-4 space-y-1 text-sm">
+      <ul className="mt-5 space-y-1 text-sm">
         {items.map((item, idx) => {
           const q = quote?.items[idx];
           const expanded = open === item.key;
@@ -56,7 +64,9 @@ export function PriceSummary({ items, cartQuote, onCheckout }: { items: CartItem
                   </motion.span>
                   {item.fileName} <span className="text-faint">× {item.quantity}</span>
                 </span>
-                <span className="shrink-0 font-mono tabular-nums">{q ? (q.ok ? money(q.lineCents) : <span className="text-danger">Can&apos;t print</span>) : "…"}</span>
+                <span className="shrink-0 font-mono tabular-nums">
+                  {q ? q.ok ? <AnimatedNumber value={q.lineCents} format={formatTotal} live={false} /> : <span className="text-danger">Can&apos;t print</span> : "…"}
+                </span>
               </button>
               <AnimatePresence initial={false}>
                 {expanded && q?.ok && (
@@ -77,19 +87,23 @@ export function PriceSummary({ items, cartQuote, onCheckout }: { items: CartItem
         })}
       </ul>
 
-      <dl className="mt-3 space-y-1 border-t border-line pt-3 text-sm">
+      <dl className="mt-4 space-y-1 border-t border-line pt-4 text-sm">
         <Row label="Order fee" value={quote ? money(quote.baseFeeCents) : "…"} />
         {quote && quote.minimumAdjCents > 0 && <Row label={`Minimum order top-up (${money(cfg.pricing.minimumOrderCents)})`} value={money(quote.minimumAdjCents)} />}
         <Row label="Pickup" value="Free" />
       </dl>
 
-      <div className="mt-3 flex items-end justify-between border-t-2 border-line-strong pt-3">
+      <div className="mt-4 flex items-end justify-between border-t-2 border-line-strong pt-4">
         <span className="text-sm text-muted">Total (CAD)</span>
-        {quote ? <AnimatedNumber value={quote.ok ? quote.totalCents : 0} format={formatTotal} className="font-display text-3xl font-bold tabular-nums" /> : <span className="skeleton h-9 w-28" />}
+        {quote ? (
+          <AnimatedNumber value={quote.ok ? quote.totalCents : 0} format={formatTotal} className="font-display text-3xl font-bold tabular-nums" pulse />
+        ) : (
+          <span className="skeleton h-9 w-28" />
+        )}
       </div>
-      <p className="mt-1 text-xs text-faint">Print time and filament are estimates. The price you see here is the price you pay.</p>
+      <p className="mt-2 text-xs leading-relaxed text-faint">Print time and filament are estimates. The price you see here is the price you pay.</p>
 
-      <Button className="mt-4 w-full" size="lg" disabled={blocked || !confirmed || !onCheckout} onClick={onCheckout}>
+      <Button ref={button} className="mt-6 w-full" size="lg" disabled={!canContinue} onClick={onCheckout}>
         Continue to checkout
       </Button>
     </Card>

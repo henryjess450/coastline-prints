@@ -381,10 +381,19 @@ function Dimensions({ size, fits, labelEls }: { size: Vec3; fits: boolean; label
   );
 }
 
-/** Eases the camera to frame the build volume whenever the model or printer changes. */
+/** Seconds without touching the viewer before it starts a slow turntable spin. */
+const IDLE_SPIN_AFTER_S = 6;
+
+/**
+ * Eases the camera to frame the build volume whenever the model or printer
+ * changes. When left alone for a few seconds the view drifts slowly round
+ * the part; grabbing it stops the drift straight away.
+ */
 function CameraRig({ radius, height, resetKey, autoRotate }: { radius: number; height: number; resetKey: string; autoRotate?: boolean }) {
   const { camera } = useThree();
   const controls = useRef<OrbitControlsImpl>(null);
+  const reduceMotion = usePrefersReducedMotion();
+  const idle = useRef({ since: 0, holding: false, speed: 0 }); // `since` is set when a model loads
   const anim = useRef<{ from: THREE.Vector3; to: THREE.Vector3; fromT: THREE.Vector3; toT: THREE.Vector3; start: number } | null>(null);
 
   useEffect(() => {
@@ -393,11 +402,21 @@ function CameraRig({ radius, height, resetKey, autoRotate }: { radius: number; h
     const toT = new THREE.Vector3(0, Math.min(height, radius) * 0.45, 0);
     const c = controls.current;
     anim.current = { from: camera.position.clone(), to, fromT: c ? c.target.clone() : toT.clone(), toT, start: performance.now() };
+    idle.current.since = performance.now();
     // Intentionally only when the model/printer changes, not on every resize.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetKey]);
 
-  useFrame(() => {
+  useFrame((_, dt) => {
+    // Ease the idle spin in and out rather than snapping on.
+    const c = controls.current;
+    if (c && !autoRotate) {
+      const i = idle.current;
+      const want = !reduceMotion && !i.holding && !anim.current && performance.now() - i.since > IDLE_SPIN_AFTER_S * 1000 ? 0.5 : 0;
+      i.speed += (want - i.speed) * Math.min(1, dt * 1.5);
+      c.autoRotate = i.speed > 0.01;
+      c.autoRotateSpeed = i.speed;
+    }
     const a = anim.current;
     if (!a) return;
     const t = Math.min(1, (performance.now() - a.start) / 900);
@@ -419,7 +438,15 @@ function CameraRig({ radius, height, resetKey, autoRotate }: { radius: number; h
       maxPolarAngle={Math.PI * 0.495}
       autoRotate={autoRotate}
       autoRotateSpeed={0.8}
-      onStart={() => (anim.current = null)}
+      onStart={() => {
+        anim.current = null;
+        idle.current.holding = true;
+        idle.current.speed = 0;
+      }}
+      onEnd={() => {
+        idle.current.holding = false;
+        idle.current.since = performance.now();
+      }}
     />
   );
 }

@@ -14,21 +14,22 @@ export function CartList() {
   const remove = useOrder((s) => s.remove);
 
   return (
-    <ul className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible" aria-label="Files in this order">
+    <ul className="flex gap-3 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible" aria-label="Files in this order">
       <AnimatePresence initial={false}>
         {items.map((item) => (
           <motion.li
             key={item.key}
             layout
-            initial={{ opacity: 0, y: 12, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, x: -20, scale: 0.95 }}
-            transition={{ type: "spring", stiffness: 400, damping: 32 }}
+            // New files fly in from above; removed files sink away.
+            initial={{ opacity: 0, y: -36, scale: 0.9, rotate: -4 }}
+            animate={{ opacity: 1, y: 0, scale: 1, rotate: 0 }}
+            exit={{ opacity: 0, y: 24, rotate: 6, scale: 0.92, transition: { duration: 0.25, ease: "easeIn" } }}
+            transition={{ type: "spring", stiffness: 380, damping: 22 }}
             className="min-w-[240px] lg:min-w-0"
           >
             <div
               className={cn(
-                "group flex w-full items-center gap-3 rounded-2xl border-2 px-3 py-2.5 text-left transition-colors",
+                "group flex w-full items-center gap-3 rounded-2xl border-2 px-3 py-3 text-left transition-[border-color,background-color,transform,box-shadow] duration-200 hover:-translate-y-0.5",
                 item.key === selectedKey ? "border-accent-line bg-accent-soft" : "border-line bg-surface hover:border-line-strong",
               )}
             >
@@ -75,11 +76,14 @@ function StatusIcon({ item }: { item: CartItem }) {
     <motion.span
       initial={{ scale: 0.4, rotate: -30 }}
       animate={{ scale: 1, rotate: 0 }}
+      transition={{ type: "spring", stiffness: 500, damping: 14 }}
       className={cn("grid h-11 w-11 shrink-0 place-items-center rounded-lg font-bold", ok ? "bg-success/15 text-success" : "bg-warning/15 text-warning")}
       aria-hidden
     >
       {ok ? (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 13l4 4L19 7" /></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <motion.path d="M5 13l4 4L19 7" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ delay: 0.15, duration: 0.3 }} />
+        </svg>
       ) : (
         "!"
       )}

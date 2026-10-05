@@ -8,6 +8,7 @@ import { HowItWorks } from "@/components/home/HowItWorks";
 import { MaterialSwatches } from "@/components/home/MaterialSwatches";
 import { PriceSlider } from "@/components/home/PriceSlider";
 import { Reveal } from "@/components/home/Reveal";
+import { SailStartButton } from "@/components/home/SailStartButton";
 import { CircleMark } from "@/components/layout/CircleMark";
 import { ButtonLink } from "@/components/ui/Button";
 import { SectionLabel } from "@/components/ui/Card";
@@ -72,9 +73,7 @@ export default async function Home() {
           <span className="text-accent-text">Pick up your print.</span>
         </h1>
         <div className="mt-12 flex flex-wrap gap-4">
-          <ButtonLink href="/order" size="lg">
-            Start an order
-          </ButtonLink>
+          <SailStartButton>Start an order</SailStartButton>
           <ButtonLink href="/library" size="lg" variant="secondary">
             Find a model
           </ButtonLink>
