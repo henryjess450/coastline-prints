@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { ImageResponse } from "next/og";
 import { pickup } from "@config/pickup";
-import { legal, site } from "@config/site";
+import { site } from "@config/site";
 import { db } from "@/lib/db";
 import { hours, money } from "@/lib/format";
 import { pickupParts } from "@/lib/pickup";
@@ -20,7 +20,7 @@ export type ReceiptData = {
   pickupDate: string | null;
   pickupTime: string | null;
   notes: string | null;
-  items: { fileName: string; quantity: number; detail: string; detail2: string; lineCents: number }[];
+  items: { fileName: string; quantity: number; detail: string; lineCents: number }[];
   baseFeeCents: number;
   minimumAdjCents: number;
   totalCents: number;
@@ -44,8 +44,7 @@ export async function loadReceiptData(orderId: string): Promise<ReceiptData | nu
     items: o.items.map((i) => ({
       fileName: i.fileName,
       quantity: i.quantity,
-      detail: `${i.material} · ${i.colorName} · ${i.sizeX.toFixed(0)}×${i.sizeY.toFixed(0)}×${i.sizeZ.toFixed(0)} mm`,
-      detail2: `${i.printerName.replace(/^(Bambu Lab|Elegoo) /, "")} · ${i.quality} · ${i.infill} infill · about ${hours(i.hoursEach * i.quantity)}`,
+      detail: `${i.material} ${i.colorName} · ${i.sizeX.toFixed(0)}×${i.sizeY.toFixed(0)}×${i.sizeZ.toFixed(0)} mm · ${i.printerName.replace(/^(Bambu Lab|Elegoo) /, "")} · ${hours(i.hoursEach * i.quantity)}`,
       lineCents: i.lineCents,
     })),
     baseFeeCents: o.baseFeeCents,
@@ -85,84 +84,74 @@ function wordmark() {
   return wordmarkCache;
 }
 
-const Rule = ({ thick = false }: { thick?: boolean }) => <div style={{ display: "flex", height: thick ? 4 : 2, background: "black", margin: "14px 0" }} />;
+// Compact layout: every pixel of height is paper.
+const Rule = () => <div style={{ display: "flex", height: 2, background: "black", margin: "8px 0" }} />;
 
-const Row = ({ left, right, size = 24, bold = false }: { left: string; right: string; size?: number; bold?: boolean }) => (
-  <div style={{ display: "flex", justifyContent: "space-between", fontSize: size, fontWeight: bold ? 700 : 400, marginTop: 4 }}>
+const Row = ({ left, right, size = 22, bold = false }: { left: string; right: string; size?: number; bold?: boolean }) => (
+  <div style={{ display: "flex", justifyContent: "space-between", fontSize: size, fontWeight: bold ? 700 : 400, lineHeight: 1.2 }}>
     <span>{left}</span>
     <span>{right}</span>
   </div>
 );
 
-const Label = ({ children }: { children: string }) => <div style={{ display: "flex", fontSize: 22, fontWeight: 700, letterSpacing: 2, marginBottom: 6 }}>{children}</div>;
-
-/** Renders the receipt as a black-on-white PNG, 576 dots wide. */
+/** Renders the receipt as a black-on-white PNG, 576 dots wide (blank space is trimmed before printing). */
 export async function renderReceiptPng(d: ReceiptData, opts: { test?: boolean } = {}): Promise<Buffer> {
   const fonts = loadFonts();
-  const noteLines = d.notes ? Math.ceil(d.notes.length / 34) + d.notes.split("\n").length : 0;
-  const height = Math.min(4000, 1190 + d.items.length * 120 + noteLines * 30 + (d.minimumAdjCents ? 34 : 0) + (opts.test ? 80 : 0));
+  const noteLines = d.notes ? Math.ceil(d.notes.length / 40) + d.notes.split("\n").length : 0;
+  const height = Math.min(4000, 620 + d.items.length * 70 + noteLines * 26 + (d.minimumAdjCents ? 28 : 0) + (opts.test ? 50 : 0));
 
   const tree = (
-    <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", background: "white", color: "black", fontFamily: fonts.family, padding: "8px 6px", fontSize: 24 }}>
-      {opts.test && (
-        <div style={{ display: "flex", justifyContent: "center", border: "4px solid black", padding: 8, fontSize: 34, fontWeight: 700, marginBottom: 12 }}>TEST PRINT</div>
-      )}
-      <div style={{ display: "flex", justifyContent: "center" }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={wordmark()} width={306} height={180} alt={site.name} />
-      </div>
-      <div style={{ display: "flex", justifyContent: "center", fontSize: 26, marginTop: 2 }}>Official Order Receipt</div>
-      <div style={{ display: "flex", justifyContent: "center", fontSize: 20, marginTop: 4 }}>coastlineprints.ca · {legal.contactEmail}</div>
-      <Rule thick />
+    <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", background: "white", color: "black", fontFamily: fonts.family, padding: "0 4px", fontSize: 22, lineHeight: 1.2 }}>
+      {opts.test && <div style={{ display: "flex", justifyContent: "center", border: "3px solid black", fontSize: 26, fontWeight: 700, marginBottom: 6 }}>TEST PRINT</div>}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <span style={{ fontSize: 24, fontWeight: 700 }}>ORDER</span>
-        <span style={{ fontSize: 40, fontWeight: 700 }}>{d.orderNumber}</span>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={wordmark()} width={150} height={88} alt={site.name} />
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+          <span style={{ fontSize: 18 }}>Official Receipt</span>
+          <span style={{ fontSize: 34, fontWeight: 700 }}>{d.orderNumber}</span>
+          <span style={{ fontSize: 17 }}>Placed {d.placedAt}</span>
+        </div>
       </div>
-      <div style={{ display: "flex", fontSize: 22, marginTop: 4 }}>Placed {d.placedAt}</div>
       <Rule />
 
-      <Label>PICKUP DATE AND TIME</Label>
       {d.pickupDate ? (
-        <div style={{ display: "flex", flexDirection: "column", border: "4px solid black", padding: "10px 12px" }}>
-          <span style={{ fontSize: 38, fontWeight: 700 }}>{d.pickupDate}</span>
-          <span style={{ fontSize: 38, fontWeight: 700, marginTop: 4 }}>{d.pickupTime}</span>
+        <div style={{ display: "flex", flexDirection: "column", border: "3px solid black", padding: "4px 10px" }}>
+          <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: 1 }}>PICKUP</span>
+          <span style={{ fontSize: 30, fontWeight: 700 }}>{d.pickupDate}</span>
+          <span style={{ fontSize: 30, fontWeight: 700 }}>{d.pickupTime}</span>
         </div>
       ) : (
-        <div style={{ display: "flex", fontSize: 30, fontWeight: 700 }}>Not booked: contact customer</div>
+        <div style={{ display: "flex", fontSize: 26, fontWeight: 700 }}>PICKUP NOT BOOKED: contact customer</div>
       )}
+
+      <div style={{ display: "flex", flexDirection: "column", marginTop: 8 }}>
+        <span style={{ fontSize: 28, fontWeight: 700 }}>{d.customerName}</span>
+        <span style={{ fontSize: 22, wordBreak: "break-all" }}>{d.customerEmail}</span>
+        <span style={{ fontSize: 22 }}>{d.customerPhone}</span>
+      </div>
       <Rule />
 
-      <Label>CUSTOMER</Label>
-      <div style={{ display: "flex", fontSize: 32, fontWeight: 700 }}>{d.customerName}</div>
-      <div style={{ display: "flex", fontSize: 24, marginTop: 4, wordBreak: "break-all" }}>Email: {d.customerEmail}</div>
-      <div style={{ display: "flex", fontSize: 24, marginTop: 4 }}>Phone: {d.customerPhone}</div>
-      <Rule />
-
-      <Label>ITEMS</Label>
       {d.items.map((it, i) => (
-        <div key={i} style={{ display: "flex", flexDirection: "column", marginBottom: 12 }}>
-          <Row left={`${it.fileName.length > 30 ? it.fileName.slice(0, 29) + "…" : it.fileName}  × ${it.quantity}`} right={money(it.lineCents)} bold />
-          <div style={{ display: "flex", fontSize: 20, marginTop: 2 }}>{it.detail}</div>
-          <div style={{ display: "flex", fontSize: 20 }}>{it.detail2}</div>
+        <div key={i} style={{ display: "flex", flexDirection: "column", marginBottom: 4 }}>
+          <Row left={`${it.quantity} × ${it.fileName.length > 30 ? it.fileName.slice(0, 29) + "…" : it.fileName}`} right={money(it.lineCents)} bold />
+          <span style={{ fontSize: 17 }}>{it.detail}</span>
         </div>
       ))}
-      <Row left="Order fee" right={money(d.baseFeeCents)} />
-      {d.minimumAdjCents > 0 && <Row left="Minimum order top-up" right={money(d.minimumAdjCents)} />}
-      <Rule />
-      <Row left="TOTAL PAID (CAD)" right={money(d.totalCents)} size={32} bold />
-      {d.card && <Row left="Paid by" right={d.card} size={22} />}
-      <div style={{ display: "flex", fontSize: 18, marginTop: 6, wordBreak: "break-all" }}>Square payment {d.paymentId}</div>
+      <Row left="Order fee" right={money(d.baseFeeCents)} size={20} />
+      {d.minimumAdjCents > 0 && <Row left="Minimum order top-up" right={money(d.minimumAdjCents)} size={20} />}
+      <Row left="TOTAL PAID (CAD)" right={money(d.totalCents)} size={28} bold />
+      <span style={{ fontSize: 15 }}>
+        {d.card ? `${d.card} · ` : ""}Square {d.paymentId}
+      </span>
 
       {d.notes && (
         <div style={{ display: "flex", flexDirection: "column" }}>
           <Rule />
-          <Label>CUSTOMER NOTES</Label>
-          <div style={{ display: "flex", fontSize: 24, whiteSpace: "pre-wrap" }}>{d.notes}</div>
+          <span style={{ fontSize: 16, fontWeight: 700 }}>NOTES</span>
+          <span style={{ fontSize: 20, whiteSpace: "pre-wrap" }}>{d.notes}</span>
         </div>
       )}
-      <Rule thick />
-      <div style={{ display: "flex", justifyContent: "center", fontSize: 24, fontWeight: 700 }}>Thank you for your order!</div>
     </div>
   );
 

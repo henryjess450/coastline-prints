@@ -7,7 +7,6 @@ import { cn } from "@/lib/cn";
 
 const general = [
   { title: "Find a design", body: "Search above, or browse one of the sites directly." },
-  { title: "Check the license", body: "On the design's page, look for the license. Some designs are free for personal use only." },
   { title: "Download the STL", body: "Most sites need a free account before you can download. See your site's steps below." },
   { title: "Unzip if needed", body: "If you get a .zip file, unzip it first. Windows: right-click it and choose Extract All. Mac: double-click it." },
   { title: "Upload it here", body: `Go to Start an order and drop in the .stl files (up to ${uploads.maxFileMb} MB each). You'll see the price right away.` },
@@ -51,10 +50,10 @@ export function DownloadGuide() {
         <h2 id="guide-title" className="font-display text-2xl font-bold tracking-tight sm:text-3xl">
           How to download an STL
         </h2>
-        <p className="mt-1 text-muted">Five steps, then a few tips for each site.</p>
+        <p className="mt-1 text-muted">Four quick steps, then tips for each site.</p>
       </div>
 
-      <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {general.map((g, i) => (
           <li key={g.title}>
             <Card className="h-full p-4">

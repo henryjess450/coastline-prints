@@ -83,7 +83,7 @@ export function LibrarySearch({ initialQuery, sources }: { initialQuery: string;
         </button>
       </form>
       <p className="text-xs text-faint">
-        {sources.length ? `Results from ${sources.join(", ")}. ` : ""}Many designs are free for personal use only. Check the license on the design&apos;s page before ordering a print of it.
+        {sources.length ? `Results from ${sources.join(", ")}.` : "Search the biggest 3D model sites in one go."}
       </p>
 
       <AnimatePresence mode="wait">
@@ -125,7 +125,6 @@ export function LibrarySearch({ initialQuery, sources }: { initialQuery: string;
                             </span>
                           )}
                         </div>
-                        {r.license && <p className="truncate text-[11px] text-faint">{r.license}</p>}
                       </div>
                     </a>
                   </motion.li>
