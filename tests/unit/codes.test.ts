@@ -53,3 +53,17 @@ describe("applyCodes", () => {
     expect(maskCode("SUMMER10", "PERCENT")).toBe("SUMMER10");
   });
 });
+
+describe("gift card number and PIN", () => {
+  it("accepts numbers with spaces or dashes and formats them in groups of 4", async () => {
+    const { formatCardNumber, isCardNumber, normalizePin, codeEntry } = await import("@/lib/codes/apply");
+    expect(isCardNumber("5268 9451-2705 3574")).toBe(true);
+    expect(isCardNumber("SUMMER10")).toBe(false);
+    expect(normalizeCode("5268 9451 2705 3574")).toBe("5268945127053574");
+    expect(formatCardNumber("5268945127053574")).toBe("5268 9451 2705 3574");
+    expect(normalizePin("cp 40247")).toBe("CP40247");
+    expect(normalizePin("40247")).toBe("CP40247");
+    expect(codeEntry({ code: "5268945127053574", pin: "CP40247", kind: "GIFT_CARD", percentOff: null, amountCents: null, balanceCents: 1, minOrderCents: 0 })).toBe("5268945127053574:CP40247");
+    expect(maskCode("5268945127053574", "GIFT_CARD")).toBe("•••• 3574");
+  });
+});

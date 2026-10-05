@@ -16,6 +16,8 @@ export type CodeInfo = {
   amountCents: number | null;
   balanceCents: number | null;
   minOrderCents: number;
+  /** Gift card PIN the customer typed (kept in the browser only, sent at checkout). */
+  pin?: string;
 };
 
 export type AppliedCode = { code: string; kind: CodeKind; label: string; amountCents: number };
@@ -24,7 +26,29 @@ export const MAX_GIFT_CARDS = 3;
 export const MAX_CODES = 4;
 
 export function normalizeCode(raw: string) {
+  if (isCardNumber(raw)) return raw.replace(/[\s-]/g, "");
   return raw.trim().toUpperCase().replace(/\s+/g, "");
+}
+
+/** Gift card numbers are 16 digits (spaces and dashes ignored). */
+export function isCardNumber(raw: string) {
+  return /^\d{16}$/.test(raw.replace(/[\s-]/g, ""));
+}
+
+/** "1234567812345678" → "1234 5678 1234 5678" */
+export function formatCardNumber(code: string) {
+  return /^\d{16}$/.test(code) ? code.replace(/(\d{4})(?=\d)/g, "$1 ") : code;
+}
+
+/** "cp 12345" / "12345" → "CP12345" */
+export function normalizePin(raw: string) {
+  const digits = raw.toUpperCase().replace(/[^0-9]/g, "");
+  return digits ? `CP${digits}` : "";
+}
+
+/** What the browser sends for each code: "NUMBER:PIN" for gift cards with a PIN. */
+export function codeEntry(c: CodeInfo) {
+  return c.pin ? `${c.code}:${c.pin}` : c.code;
 }
 
 /** Gift cards show only their last 4 characters on receipts and pages. */

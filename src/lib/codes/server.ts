@@ -3,7 +3,8 @@ import { randomBytes } from "node:crypto";
 import type { PromoCode } from "@/generated/prisma/client";
 import { logError } from "@/lib/api";
 import { db } from "@/lib/db";
-import { MAX_CODES, normalizeCode, type AppliedCode, type CodeInfo, type CodeKind } from "./apply";
+import { timingSafeEqual } from "node:crypto";
+import { MAX_CODES, normalizeCode, normalizePin, type AppliedCode, type CodeInfo, type CodeKind } from "./apply";
 
 export class CodeError extends Error {}
 
@@ -27,14 +28,32 @@ export function unusableReason(c: PromoCode | null, now = new Date()) {
   return null;
 }
 
-/** Loads codes and checks each one. Unknown and unusable codes give the same message for unknown ones. */
+function pinMatches(expected: string, given: string) {
+  const a = Buffer.from(expected);
+  const b = Buffer.from(given);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/**
+ * Loads codes and checks each one. Entries are "CODE" or, for gift cards,
+ * "NUMBER:PIN". A wrong PIN gives the same message as an unknown code.
+ */
 export async function lookupCodes(raw: string[], now = new Date()) {
-  const codes = [...new Set(raw.map(normalizeCode).filter(Boolean))].slice(0, MAX_CODES);
+  const entries = new Map<string, string>();
+  for (const r of raw) {
+    const [c, p = ""] = r.split(":");
+    const code = normalizeCode(c);
+    if (code && !entries.has(code)) entries.set(code, normalizePin(p));
+  }
+  const codes = [...entries.keys()].slice(0, MAX_CODES);
   const rows = await db.promoCode.findMany({ where: { code: { in: codes } } });
   const records: PromoCode[] = [];
   const errors: { code: string; reason: string }[] = [];
   for (const code of codes) {
-    const row = rows.find((r) => r.code === code) ?? null;
+    let row = rows.find((r) => r.code === code) ?? null;
+    // Fail closed: a 16-digit gift card number always needs its PIN.
+    const needsPin = !!row && (!!row.pin || (row.kind === "GIFT_CARD" && /^\d{16}$/.test(row.code)));
+    if (row && needsPin && !(row.pin && pinMatches(row.pin, entries.get(code)!))) row = null;
     const reason = unusableReason(row, now);
     if (reason) errors.push({ code, reason });
     else records.push(row!);
@@ -88,7 +107,18 @@ function randomBlock(n: number) {
   return Array.from(randomBytes(n), (b) => ALPHABET[b % ALPHABET.length]).join("");
 }
 
-/** Gift cards: GC-XXXX-XXXX-XXXX (about 60 bits, not guessable). Coupons: CP-XXXXXX. */
+function randomDigits(n: number) {
+  let out = "";
+  while (out.length < n) for (const b of randomBytes(n)) if (b < 250 && out.length < n) out += String(b % 10);
+  return out;
+}
+
+/** Gift cards: 16-digit number (first digit not 0). Coupons: CP-XXXXXX. */
 export function generateCode(kind: CodeKind) {
-  return kind === "GIFT_CARD" ? `GC-${randomBlock(4)}-${randomBlock(4)}-${randomBlock(4)}` : `CP-${randomBlock(6)}`;
+  return kind === "GIFT_CARD" ? `${1 + (randomBytes(1)[0] % 9)}${randomDigits(15)}` : `CP-${randomBlock(6)}`;
+}
+
+/** Gift card PIN: "CP" + 5 digits. */
+export function generatePin() {
+  return `CP${randomDigits(5)}`;
 }

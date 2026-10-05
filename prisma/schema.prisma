@@ -182,7 +182,9 @@ model Setting {
 /// Coupon or gift card issued from the admin panel.
 model PromoCode {
   id            String    @id @default(cuid())
-  code          String    @unique // stored uppercase
+  code          String    @unique // stored uppercase; gift cards: 16 digits
+  /// Gift cards: "CP" + 5 digits, required alongside the number.
+  pin           String?
   kind          String // PERCENT | AMOUNT | GIFT_CARD
   percentOff    Int?
   amountCents   Int? // AMOUNT: dollars off

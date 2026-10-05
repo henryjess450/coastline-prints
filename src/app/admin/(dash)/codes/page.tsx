@@ -7,6 +7,7 @@ import { requireAdmin } from "@/lib/admin/auth";
 import { cn } from "@/lib/cn";
 import { db } from "@/lib/db";
 import { money } from "@/lib/format";
+import { formatCardNumber } from "@/lib/codes/apply";
 
 export const metadata = { title: "Codes" };
 
@@ -51,7 +52,8 @@ export default async function CodesPage() {
                 return (
                   <tr key={c.id}>
                     <td className="px-4 py-3">
-                      <code className="font-mono font-semibold">{c.code}</code>
+                      <code className="whitespace-nowrap font-mono font-semibold">{formatCardNumber(c.code)}</code>
+                      {c.pin && <div className="font-mono text-xs text-muted">PIN {c.pin}</div>}
                       {c.note && <div className="text-xs text-faint">{c.note}</div>}
                     </td>
                     <td className="px-4 py-3">{c.kind === "PERCENT" ? `${c.percentOff}% off` : c.kind === "AMOUNT" ? `${money(c.amountCents ?? 0)} off` : `${money(c.initialCents ?? 0)} gift card`}</td>

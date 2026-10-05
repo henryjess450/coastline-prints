@@ -6,7 +6,7 @@ import { clientIp, rateLimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 
-const body = z.object({ code: z.string().trim().min(1).max(40) });
+const body = z.object({ code: z.string().trim().min(1).max(40), pin: z.string().trim().max(12).optional() });
 
 /** Checks one coupon or gift card code for the checkout box. */
 export async function POST(req: Request) {
@@ -16,7 +16,8 @@ export async function POST(req: Request) {
   const parsed = body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return apiError(400, "Enter a code.");
 
-  const { records, errors } = await lookupCodes([parsed.data.code]);
+  const { code, pin } = parsed.data;
+  const { records, errors } = await lookupCodes([pin ? `${code}:${pin}` : code]);
   if (errors.length) {
     // Wrong guesses are limited much harder, so gift card numbers can't be brute-forced.
     if (!rateLimit(`codes-miss:${ip}`, 8, 30 * 60_000).ok) return apiError(429, "Too many wrong codes. Please wait half an hour.");

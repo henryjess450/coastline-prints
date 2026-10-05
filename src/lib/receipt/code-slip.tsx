@@ -4,6 +4,7 @@ import { pickup } from "@config/pickup";
 import { site } from "@config/site";
 import { db } from "@/lib/db";
 import { money } from "@/lib/format";
+import { formatCardNumber } from "@/lib/codes/apply";
 import { loadFonts, RECEIPT_WIDTH, wordmark } from "./render";
 
 const svg = (s: string) => `data:image/svg+xml;base64,${Buffer.from(s).toString("base64")}`;
@@ -52,14 +53,21 @@ export async function renderCodeSlipPng(codeId: string) {
           <div style={{ display: "flex", fontSize: 118, fontWeight: 700, lineHeight: 1, marginTop: 18, letterSpacing: -3 }}>{money(c.initialCents ?? 0)}</div>
           <div style={{ display: "flex", fontSize: 22, marginTop: 8 }}>to spend on custom 3D prints</div>
 
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", background: "black", color: "white", borderRadius: 999, padding: "12px 34px", marginTop: 26 }}>
-            <span style={{ fontSize: 15, letterSpacing: 4 }}>GIFT CARD CODE</span>
-            <span style={{ fontSize: 33, fontWeight: 700, letterSpacing: 1, whiteSpace: "nowrap" }}>{c.code}</span>
+          <div style={{ display: "flex", flexDirection: "column", alignSelf: "stretch", background: "black", color: "white", borderRadius: 22, padding: "14px 22px", marginTop: 26 }}>
+            <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: 2 }}>GIFTCARD NUMBER:</span>
+            <span style={{ fontSize: 38, fontWeight: 700, letterSpacing: 2, whiteSpace: "nowrap" }}>{formatCardNumber(c.code)}</span>
+            {c.pin && (
+              <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginTop: 10, borderTop: "2px solid white", paddingTop: 10 }}>
+                <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: 2 }}>GIFTCARD PIN:</span>
+                <span style={{ fontSize: 34, fontWeight: 700, letterSpacing: 3 }}>{c.pin}</span>
+              </div>
+            )}
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", fontSize: 20, marginTop: 22, textAlign: "center" }}>
-            <span>Order at coastlineprints.ca and add this code under</span>
+            <span>Enter the number and PIN at checkout under</span>
             <span style={{ fontWeight: 700 }}>&quot;Coupons or Gift Cards? Add them here!&quot;</span>
+            <span>at coastlineprints.ca</span>
             <span style={{ marginTop: 8 }}>Use it over as many orders as you like until it runs out.</span>
             <span style={{ marginTop: 8, fontWeight: 700 }}>{c.expiresAt ? `Valid until ${fmtDate(c.expiresAt)}` : "Never expires"}</span>
           </div>

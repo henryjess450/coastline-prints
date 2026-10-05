@@ -1,12 +1,14 @@
 "use client";
 import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
-import { applyCodes, MAX_CODES, normalizeCode, type ApplyResult, type CodeInfo } from "@/lib/codes/apply";
+import { applyCodes, isCardNumber, MAX_CODES, normalizeCode, normalizePin, type ApplyResult, type CodeInfo } from "@/lib/codes/apply";
 import { money } from "@/lib/format";
 
 /** "Coupons or Gift Cards? Add them here!" with applied codes as removable chips. */
 export function CodeBox({ orderTotalCents, codes, result, onChange, disabled }: { orderTotalCents: number; codes: CodeInfo[]; result: ApplyResult; onChange: (codes: CodeInfo[]) => void; disabled?: boolean }) {
   const [value, setValue] = useState("");
+  const [pin, setPin] = useState("");
+  const card = isCardNumber(value);
   const [error, setError] = useState<string>();
   const [checking, setChecking] = useState(false);
 
@@ -15,17 +17,20 @@ export function CodeBox({ orderTotalCents, codes, result, onChange, disabled }: 
     if (!code) return;
     if (codes.some((c) => c.code === code)) return setError("That code is already added.");
     if (codes.length >= MAX_CODES) return setError(`You can add up to ${MAX_CODES} codes.`);
+    const cardPin = card ? normalizePin(pin) : "";
+    if (card && cardPin.length !== 7) return setError("Enter the gift card PIN (CP and 5 numbers).");
     setChecking(true);
     setError(undefined);
     try {
-      const res = await fetch("/api/codes/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }) });
+      const res = await fetch("/api/codes/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, pin: cardPin || undefined }) });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) return setError(body.error ?? "That code isn't valid.");
-      const next = [...codes, body.code as CodeInfo];
+      const next = [...codes, { ...(body.code as CodeInfo), pin: cardPin || undefined }];
       const why = applyCodes(orderTotalCents, next).rejected.find((r) => r.code === code);
       if (why) return setError(why.reason);
       onChange(next);
       setValue("");
+      setPin("");
     } catch {
       setError("Couldn't check that code. Please try again.");
     } finally {
@@ -38,7 +43,7 @@ export function CodeBox({ orderTotalCents, codes, result, onChange, disabled }: 
       <label htmlFor="code-input" className="text-sm font-medium">
         Coupons or Gift Cards? Add them here!
       </label>
-      <div className="mt-2 flex gap-2">
+      <div className="mt-2 flex flex-wrap gap-2">
         <input
           id="code-input"
           value={value}
@@ -52,7 +57,7 @@ export function CodeBox({ orderTotalCents, codes, result, onChange, disabled }: 
               void add();
             }
           }}
-          placeholder="Enter code"
+          placeholder="Coupon code or gift card number"
           autoCapitalize="characters"
           autoComplete="off"
           maxLength={40}
@@ -61,6 +66,27 @@ export function CodeBox({ orderTotalCents, codes, result, onChange, disabled }: 
           aria-describedby={error ? "code-error" : undefined}
           className="h-10 min-w-0 flex-1 rounded-full border border-line bg-surface px-4 font-mono text-sm uppercase outline-none focus:border-accent-line"
         />
+        {card && (
+          <input
+            aria-label="Gift card PIN"
+            value={pin}
+            onChange={(e) => {
+              setPin(e.target.value);
+              setError(undefined);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void add();
+              }
+            }}
+            placeholder="PIN: CP#####"
+            autoComplete="off"
+            maxLength={10}
+            disabled={disabled}
+            className="h-10 w-32 rounded-full border border-line bg-surface px-4 font-mono text-sm uppercase outline-none focus:border-accent-line"
+          />
+        )}
         <button type="button" onClick={add} disabled={disabled || checking || !value.trim()} className="btn btn-secondary h-10 px-4 text-sm">
           {checking ? "Checking…" : "Apply"}
         </button>

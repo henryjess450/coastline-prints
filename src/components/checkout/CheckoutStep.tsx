@@ -17,7 +17,7 @@ import { cartPayload, type CartQuote } from "@/lib/order/use-quote";
 import { PaymentMethods, type PaymentMethodsHandle, type SquareConfig } from "./PaymentMethods";
 import { PickupPicker, type PickupChoice } from "./PickupPicker";
 import { CodeBox } from "./CodeBox";
-import { applyCodes, type CodeInfo } from "@/lib/codes/apply";
+import { applyCodes, codeEntry, type CodeInfo } from "@/lib/codes/apply";
 
 type Contact = { name: string; email: string; phone: string; notes: string; pickupAcknowledged: boolean; termsAccepted: boolean };
 type FieldErrors = Partial<Record<keyof Contact, string>>;
@@ -112,7 +112,7 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
   async function submit(sourceId: string, customer: ReturnType<typeof customerSchema.parse>) {
     setBusy("charging");
     const attemptId = crypto.randomUUID();
-    const body = JSON.stringify({ attemptId, sourceId, customer, pickup, items: cartPayload(items), expectedTotalCents: total, codes: codes.map((c) => c.code) });
+    const body = JSON.stringify({ attemptId, sourceId, customer, pickup, items: cartPayload(items), expectedTotalCents: total, codes: codes.map(codeEntry) });
 
     // One automatic retry on a lost connection. The same attempt id means Square won't charge twice.
     for (let attempt = 0; attempt < 2; attempt++) {

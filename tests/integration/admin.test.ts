@@ -155,3 +155,29 @@ describe("settings", () => {
     await expect(savePricing({ ...cfg.pricing, baseFeeCents: -1 })).rejects.toThrow();
   });
 });
+
+describe("gift card PINs", () => {
+  it("only works with the matching PIN", async () => {
+    const { generateCode, generatePin, lookupCodes } = await import("@/lib/codes/server");
+    const code = generateCode("GIFT_CARD");
+    const pin = generatePin();
+    expect(code).toMatch(/^[1-9]\d{15}$/);
+    expect(pin).toMatch(/^CP\d{5}$/);
+    await db.promoCode.create({ data: { code, pin, kind: "GIFT_CARD", initialCents: 500, balanceCents: 500 } });
+    const spaced = code.replace(/(\d{4})(?=\d)/g, "$1 ");
+    expect((await lookupCodes([`${spaced}:${pin.toLowerCase()}`])).records).toHaveLength(1);
+    const wrong = await lookupCodes([`${code}:CP00000`]);
+    expect(wrong.records).toHaveLength(0);
+    expect(wrong.errors[0].reason).toBe("That code isn't valid.");
+    expect((await lookupCodes([code])).records).toHaveLength(0);
+  });
+});
+
+describe("gift card PIN fail-safe", () => {
+  it("refuses a 16-digit card that somehow has no PIN stored", async () => {
+    const { lookupCodes } = await import("@/lib/codes/server");
+    await db.promoCode.create({ data: { code: "4000000000000002", kind: "GIFT_CARD", initialCents: 500, balanceCents: 500 } });
+    expect((await lookupCodes(["4000000000000002"])).records).toHaveLength(0);
+    expect((await lookupCodes(["4000000000000002:CP12345"])).records).toHaveLength(0);
+  });
+});

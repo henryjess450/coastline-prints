@@ -10,8 +10,8 @@ import { sendNotificationsSoon } from "@/lib/notify/kick";
 import { retryJob } from "@/lib/notify/outbox";
 import { changeOrderStatus, StatusChangeError } from "@/lib/orders/admin";
 import { rateLimit } from "@/lib/ratelimit";
-import { generateCode } from "@/lib/codes/server";
-import { normalizeCode, type CodeKind } from "@/lib/codes/apply";
+import { generateCode, generatePin } from "@/lib/codes/server";
+import { formatCardNumber, normalizeCode, type CodeKind } from "@/lib/codes/apply";
 import { Prisma } from "@/generated/prisma/client";
 
 export type ActionState = { ok?: boolean; error?: string; message?: string };
@@ -128,9 +128,9 @@ export async function createCodeAction(_: CodeActionState, form: FormData): Prom
   const cents = Math.round(value * 100);
   if (kind !== "PERCENT" && cents > 100_000_00) return { error: "That amount is too large." };
 
-  const custom = normalizeCode(String(form.get("code") ?? ""));
+  // Gift cards always get a random 16-digit number and PIN.
+  const custom = kind === "GIFT_CARD" ? "" : normalizeCode(String(form.get("code") ?? ""));
   if (custom && !/^[A-Z0-9-]{4,30}$/.test(custom)) return { error: "Codes can use letters, numbers and dashes (4 to 30 characters)." };
-  if (custom && kind === "GIFT_CARD" && custom.length < 12) return { error: "Custom gift card codes need at least 12 characters so they can't be guessed." };
 
   const maxUsesRaw = String(form.get("maxUses") ?? "").trim();
   const maxUses = maxUsesRaw ? Math.floor(Number(maxUsesRaw)) : null;
@@ -148,6 +148,7 @@ export async function createCodeAction(_: CodeActionState, form: FormData): Prom
         data: {
           code,
           kind,
+          pin: kind === "GIFT_CARD" ? generatePin() : null,
           percentOff: kind === "PERCENT" ? value : null,
           amountCents: kind === "AMOUNT" ? cents : null,
           initialCents: kind === "GIFT_CARD" ? cents : null,
@@ -160,7 +161,8 @@ export async function createCodeAction(_: CodeActionState, form: FormData): Prom
       });
       if (form.get("print") === "on") await queueCodeSlip(created.id);
       revalidatePath("/admin/codes");
-      return { ok: true, created: code, message: `Created ${code}` };
+      const shown = kind === "GIFT_CARD" ? `${formatCardNumber(code)}  ·  PIN ${created.pin}` : code;
+      return { ok: true, created: shown, message: `Created ${shown}` };
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
         if (custom) return { error: "That code already exists." };

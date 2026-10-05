@@ -30,10 +30,14 @@ export function CreateCodeForm() {
           {kind === "PERCENT" ? "Percent off" : gift ? "Gift card value ($)" : "Dollars off ($)"}
           <input name="value" type="number" min={kind === "PERCENT" ? 1 : 0.01} max={kind === "PERCENT" ? 100 : undefined} step={kind === "PERCENT" ? 1 : 0.01} required className={`${field} mt-1 font-mono`} />
         </label>
-        <label className="block text-xs text-muted">
-          Code (blank = random)
-          <input name="code" placeholder={gift ? "GC-XXXX-XXXX-XXXX" : "e.g. SUMMER10"} autoCapitalize="characters" className={`${field} mt-1 font-mono uppercase`} />
-        </label>
+        {gift ? (
+          <p className="self-end pb-2 text-xs text-muted">A random 16-digit number and PIN are created for you.</p>
+        ) : (
+          <label className="block text-xs text-muted">
+            Code (blank = random)
+            <input name="code" placeholder="e.g. SUMMER10" autoCapitalize="characters" className={`${field} mt-1 font-mono uppercase`} />
+          </label>
+        )}
         <label className="block text-xs text-muted">
           Expires (optional)
           <input name="expires" type="date" className={`${field} mt-1`} />
