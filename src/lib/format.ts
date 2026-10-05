@@ -15,3 +15,14 @@ export function hours(h: number) {
   const m = totalMin % 60;
   return hh ? `${hh}h ${String(m).padStart(2, "0")}m` : `${m} min`;
 }
+
+/** 1st, 2nd, 3rd, 4th, 11th, 21st... */
+export function ordinal(n: number) {
+  const s = n % 100 >= 11 && n % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
+  return `${n}${s}`;
+}
+
+/** "Returning customer · 3rd order", or null for a first order. */
+export function returningLabel(count: number) {
+  return count > 1 ? `Returning customer · ${ordinal(count)} order` : null;
+}

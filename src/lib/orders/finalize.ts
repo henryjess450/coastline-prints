@@ -88,6 +88,11 @@ export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts
             subtotalCents: cart.quote.subtotalCents,
             baseFeeCents: cart.quote.baseFeeCents,
             minimumAdjCents: cart.quote.minimumAdjCents,
+            discountCents: checkout.discountCents,
+            giftCardCents: checkout.giftCardCents,
+            appliedCodes: checkout.appliedCodes,
+            squareCustomerId: checkout.squareCustomerId,
+            customerOrderCount: (await tx.order.count({ where: { customerEmail: checkout.customerEmail } })) + 1,
             totalCents: checkout.totalCents,
             currency: checkout.currency,
             squarePaymentId: payment.id,
@@ -99,7 +104,8 @@ export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts
           },
         });
         await tx.checkout.update({ where: { id: checkoutId }, data: { status: "COMPLETED", squarePaymentId: payment.id } });
-        await tx.outboxJob.createMany({ data: notificationJobs(order.id) });
+        await tx.codeRedemption.updateMany({ where: { checkoutId, status: "RESERVED" }, data: { status: "USED" } });
+        await tx.outboxJob.createMany({ data: notificationJobs(order.id, !checkout.squareCustomerId) });
         return order;
       });
       return { order, created: true };
@@ -148,8 +154,12 @@ function orderItemData(line: CartSnapshot["lines"][number], q: ItemQuote) {
 }
 
 /** Queued in the same transaction as the order, so a mail outage can't lose them (sent in Phase 4). */
-function notificationJobs(orderId: string): Prisma.OutboxJobCreateManyInput[] {
+function notificationJobs(orderId: string, needsSquareCustomer: boolean): Prisma.OutboxJobCreateManyInput[] {
   const jobs: Prisma.OutboxJobCreateManyInput[] = [
+    // Square was slow or unreachable at checkout: save the customer to Square in the background.
+    ...(needsSquareCustomer && process.env.SQUARE_ACCESS_TOKEN
+      ? [{ kind: "square", template: "customer-sync", payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:customer-sync` }]
+      : []),
     { kind: "email", template: "owner-new-order", payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:owner-new-order` },
     { kind: "email", template: "customer-receipt", payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:customer-receipt` },
   ];

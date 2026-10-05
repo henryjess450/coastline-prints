@@ -15,6 +15,7 @@ export function OwnerNewOrder({ d }: { d: OrderEmailData }) {
 
       <Label>Customer</Label>
       <Text style={line}>{d.customerName}</Text>
+      {d.returning && <Text style={{ ...line, fontWeight: 700, color: colors.brand }}>★ {d.returning}</Text>}
       <Text style={line}>
         <a href={`mailto:${d.customerEmail}`} style={{ color: colors.brand }}>
           {d.customerEmail}

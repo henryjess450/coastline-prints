@@ -30,6 +30,9 @@ export function ItemTable({ d, detail = false }: { d: OrderEmailData; detail?: b
       ))}
       <TotalRow label="Order fee" value={money(d.baseFeeCents)} />
       {d.minimumAdjCents > 0 && <TotalRow label="Minimum order top-up" value={money(d.minimumAdjCents)} />}
+      {d.discounts.map((x) => (
+        <TotalRow key={x.label} label={x.label} value={`−${money(x.amountCents)}`} />
+      ))}
       <TotalRow label="Total paid (CAD)" value={money(d.totalCents)} strong />
       {d.card && <TotalRow label="Paid with" value={d.card} />}
     </Section>

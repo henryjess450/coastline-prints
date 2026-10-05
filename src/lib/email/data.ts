@@ -2,7 +2,8 @@ import "server-only";
 import { pickup } from "@config/pickup";
 import { privateSite } from "@config/private.server";
 import { db } from "@/lib/db";
-import { hours } from "@/lib/format";
+import { hours, returningLabel } from "@/lib/format";
+import type { AppliedCode } from "@/lib/codes/apply";
 import { formatPickup } from "@/lib/pickup";
 
 /** Everything an order email needs, as plain data (easy to render and to test). */
@@ -30,6 +31,10 @@ export type OrderEmailData = {
   }[];
   baseFeeCents: number;
   minimumAdjCents: number;
+  /** Coupon and gift card lines, already labelled (gift cards masked). */
+  discounts: { label: string; amountCents: number }[];
+  /** "Returning customer · 3rd order" or null. */
+  returning: string | null;
   totalCents: number;
   totalGrams: number;
   totalHoursLabel: string;
@@ -73,10 +78,12 @@ export async function loadOrderEmailData(orderId: string): Promise<OrderEmailDat
     })),
     baseFeeCents: order.baseFeeCents,
     minimumAdjCents: order.minimumAdjCents,
+    discounts: (JSON.parse(order.appliedCodes) as AppliedCode[]).map((a) => ({ label: a.label, amountCents: a.amountCents })),
+    returning: returningLabel(order.customerOrderCount),
     totalCents: order.totalCents,
     totalGrams: order.items.reduce((g, i) => g + i.gramsEach * i.quantity, 0),
     totalHoursLabel: hours(totalHours),
-    card: order.cardLast4 ? `${brand(order.cardBrand)} ending ${order.cardLast4}` : null,
+    card: order.cardLast4 ? `${brand(order.cardBrand)} ending ${order.cardLast4}` : order.totalCents === 0 ? "Gift card" : null,
     pickupAddress: privateSite.pickupAddress,
     pickupWhen: formatPickup(order.pickupDate, order.pickupTime, pickup),
     links: {

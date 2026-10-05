@@ -79,7 +79,7 @@ describe("outbox", () => {
 
   it("a mail failure keeps the order and retries with backoff", async () => {
     const order = await createPaidOrder();
-    const now = new Date("2026-10-05T12:00:00Z");
+    const now = new Date(Date.now() + 1000);
     const down = fakeMailer(() => {
       throw new Error("SMTP connection timed out");
     });

@@ -20,7 +20,8 @@ export async function postDiscordNewOrder(d: OrderEmailData) {
           color: 0x0e4471,
           description: items.slice(0, 3500),
           fields: [
-            { name: "Customer", value: `${d.customerName}\n${d.customerEmail}\n${d.customerPhone}`, inline: true },
+            { name: "Customer", value: `${d.customerName}${d.returning ? ` (${d.returning})` : ""}\n${d.customerEmail}\n${d.customerPhone}`, inline: true },
+            ...(d.discounts.length ? [{ name: "Codes used", value: d.discounts.map((x) => `${x.label}: -${money(x.amountCents)}`).join("\n"), inline: false }] : []),
             { name: "Estimate", value: `${d.totalGrams.toFixed(0)} g · ${d.totalHoursLabel}`, inline: true },
             { name: "Pickup", value: d.pickupWhen ?? "Not booked", inline: true },
             ...(d.notes ? [{ name: "Notes", value: d.notes.slice(0, 1000) }] : []),

@@ -12,6 +12,10 @@ const square = {
     create: vi.fn(),
     get: vi.fn(),
   },
+  customers: {
+    search: vi.fn(async () => ({ customers: [] })),
+    create: vi.fn(async () => ({ customer: { id: "SQCUST1" } })),
+  },
 };
 
 vi.mock("@/lib/square/client", () => ({
@@ -53,6 +57,8 @@ async function pay(items: unknown[], over: Record<string, unknown> = {}) {
 beforeEach(() => {
   square.payments.create.mockReset();
   square.payments.get.mockReset();
+  square.customers.search.mockClear();
+  square.customers.create.mockClear();
 });
 
 describe("checkout", () => {
@@ -228,5 +234,91 @@ describe("pickup booking", () => {
     const order = await db.order.findUniqueOrThrow({ where: { orderNumber: ok.data.orderNumber } });
     expect(order.pickupDate).toBe(slot.date);
     expect(order.pickupTime).toBe(slot.time);
+  });
+});
+
+describe("coupons, gift cards and customers", () => {
+  async function code(data: Record<string, unknown>) {
+    return db.promoCode.create({ data: { code: `T${Math.random().toString(36).slice(2, 10).toUpperCase()}`, kind: "PERCENT", ...data } as never });
+  }
+  async function quoteTotal(items: unknown[]) {
+    return priceFor(items);
+  }
+
+  it("applies a coupon, charges the discounted amount and links the Square customer", async () => {
+    const up = await cubeUpload();
+    const c = await code({ kind: "PERCENT", percentOff: 50, maxUses: 1 });
+    square.payments.create.mockImplementation(async (req) => ({ payment: completedPayment(req) }));
+    const items = [cartItem(up.id)];
+    const full = await quoteTotal(items);
+    const expected = full - Math.round(full / 2);
+    const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:ok", customer, items, expectedTotalCents: expected, pickup: await validPickup(), codes: [c.code.toLowerCase()] }));
+    const data = await res.json();
+    expect(res.status, JSON.stringify(data)).toBe(200);
+    const sent = square.payments.create.mock.calls.at(-1)![0];
+    expect(Number(sent.amountMoney.amount)).toBe(expected);
+    expect(sent.customerId).toBe("SQCUST1");
+    const order = await db.order.findUniqueOrThrow({ where: { orderNumber: data.orderNumber } });
+    expect(order.discountCents).toBe(full - expected);
+    expect(order.squareCustomerId).toBe("SQCUST1");
+    expect((await db.promoCode.findUniqueOrThrow({ where: { id: c.id } })).uses).toBe(1);
+
+    // Used up: a second checkout with it is refused before charging.
+    const calls = square.payments.create.mock.calls.length;
+    const again = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:ok", customer, items, expectedTotalCents: expected, pickup: await validPickup(), codes: [c.code] }));
+    expect(again.status).toBe(409);
+    expect((await again.json()).code).toBe("CODE_INVALID");
+    expect(square.payments.create.mock.calls.length).toBe(calls);
+  });
+
+  it("a gift card covering everything places the order without charging a card", async () => {
+    const up = await cubeUpload();
+    const gc = await code({ kind: "GIFT_CARD", initialCents: 100000, balanceCents: 100000 });
+    const items = [cartItem(up.id)];
+    const full = await quoteTotal(items);
+    const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), customer, items, expectedTotalCents: 0, pickup: await validPickup(), codes: [gc.code] }));
+    const data = await res.json();
+    expect(res.status, JSON.stringify(data)).toBe(200);
+    expect(square.payments.create).not.toHaveBeenCalled();
+    const order = await db.order.findUniqueOrThrow({ where: { orderNumber: data.orderNumber } });
+    expect(order).toMatchObject({ totalCents: 0, giftCardCents: full });
+    expect(order.squarePaymentId).toMatch(/^nopay_/);
+    expect((await db.promoCode.findUniqueOrThrow({ where: { id: gc.id } })).balanceCents).toBe(100000 - full);
+  });
+
+  it("gives the gift card balance back when the card is declined", async () => {
+    const up = await cubeUpload();
+    const gc = await code({ kind: "GIFT_CARD", initialCents: 300, balanceCents: 300 });
+    square.payments.create.mockRejectedValue(new SquareError({ statusCode: 402, body: { errors: [{ category: "PAYMENT_METHOD_ERROR", code: "CARD_DECLINED" }] } }));
+    const items = [cartItem(up.id)];
+    const full = await quoteTotal(items);
+    const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:declined", customer, items, expectedTotalCents: full - 300, pickup: await validPickup(), codes: [gc.code] }));
+    expect(res.status).toBe(402);
+    expect((await db.promoCode.findUniqueOrThrow({ where: { id: gc.id } })).balanceCents).toBe(300);
+    const r = await db.codeRedemption.findFirstOrThrow({ where: { codeId: gc.id } });
+    expect(r.status).toBe("RELEASED");
+  });
+
+  it("counts repeat customers and still sells if Square customers is down", async () => {
+    vi.stubEnv("SQUARE_ACCESS_TOKEN", "test-token");
+    square.customers.search.mockRejectedValueOnce(new Error("Square down"));
+    square.payments.create.mockImplementation(async (req) => ({ payment: completedPayment(req) }));
+    const email = `repeat-${randomUUID()}@example.com`;
+    const nums: number[] = [];
+    for (let i = 0; i < 2; i++) {
+      const up = await cubeUpload();
+      const items = [cartItem(up.id)];
+      const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:ok", customer: { ...customer, email }, items, expectedTotalCents: await quoteTotal(items), pickup: await validPickup() }));
+      const data = await res.json();
+      expect(res.status, JSON.stringify(data)).toBe(200);
+      const o = await db.order.findUniqueOrThrow({ where: { orderNumber: data.orderNumber } });
+      nums.push(o.customerOrderCount);
+      if (i === 0) {
+        expect(o.squareCustomerId).toBeNull();
+        expect(await db.outboxJob.count({ where: { dedupeKey: `${o.id}:customer-sync` } })).toBe(1);
+      }
+    }
+    expect(nums).toEqual([1, 2]);
+    vi.unstubAllEnvs();
   });
 });

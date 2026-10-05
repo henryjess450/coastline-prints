@@ -56,11 +56,17 @@ model Checkout {
   pickupDate       String? // "YYYY-MM-DD", shop time zone
   pickupTime       String? // "HH:MM" slot start
   squarePaymentId  String?  @unique
+  squareCustomerId String?
+  /// JSON AppliedCode[]: coupons and gift cards used, with amounts.
+  appliedCodes     String   @default("[]")
+  discountCents    Int      @default(0)
+  giftCardCents    Int      @default(0)
   failureReason    String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  order Order?
+  order       Order?
+  redemptions CodeRedemption[]
 }
 
 model Order {
@@ -80,9 +86,17 @@ model Order {
   subtotalCents   Int
   baseFeeCents    Int
   minimumAdjCents Int      @default(0)
+  discountCents   Int      @default(0)
+  giftCardCents   Int      @default(0)
+  /// JSON AppliedCode[]
+  appliedCodes    String   @default("[]")
   totalCents      Int
   currency        String   @default("CAD")
+  /// "nopay_<checkoutId>" when a gift card covered the whole order.
   squarePaymentId String   @unique
+  squareCustomerId String?
+  /// 1 = first order from this email, 2 = second, ...
+  customerOrderCount Int    @default(1)
   receiptUrl      String?
   cardBrand       String?
   cardLast4       String?
@@ -163,4 +177,40 @@ model Setting {
   key       String   @id
   value     String // JSON
   updatedAt DateTime @updatedAt
+}
+
+/// Coupon or gift card issued from the admin panel.
+model PromoCode {
+  id            String    @id @default(cuid())
+  code          String    @unique // stored uppercase
+  kind          String // PERCENT | AMOUNT | GIFT_CARD
+  percentOff    Int?
+  amountCents   Int? // AMOUNT: dollars off
+  initialCents  Int? // GIFT_CARD: starting value
+  balanceCents  Int? // GIFT_CARD: what's left
+  minOrderCents Int       @default(0)
+  maxUses       Int? // coupons: null = unlimited
+  uses          Int       @default(0)
+  expiresAt     DateTime?
+  active        Boolean   @default(true)
+  note          String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  redemptions CodeRedemption[]
+}
+
+/// A code held for a checkout. RESERVED while paying, USED once paid, RELEASED if the payment failed.
+model CodeRedemption {
+  id          String    @id @default(cuid())
+  codeId      String
+  code        PromoCode @relation(fields: [codeId], references: [id])
+  checkoutId  String
+  checkout    Checkout  @relation(fields: [checkoutId], references: [id])
+  amountCents Int
+  status      String    @default("RESERVED")
+  createdAt   DateTime  @default(now())
+
+  @@unique([codeId, checkoutId])
+  @@index([checkoutId])
 }

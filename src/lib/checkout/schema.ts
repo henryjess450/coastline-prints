@@ -18,7 +18,10 @@ export const customerSchema = z.object({
 export const checkoutRequestSchema = z.object({
   /** One id per "Pay" press. Reused on network retries so the card is never charged twice. */
   attemptId: z.string().uuid(),
-  sourceId: z.string().min(1).max(500),
+  /** Square card/wallet token. Empty only when gift cards cover the whole order. */
+  sourceId: z.string().max(500).default(""),
+  /** Coupon and gift card codes the customer added. */
+  codes: z.array(z.string().trim().min(1).max(40)).max(4).default([]),
   customer: customerSchema,
   /** Chosen pickup slot. Re-checked against the schedule on the server. */
   pickup: z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), time: z.string().regex(/^\d{2}:\d{2}$/) }),

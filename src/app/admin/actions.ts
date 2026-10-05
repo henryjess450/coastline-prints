@@ -10,6 +10,9 @@ import { sendNotificationsSoon } from "@/lib/notify/kick";
 import { retryJob } from "@/lib/notify/outbox";
 import { changeOrderStatus, StatusChangeError } from "@/lib/orders/admin";
 import { rateLimit } from "@/lib/ratelimit";
+import { generateCode } from "@/lib/codes/server";
+import { normalizeCode, type CodeKind } from "@/lib/codes/apply";
+import { Prisma } from "@/generated/prisma/client";
 
 export type ActionState = { ok?: boolean; error?: string; message?: string };
 
@@ -111,4 +114,84 @@ export async function resetSettingAction(form: FormData) {
   const key = form.get("key");
   if (key === "pricing" || key === "materials") await resetSetting(key);
   revalidatePath("/", "layout");
+}
+
+export type CodeActionState = ActionState & { created?: string };
+
+export async function createCodeAction(_: CodeActionState, form: FormData): Promise<CodeActionState> {
+  await requireAdmin();
+  const kind = String(form.get("kind")) as CodeKind;
+  if (!["PERCENT", "AMOUNT", "GIFT_CARD"].includes(kind)) return { error: "Pick a type." };
+  const value = Number(form.get("value"));
+  if (!Number.isFinite(value) || value <= 0) return { error: kind === "PERCENT" ? "Enter a percent between 1 and 100." : "Enter a dollar amount." };
+  if (kind === "PERCENT" && (value > 100 || !Number.isInteger(value))) return { error: "Percent must be a whole number from 1 to 100." };
+  const cents = Math.round(value * 100);
+  if (kind !== "PERCENT" && cents > 100_000_00) return { error: "That amount is too large." };
+
+  const custom = normalizeCode(String(form.get("code") ?? ""));
+  if (custom && !/^[A-Z0-9-]{4,30}$/.test(custom)) return { error: "Codes can use letters, numbers and dashes (4 to 30 characters)." };
+  if (custom && kind === "GIFT_CARD" && custom.length < 12) return { error: "Custom gift card codes need at least 12 characters so they can't be guessed." };
+
+  const maxUsesRaw = String(form.get("maxUses") ?? "").trim();
+  const maxUses = maxUsesRaw ? Math.floor(Number(maxUsesRaw)) : null;
+  if (maxUses != null && (!Number.isFinite(maxUses) || maxUses < 1)) return { error: "Max uses must be 1 or more (or blank for unlimited)." };
+  const minOrder = Number(form.get("minOrder") || 0);
+  const expires = String(form.get("expires") ?? "").trim();
+  // Expires at the end of that day, shop time.
+  const expiresAt = expires ? new Date(`${expires}T23:59:59-08:00`) : null;
+  if (expiresAt && Number.isNaN(expiresAt.getTime())) return { error: "Invalid expiry date." };
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = custom || generateCode(kind);
+    try {
+      const created = await db.promoCode.create({
+        data: {
+          code,
+          kind,
+          percentOff: kind === "PERCENT" ? value : null,
+          amountCents: kind === "AMOUNT" ? cents : null,
+          initialCents: kind === "GIFT_CARD" ? cents : null,
+          balanceCents: kind === "GIFT_CARD" ? cents : null,
+          minOrderCents: kind === "GIFT_CARD" ? 0 : Math.max(0, Math.round(minOrder * 100)),
+          maxUses: kind === "GIFT_CARD" ? null : maxUses,
+          expiresAt,
+          note: String(form.get("note") ?? "").trim().slice(0, 200) || null,
+        },
+      });
+      if (form.get("print") === "on") await queueCodeSlip(created.id);
+      revalidatePath("/admin/codes");
+      return { ok: true, created: code, message: `Created ${code}` };
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        if (custom) return { error: "That code already exists." };
+        continue;
+      }
+      logError("admin:create-code", err);
+      return { error: "Couldn't create the code." };
+    }
+  }
+  return { error: "Couldn't create the code. Please try again." };
+}
+
+export async function toggleCodeAction(form: FormData) {
+  await requireAdmin();
+  const id = String(form.get("id") ?? "");
+  const code = await db.promoCode.findUnique({ where: { id } });
+  if (!code) return;
+  await db.promoCode.update({ where: { id }, data: { active: !code.active } });
+  revalidatePath("/admin/codes");
+}
+
+async function queueCodeSlip(codeId: string) {
+  await db.outboxJob.create({
+    data: { kind: "print", template: "code-slip", payload: JSON.stringify({ orderId: "", codeId }), dedupeKey: `code:${codeId}:print:${Date.now()}` },
+  });
+  sendNotificationsSoon("code-slip");
+}
+
+export async function printCodeAction(form: FormData) {
+  await requireAdmin();
+  const id = String(form.get("id") ?? "");
+  if (await db.promoCode.findUnique({ where: { id }, select: { id: true } })) await queueCodeSlip(id);
+  revalidatePath("/admin/codes");
 }

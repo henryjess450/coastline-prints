@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/Card";
 import { db } from "@/lib/db";
 import { hours, money } from "@/lib/format";
 import { formatPickup } from "@/lib/pickup";
+import type { AppliedCode } from "@/lib/codes/apply";
 
 export const metadata: Metadata = { title: "Order confirmed", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
@@ -90,6 +91,9 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
         <dl className="mt-2 space-y-1 border-t border-line pt-3 text-sm">
           <Row label="Order fee" value={money(order.baseFeeCents)} />
           {order.minimumAdjCents > 0 && <Row label="Minimum order top-up" value={money(order.minimumAdjCents)} />}
+          {(JSON.parse(order.appliedCodes) as AppliedCode[]).map((a) => (
+            <Row key={a.code} label={a.label} value={`−${money(a.amountCents)}`} />
+          ))}
           <Row label="Total paid (CAD)" value={money(order.totalCents)} strong />
           {order.cardLast4 && <Row label="Paid with" value={`${formatBrand(order.cardBrand)} •••• ${order.cardLast4}`} />}
         </dl>

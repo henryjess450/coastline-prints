@@ -9,8 +9,9 @@ import { Card } from "@/components/ui/Card";
 import { requireAdmin } from "@/lib/admin/auth";
 import { getEffectiveConfig } from "@/lib/config/effective";
 import { db } from "@/lib/db";
-import { money } from "@/lib/format";
+import { money, returningLabel } from "@/lib/format";
 import { formatPickup } from "@/lib/pickup";
+import type { AppliedCode } from "@/lib/codes/apply";
 import { statusInfo } from "@/lib/orders/status";
 
 export const metadata = { title: "Order" };
@@ -90,6 +91,11 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
           <Card className="p-5 text-sm">
             <h2 className="mb-3 font-display text-lg font-semibold">Customer</h2>
             <p className="font-medium">{order.customerName}</p>
+            {returningLabel(order.customerOrderCount) && (
+              <Link href={`/admin?q=${encodeURIComponent(order.customerEmail)}&status=ALL`} className="mb-1 inline-block rounded-full bg-sand/20 px-2.5 py-0.5 text-xs font-semibold text-sand hover:underline">
+                ★ {returningLabel(order.customerOrderCount)}
+              </Link>
+            )}
             <p>
               <a className="text-accent-text hover:underline" href={`mailto:${order.customerEmail}?subject=${encodeURIComponent(`Your order ${order.orderNumber}`)}`}>
                 {order.customerEmail}
@@ -116,10 +122,20 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
               <Row label="Items" value={money(order.subtotalCents)} />
               <Row label="Order fee" value={money(order.baseFeeCents)} />
               {order.minimumAdjCents > 0 && <Row label="Minimum top-up" value={money(order.minimumAdjCents)} />}
+              {(JSON.parse(order.appliedCodes) as AppliedCode[]).map((a) => (
+                <Row key={a.code} label={a.kind === "GIFT_CARD" ? `Gift card ${a.code}` : a.label} value={`−${money(a.amountCents)}`} />
+              ))}
               <Row label="Total paid" value={money(order.totalCents)} strong />
               {order.cardLast4 && <Row label="Card" value={`${order.cardBrand ?? "Card"} •••• ${order.cardLast4}`} />}
             </dl>
-            <p className="mt-2 break-all font-mono text-xs text-faint">Square payment {order.squarePaymentId}</p>
+            <p className="mt-2 break-all font-mono text-xs text-faint">{order.squarePaymentId.startsWith("nopay_") ? "No card payment (covered by gift card)" : `Square payment ${order.squarePaymentId}`}</p>
+            {order.squareCustomerId ? (
+              <a href={`https://app.squareup.com/dashboard/customers/directory/customer/${order.squareCustomerId}`} target="_blank" rel="noopener noreferrer" className="mt-1 block text-accent-text hover:underline">
+                Customer in Square
+              </a>
+            ) : (
+              <p className="mt-1 text-xs text-faint">Not linked to a Square customer yet (retrying in the background).</p>
+            )}
             {order.receiptUrl && (
               <a href={order.receiptUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-accent-text hover:underline">
                 Square receipt

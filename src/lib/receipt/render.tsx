@@ -5,7 +5,8 @@ import { ImageResponse } from "next/og";
 import { pickup } from "@config/pickup";
 import { site } from "@config/site";
 import { db } from "@/lib/db";
-import { hours, money } from "@/lib/format";
+import { hours, money, returningLabel } from "@/lib/format";
+import type { AppliedCode } from "@/lib/codes/apply";
 import { pickupParts } from "@/lib/pickup";
 
 /** 72 mm of printable width at 203 dpi on the TSP650II series. */
@@ -23,6 +24,8 @@ export type ReceiptData = {
   items: { fileName: string; quantity: number; detail: string; lineCents: number }[];
   baseFeeCents: number;
   minimumAdjCents: number;
+  discounts: { label: string; amountCents: number }[];
+  returning: string | null;
   totalCents: number;
   card: string | null;
   paymentId: string;
@@ -49,9 +52,11 @@ export async function loadReceiptData(orderId: string): Promise<ReceiptData | nu
     })),
     baseFeeCents: o.baseFeeCents,
     minimumAdjCents: o.minimumAdjCents,
+    discounts: (JSON.parse(o.appliedCodes) as AppliedCode[]).map((a) => ({ label: a.label, amountCents: a.amountCents })),
+    returning: returningLabel(o.customerOrderCount),
     totalCents: o.totalCents,
     card: o.cardLast4 ? `${(o.cardBrand ?? "Card").replace(/_/g, " ")} ending ${o.cardLast4}` : null,
-    paymentId: o.squarePaymentId,
+    paymentId: o.squarePaymentId.startsWith("nopay_") ? "none (gift card)" : o.squarePaymentId,
   };
 }
 
@@ -59,7 +64,7 @@ export async function loadReceiptData(orderId: string): Promise<ReceiptData | nu
  * Fonts: real Arial if arial.ttf / arialbd.ttf are in RECEIPT_FONT_DIR
  * (default ./fonts), otherwise the bundled Arimo (metric-identical to Arial).
  */
-function loadFonts() {
+export function loadFonts() {
   // Runtime-only paths: tell the bundler not to trace the whole project.
   const dir = path.resolve(/* turbopackIgnore: true */ process.cwd(), process.env.RECEIPT_FONT_DIR ?? "fonts");
   const find = (name: string) => {
@@ -76,7 +81,7 @@ function loadFonts() {
 
 /** The black wordmark as a data URI (falls back to text if the file is missing). */
 let wordmarkCache: string | null = null;
-function wordmark() {
+export function wordmark() {
   if (!wordmarkCache) {
     const file = path.resolve(/* turbopackIgnore: true */ process.cwd(), "public/brand/wordmark-black.png");
     wordmarkCache = `data:image/png;base64,${readFileSync(file).toString("base64")}`;
@@ -98,7 +103,7 @@ const Row = ({ left, right, size = 22, bold = false }: { left: string; right: st
 export async function renderReceiptPng(d: ReceiptData, opts: { test?: boolean } = {}): Promise<Buffer> {
   const fonts = loadFonts();
   const noteLines = d.notes ? Math.ceil(d.notes.length / 40) + d.notes.split("\n").length : 0;
-  const height = Math.min(4000, 620 + d.items.length * 70 + noteLines * 26 + (d.minimumAdjCents ? 28 : 0) + (opts.test ? 50 : 0));
+  const height = Math.min(4000, 640 + d.discounts.length * 26 + d.items.length * 70 + noteLines * 26 + (d.minimumAdjCents ? 28 : 0) + (opts.test ? 50 : 0));
 
   const tree = (
     <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", background: "white", color: "black", fontFamily: fonts.family, padding: "0 4px", fontSize: 22, lineHeight: 1.2 }}>
@@ -127,6 +132,7 @@ export async function renderReceiptPng(d: ReceiptData, opts: { test?: boolean } 
 
       <div style={{ display: "flex", flexDirection: "column", marginTop: 8 }}>
         <span style={{ fontSize: 28, fontWeight: 700 }}>{d.customerName}</span>
+        {d.returning && <span style={{ fontSize: 20, fontWeight: 700 }}>★ {d.returning}</span>}
         <span style={{ fontSize: 22, wordBreak: "break-all" }}>{d.customerEmail}</span>
         <span style={{ fontSize: 22 }}>{d.customerPhone}</span>
       </div>
@@ -140,6 +146,9 @@ export async function renderReceiptPng(d: ReceiptData, opts: { test?: boolean } 
       ))}
       <Row left="Order fee" right={money(d.baseFeeCents)} size={20} />
       {d.minimumAdjCents > 0 && <Row left="Minimum order top-up" right={money(d.minimumAdjCents)} size={20} />}
+      {d.discounts.map((x) => (
+        <Row key={x.label} left={x.label} right={`-${money(x.amountCents)}`} size={20} />
+      ))}
       <Row left="TOTAL PAID (CAD)" right={money(d.totalCents)} size={28} bold />
       <span style={{ fontSize: 15 }}>
         {d.card ? `${d.card} · ` : ""}Square {d.paymentId}

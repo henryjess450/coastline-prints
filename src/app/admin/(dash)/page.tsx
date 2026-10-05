@@ -7,6 +7,7 @@ import { getEffectiveConfig } from "@/lib/config/effective";
 import { db } from "@/lib/db";
 import { money } from "@/lib/format";
 import { formatPickup } from "@/lib/pickup";
+import { printReceiptAction } from "@/app/admin/actions";
 import { ORDER_STATUSES } from "@/lib/orders/status";
 import { cn } from "@/lib/cn";
 import type { Prisma } from "@/generated/prisma/client";
@@ -110,13 +111,22 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
                     </td>
                     <td className="px-4 py-3">
                       {o.customerName}
+                      {o.customerOrderCount > 1 && <span className="ml-2 rounded-full bg-sand/20 px-2 py-0.5 text-[11px] font-semibold text-sand">★ Returning</span>}
                       <div className="text-xs text-faint">{pieces} piece{pieces === 1 ? "" : "s"}</div>
                     </td>
                     <td className="px-4 py-3 text-muted">{formatPickup(o.pickupDate, o.pickupTime, pickup) ?? "Not booked"}</td>
                     <td className="px-4 py-3 text-muted">{printers}</td>
                     <td className="px-4 py-3 text-right font-mono">{money(o.totalCents)}</td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={o.status} />
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={o.status} />
+                        <form action={printReceiptAction}>
+                          <input type="hidden" name="orderId" value={o.id} />
+                          <button title="Reprint ticket" aria-label={`Reprint ticket for ${o.orderNumber}`} className="rounded-full border border-line px-2 py-0.5 text-xs text-muted hover:border-accent-line hover:text-fg">
+                            Reprint
+                          </button>
+                        </form>
+                      </div>
                     </td>
                   </tr>
                 );

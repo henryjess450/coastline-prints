@@ -16,6 +16,8 @@ import { useOrder, type CartItem } from "@/lib/order/store";
 import { cartPayload, type CartQuote } from "@/lib/order/use-quote";
 import { PaymentMethods, type PaymentMethodsHandle, type SquareConfig } from "./PaymentMethods";
 import { PickupPicker, type PickupChoice } from "./PickupPicker";
+import { CodeBox } from "./CodeBox";
+import { applyCodes, type CodeInfo } from "@/lib/codes/apply";
 
 type Contact = { name: string; email: string; phone: string; notes: string; pickupAcknowledged: boolean; termsAccepted: boolean };
 type FieldErrors = Partial<Record<keyof Contact, string>>;
@@ -36,8 +38,12 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
   const [payError, setPayError] = useState<{ message: string; n: number } | null>(null);
 
   const quote = cartQuote.quote;
-  const total = quote?.ok ? quote.totalCents : 0;
-  const canPay = !!square && !!quote?.ok && cartQuote.confirmed && !busy;
+  const [codes, setCodes] = useState<CodeInfo[]>([]);
+  const orderTotal = quote?.ok ? quote.totalCents : 0;
+  const discount = applyCodes(orderTotal, codes);
+  const total = discount.totalCents;
+  const covered = !!quote?.ok && total === 0;
+  const canPay = (!!square || covered) && !!quote?.ok && cartQuote.confirmed && !busy;
 
   const set = <K extends keyof Contact>(k: K, v: Contact[K]) => {
     setContact((c) => ({ ...c, [k]: v }));
@@ -74,7 +80,10 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
   async function payWithCard() {
     setPayError(null);
     const customer = validate();
-    if (!customer || !payRef.current) return;
+    if (!customer) return;
+    // Gift cards cover everything: no card needed.
+    if (covered) return submit("", customer);
+    if (!payRef.current) return;
     setBusy("verifying");
     const [givenName, ...rest] = customer.name.split(/\s+/);
     let token: string;
@@ -103,7 +112,7 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
   async function submit(sourceId: string, customer: ReturnType<typeof customerSchema.parse>) {
     setBusy("charging");
     const attemptId = crypto.randomUUID();
-    const body = JSON.stringify({ attemptId, sourceId, customer, pickup, items: cartPayload(items), expectedTotalCents: total });
+    const body = JSON.stringify({ attemptId, sourceId, customer, pickup, items: cartPayload(items), expectedTotalCents: total, codes: codes.map((c) => c.code) });
 
     // One automatic retry on a lost connection. The same attempt id means Square won't charge twice.
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -127,6 +136,10 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
       if (data.code === "PICKUP_UNAVAILABLE") {
         setPickup(null);
         return fail("That pickup time just became unavailable. Please choose another one and pay again.");
+      }
+      if (data.code === "CODE_INVALID") {
+        if (data.badCode) setCodes((cs) => cs.filter((c) => c.code !== data.badCode));
+        return fail(`${data.error ?? "One of your codes can't be used."} Your card was not charged.`);
       }
       if (data.code === "PRICE_CHANGED") return fail(`The price changed to ${money(data.totalCents)}. Please review it and pay again.`);
       return fail(data.error ?? "The payment didn't go through. Your card was not charged.");
@@ -206,7 +219,9 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
         <Card className="relative overflow-hidden p-5 sm:p-6">
           <h2 className="font-display text-xl font-bold">Payment</h2>
           <div className="mt-4">
-            {square ? (
+            {covered ? (
+              <p className="rounded-xl bg-success/15 p-3 text-sm text-success">Your gift card covers this whole order. No card needed.</p>
+            ) : square ? (
               <PaymentMethods ref={payRef} config={square} totalCents={total} disabled={!canPay} onWalletToken={payWithWallet} onWalletError={fail} />
             ) : (
               <p className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm">
@@ -235,7 +250,7 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
           </AnimatePresence>
 
           <Button size="lg" className="mt-5 w-full" disabled={!canPay} onClick={payWithCard}>
-            Pay {quote?.ok ? money(total) : ""}
+            {covered ? "Place order" : `Pay ${quote?.ok ? money(total) : ""}`}
           </Button>
           {!cartQuote.confirmed && <p className="mt-2 text-center text-xs text-faint">Confirming your price…</p>}
 
@@ -298,7 +313,14 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
               <dt className="text-muted">{site.fulfillmentLabel}</dt>
               <dd className="font-mono">Free</dd>
             </div>
+            {discount.applied.map((a) => (
+              <div key={a.code} className="flex justify-between text-success">
+                <dt>{a.label}</dt>
+                <dd className="font-mono">−{money(a.amountCents)}</dd>
+              </div>
+            ))}
           </dl>
+          <CodeBox orderTotalCents={orderTotal} codes={codes} result={discount} onChange={setCodes} disabled={!!busy || !quote?.ok} />
           <div className="mt-3 flex items-end justify-between border-t-2 border-line-strong pt-3">
             <span className="text-sm text-muted">Total (CAD)</span>
             <AnimatedNumber value={total} format={formatTotal} className="font-display text-3xl font-bold tabular-nums" />

@@ -4,7 +4,8 @@ import { db } from "@/lib/db";
 import { buildEmail, EMAIL_TEMPLATES, type EmailTemplate } from "@/lib/email/build";
 import { loadOrderEmailData } from "@/lib/email/data";
 import { getMailer, PermanentEmailError, type Mailer } from "@/lib/email/transport";
-import { printOrderReceipt } from "@/lib/receipt/print";
+import { printCodeSlip, printOrderReceipt } from "@/lib/receipt/print";
+import { findOrCreateSquareCustomer } from "@/lib/square/customers";
 import { postDiscordNewOrder } from "./discord";
 
 /**
@@ -23,7 +24,7 @@ export function backoffMs(attempts: number) {
   return BACKOFF_MIN[Math.min(attempts - 1, BACKOFF_MIN.length - 1)] * 60_000;
 }
 
-type Payload = { orderId: string; note?: string | null; test?: boolean };
+type Payload = { orderId: string; codeId?: string; note?: string | null; test?: boolean };
 
 let running: Promise<ProcessResult> | null = null;
 export type ProcessResult = { sent: number; failed: number; retrying: number };
@@ -80,7 +81,17 @@ async function run({ limit = 25, mailer, now = new Date() }: { limit?: number; m
 class UnknownJobError extends Error {}
 
 async function deliver(kind: string, template: string, payload: Payload, jobId: string, mailer?: Mailer) {
+  if (kind === "square") {
+    if (template !== "customer-sync") throw new UnknownJobError(`Unknown Square job ${template}`);
+    const order = await db.order.findUnique({ where: { id: payload.orderId } });
+    if (!order) throw new UnknownJobError(`Order ${payload.orderId} not found`);
+    if (order.squareCustomerId) return;
+    const id = await findOrCreateSquareCustomer({ name: order.customerName, email: order.customerEmail, phone: order.customerPhone });
+    await db.order.update({ where: { id: order.id }, data: { squareCustomerId: id } });
+    return;
+  }
   if (kind === "print") {
+    if (template === "code-slip") return printCodeSlip(payload.codeId!);
     if (template !== "order-receipt") throw new UnknownJobError(`Unknown print template ${template}`);
     return printOrderReceipt(payload.orderId, { test: payload.test });
   }
