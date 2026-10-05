@@ -15,8 +15,14 @@ You need [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 ```bash
 git clone https://github.com/henryjess450/coastline-prints.git
 cd coastline-prints
-cp .env.example .env        # then fill in your values (Windows: copy .env.example .env)
+cp .env.example .env        # then fill in your values
 docker compose up -d --build
+```
+
+On Windows, instead of `cp`, run this to create `.env` by answering a few questions:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File windows\new-env.ps1
 ```
 
 - Site on the PC: <http://localhost:3100>
