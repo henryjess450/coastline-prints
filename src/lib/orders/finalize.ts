@@ -153,6 +153,9 @@ function notificationJobs(orderId: string): Prisma.OutboxJobCreateManyInput[] {
     { kind: "email", template: "owner-new-order", payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:owner-new-order` },
     { kind: "email", template: "customer-receipt", payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:customer-receipt` },
   ];
+  if (process.env.RECEIPT_PRINTER_HOST) {
+    jobs.push({ kind: "print", template: "order-receipt", payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:order-receipt` });
+  }
   if (process.env.DISCORD_WEBHOOK_URL) {
     jobs.push({ kind: "discord", template: "discord-new-order", payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:discord-new-order` });
   }

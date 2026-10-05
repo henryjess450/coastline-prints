@@ -61,6 +61,12 @@ export function OrderWizard({ square }: { square: SquareConfig | null }) {
             </h1>
             <p className="mb-8 text-center text-muted">You can add up to 10 files. Next you&apos;ll set the size, material and colour for each one.</p>
             <Dropzone />
+            <p className="mt-4 text-center text-sm text-muted">
+              Don&apos;t have a file?{" "}
+              <a href="/library" className="text-accent-text underline underline-offset-4">
+                Search for a model
+              </a>
+            </p>
           </motion.section>
         ) : step === 2 ? (
           <motion.section key="checkout" {...stepMotion} aria-labelledby="checkout-title">

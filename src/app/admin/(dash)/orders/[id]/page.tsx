@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { pickup } from "@config/pickup";
-import { retryJobAction } from "@/app/admin/actions";
+import { printReceiptAction, retryJobAction } from "@/app/admin/actions";
 import { OrderItems, type AdminItem } from "@/components/admin/OrderItems";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { StatusControl } from "@/components/admin/StatusControl";
@@ -23,6 +23,7 @@ const jobLabel: Record<string, string> = {
   "ready-for-pickup": "Ready-for-pickup email",
   "status-update": "Status update email",
   "discord-new-order": "Discord message",
+  "order-receipt": "Printed receipt",
 };
 
 export default async function AdminOrderPage({ params }: { params: Promise<{ id: string }> }) {
@@ -127,7 +128,12 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
           </Card>
 
           <Card className="p-5 text-sm">
-            <h2 className="mb-3 font-display text-lg font-semibold">Emails</h2>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="font-display text-lg font-semibold">Emails and receipt</h2>
+              <a href={`/api/admin/orders/${order.id}/receipt`} target="_blank" className="text-xs text-accent-text hover:underline">
+                View receipt
+              </a>
+            </div>
             <ul className="space-y-2">
               {jobs.map((j) => (
                 <li key={j.id} className="flex items-start justify-between gap-2">
@@ -147,6 +153,12 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
                 </li>
               ))}
             </ul>
+            <form action={printReceiptAction} className="mt-4">
+              <input type="hidden" name="orderId" value={order.id} />
+              <button className="w-full rounded-full border border-line px-4 py-2 text-sm font-medium hover:border-accent-line">
+                {process.env.RECEIPT_PRINTER_HOST ? "Print receipt" : "Print receipt (printer not set up)"}
+              </button>
+            </form>
           </Card>
 
           <Card className="p-5 text-sm">

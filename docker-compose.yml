@@ -17,6 +17,7 @@ services:
       - coastline-data:/app/data # database
       - coastline-storage:/app/storage # uploaded STL files
       - ./backups:/app/backups # backups appear in this folder on your PC
+      - ./fonts:/app/fonts:ro # optional: arial.ttf + arialbd.ttf for receipts
     ports:
       # Only for checking at http://localhost:3100 on the PC itself.
       - "127.0.0.1:3100:3100"

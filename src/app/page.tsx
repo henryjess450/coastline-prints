@@ -76,8 +76,8 @@ export default async function Home() {
               <ButtonLink href="/order" size="lg">
                 Start an order
               </ButtonLink>
-              <ButtonLink href="#pricing" size="lg" variant="secondary">
-                See pricing
+              <ButtonLink href="/library" size="lg" variant="secondary">
+                Find a model
               </ButtonLink>
             </div>
           </div>

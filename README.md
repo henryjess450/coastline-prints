@@ -44,6 +44,25 @@ Orders, status pipeline (moving an order to "Ready for pickup" emails the custom
 printer queues, STL downloads with 3D preview, and pricing/colour settings.
 Customers check progress at `/status` with their order number and email.
 
+## Receipt printer
+
+Each paid order prints a receipt (Arial-style text, pickup date and time in large type)
+on a Star TSP654II over the network. Set `RECEIPT_PRINTER_HOST` in `.env`. Reprint
+from the order page in admin, or test with:
+
+```bash
+docker compose exec app npx tsx --conditions=react-server scripts/print-test.mts
+```
+
+Receipts use Arimo (bundled, metric-identical to Arial). For real Arial, copy
+`arial.ttf` and `arialbd.ttf` from `C:\Windows\Fonts` into the `fonts` folder.
+
+## Model library
+
+`/library` searches Thingiverse, MyMiniFactory and Cults3D through their official APIs
+(add the API keys in `.env`; each is optional) and links to MakerWorld, Printables and
+Thangs searches, which don't offer public APIs.
+
 ## Configuration
 
 | What | Where |

@@ -90,3 +90,17 @@ export function formatPickup(date: string | null | undefined, time: string | nul
   const start = h * 60 + m;
   return `${day}, ${slotLabel(start, start + cfg.slotMinutes)}`;
 }
+
+/** Fully explicit parts for printed receipts: "Saturday, October 10, 2026" and "5:00 PM to 6:00 PM". */
+export function pickupParts(date: string | null | undefined, time: string | null | undefined, cfg: PickupConfig) {
+  if (!date || !time) return null;
+  const dt = new Date(`${date}T12:00:00Z`);
+  const day = dayFmt({ weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(dt);
+  const [h, m] = time.split(":").map(Number);
+  const clock = (mins: number) => {
+    const hh = Math.floor(mins / 60) % 24;
+    return `${hh % 12 === 0 ? 12 : hh % 12}:${String(mins % 60).padStart(2, "0")} ${hh < 12 ? "AM" : "PM"}`;
+  };
+  const start = h * 60 + m;
+  return { date: day, time: `${clock(start)} to ${clock(start + cfg.slotMinutes)}` };
+}

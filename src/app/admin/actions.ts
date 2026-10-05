@@ -66,6 +66,17 @@ export async function retryJobAction(form: FormData) {
   if (orderId) revalidatePath(`/admin/orders/${orderId}`);
 }
 
+export async function printReceiptAction(form: FormData) {
+  await requireAdmin();
+  const orderId = String(form.get("orderId") ?? "");
+  if (!(await db.order.findUnique({ where: { id: orderId }, select: { id: true } }))) return;
+  await db.outboxJob.create({
+    data: { kind: "print", template: "order-receipt", payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:print:${Date.now()}` },
+  });
+  sendNotificationsSoon("admin-print");
+  revalidatePath(`/admin/orders/${orderId}`);
+}
+
 export async function savePricingAction(_: ActionState, form: FormData): Promise<ActionState> {
   await requireAdmin();
   const dollars = (k: string) => Math.round(Number(form.get(k)) * 100);
