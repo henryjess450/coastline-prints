@@ -1,18 +1,27 @@
+import Image from "next/image";
 import Link from "next/link";
-import { uploads } from "@config/site";
+import { gallery } from "@config/gallery";
+import { pickup } from "@config/pickup";
+import { legal, uploads } from "@config/site";
+import { HeroDrop } from "@/components/home/HeroDrop";
+import { HowItWorks } from "@/components/home/HowItWorks";
+import { MaterialSwatches } from "@/components/home/MaterialSwatches";
+import { PriceSlider } from "@/components/home/PriceSlider";
+import { Reveal } from "@/components/home/Reveal";
+import { CircleMark } from "@/components/layout/CircleMark";
 import { ButtonLink } from "@/components/ui/Button";
-import { Card, SectionLabel } from "@/components/ui/Card";
+import { SectionLabel } from "@/components/ui/Card";
+import { MAX_GIFT_CARDS } from "@/lib/codes/apply";
 import { getEffectiveConfig } from "@/lib/config/effective";
-import { hours, money } from "@/lib/format";
-import { quoteOrder } from "@/lib/pricing/quote";
+import { money } from "@/lib/format";
 
 export const dynamic = "force-dynamic"; // shows live rates from admin settings
 
 const steps = [
   { title: "Upload", body: `Drag in one or more .stl files, up to ${uploads.maxFileMb} MB each. Each file is checked for holes and unit mistakes.` },
-  { title: "Size and colour", body: "Scale the model, pick PLA, PETG or PLA-CF and a colour. The price updates as you change things." },
-  { title: "Pay", body: "Pay by card, Apple Pay or Google Pay through Square. The order is only placed once the payment goes through." },
-  { title: "Pick up", body: "You get an email when your print is ready. It includes the pickup address." },
+  { title: "Size", body: "Scale the model in the 3D preview and pick PLA, PETG or PLA-CF and a colour. The price updates as you change things." },
+  { title: "Pay", body: "Pay by card, Apple Pay or Google Pay through Square, and choose a pickup time. The order is only placed once the payment goes through." },
+  { title: "Pick up", body: "You get an email when your print is ready. The pickup address comes with your receipt." },
 ];
 
 const faqs = [
@@ -33,6 +42,10 @@ const faqs = [
     a: "The pickup address is shown after you pay and is in your confirmation email. There is no shipping.",
   },
   {
+    q: "Which printers do you use?",
+    a: "A Bambu Lab A1 Mini for smaller parts and an Elegoo Centauri Carbon for bigger parts and anything in PLA-CF. Each part is sent to the right printer automatically.",
+  },
+  {
     q: "Can I cancel?",
     a: "Yes, for a full refund, as long as printing hasn't started. After that the order can't be cancelled.",
     link: { href: "/terms", label: "Terms & Conditions" },
@@ -48,153 +61,130 @@ export default async function Home() {
   const cfg = await getEffectiveConfig();
   const p = cfg.pricing;
 
-  // A worked example from the real pricing engine: a 20 mm calibration cube.
-  const cube = { size: { x: 20, y: 20, z: 20 }, volumeMm3: 8000, surfaceAreaMm2: 2400, material: "PLA" as const, colorId: cfg.materials[0].colors.find((c) => c.available && c.pricePerGramCents == null)?.id ?? "", quality: "standard", infill: "standard" };
-  const one = quoteOrder([{ ...cube, quantity: 1 }], cfg);
-  const ten = quoteOrder([{ ...cube, quantity: 10 }], cfg);
-  const oneItem = one.items[0];
-
   return (
     <>
-      <section className="relative overflow-hidden">
-        <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 pb-16 pt-14 sm:px-6 sm:pt-20 lg:grid-cols-[1.2fr_1fr]">
-          <div>
-            <h1 className="font-display text-5xl font-bold leading-[1.02] tracking-tight sm:text-6xl">
-              Upload an STL.
-              <br />
-              Get a price.
-              <br />
-              <span className="text-accent-text">Pick up your print.</span>
-            </h1>
-            <p className="mt-6 max-w-xl text-lg text-muted">
-              PLA, PETG and carbon-fibre PLA, printed on a Bambu Lab A1 Mini or an Elegoo Centauri Carbon. You see the exact price before you pay.
+      <HeroDrop config={cfg}>
+        <h1 className="font-display text-5xl font-bold leading-[1.02] tracking-tight sm:text-6xl">
+          Upload an STL.
+          <br />
+          Get a price.
+          <br />
+          <span className="text-accent-text">Pick up your print.</span>
+        </h1>
+        <div className="mt-12 flex flex-wrap gap-4">
+          <ButtonLink href="/order" size="lg">
+            Start an order
+          </ButtonLink>
+          <ButtonLink href="/library" size="lg" variant="secondary">
+            Find a model
+          </ButtonLink>
+        </div>
+      </HeroDrop>
+
+      <PickupStrip />
+
+      {gallery.length > 0 ? (
+        <section id="gallery" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-24 sm:px-6 sm:py-32">
+          <Reveal>
+            <SectionLabel>Past prints</SectionLabel>
+            <h2 className="mt-3 font-display text-3xl font-bold tracking-tight sm:text-4xl">What we&apos;ve printed</h2>
+          </Reveal>
+          <ul className="mt-12 grid grid-cols-2 gap-6 md:grid-cols-3 lg:grid-cols-4">
+            {gallery.map((g, i) => (
+              <Reveal as="li" key={g.src} delay={Math.min(i, 6) * 0.05}>
+                <figure className="group overflow-hidden rounded-2xl border border-line bg-surface transition-[transform,box-shadow] duration-200 hover:-translate-y-1 hover:shadow-[var(--shadow)]">
+                  <div className="relative aspect-square overflow-hidden bg-surface-strong">
+                    <Image src={g.src} alt={g.alt} fill sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw" className="object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+                  </div>
+                  <figcaption className="p-3">
+                    <p className="font-medium leading-tight">{g.title}</p>
+                    <p className="mt-0.5 text-xs text-muted">
+                      {g.material} · {g.colour}
+                    </p>
+                  </figcaption>
+                </figure>
+              </Reveal>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      <section id="how-it-works" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-24 sm:px-6 sm:py-32">
+        <Reveal>
+          <SectionLabel>How it works</SectionLabel>
+          <h2 className="mt-3 font-display text-3xl font-bold tracking-tight sm:text-4xl">From file to finished part</h2>
+        </Reveal>
+        <HowItWorks steps={steps} />
+      </section>
+
+      <section id="pricing" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-24 sm:px-6 sm:py-32">
+        <Reveal>
+          <SectionLabel>Pricing</SectionLabel>
+          <h2 className="mt-3 font-display text-3xl font-bold tracking-tight sm:text-4xl">See what bigger costs</h2>
+          <p className="mt-4 max-w-2xl leading-relaxed text-muted">Drag the slider. The price comes from the same pricing as checkout, using today&apos;s rates.</p>
+        </Reveal>
+        <Reveal delay={0.05} className="mt-12">
+          <PriceSlider config={cfg} />
+        </Reveal>
+        <Reveal delay={0.1}>
+          <dl className="mt-6 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3 lg:grid-cols-5">
+            <Rate label="Order fee, once per order" value={money(p.baseFeeCents)} />
+            <Rate label="Filament" value={`${p.pricePerGramCents}¢ per gram`} />
+            <Rate label="Machine time" value={`${money(p.pricePerHourCents)} per hour`} />
+            <Rate label="Per printed piece" value={money(p.markupPerPieceCents)} />
+            <Rate label="Minimum order" value={money(p.minimumOrderCents)} />
+          </dl>
+          <p className="mt-4 text-xs text-faint">Some specialty spools, like PLA Wood, cost a little more per gram. All prices in CAD.</p>
+        </Reveal>
+      </section>
+
+      <section id="materials" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-24 sm:px-6 sm:py-32">
+        <Reveal>
+          <SectionLabel>Materials</SectionLabel>
+          <h2 className="mt-3 font-display text-3xl font-bold tracking-tight sm:text-4xl">Materials and colours in stock</h2>
+          <p className="mt-4 max-w-2xl leading-relaxed text-muted">Tap a colour to see it on a sample print.</p>
+        </Reveal>
+        <MaterialSwatches materials={cfg.materials} />
+      </section>
+
+      <section id="gift-cards" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-24 sm:px-6 sm:py-32">
+        <div className="grid items-center gap-12 rounded-3xl border border-line bg-surface p-8 sm:p-14 md:grid-cols-[1fr_auto]">
+          <Reveal>
+            <SectionLabel>Gift cards and coupons</SectionLabel>
+            <h2 className="mt-3 font-display text-3xl font-bold tracking-tight">Have a gift card or coupon?</h2>
+            <p className="mt-4 max-w-xl leading-relaxed text-muted">
+              Enter the number in the code box at checkout and it comes off your total. Gift cards also need the PIN printed on the card. You can use one coupon and up to{" "}
+              {MAX_GIFT_CARDS} gift cards on each order.
             </p>
-            <div className="mt-8 flex flex-wrap gap-4">
-              <ButtonLink href="/order" size="lg">
-                Start an order
-              </ButtonLink>
-              <ButtonLink href="/library" size="lg" variant="secondary">
-                Find a model
-              </ButtonLink>
-            </div>
-          </div>
-
-          <HeroBlocks />
+            <p className="mt-4 max-w-xl leading-relaxed text-muted">
+              Want to give one? Email{" "}
+              <a href={`mailto:${legal.contactEmail}?subject=Gift%20card`} className="font-medium text-accent-text underline underline-offset-4">
+                {legal.contactEmail}
+              </a>
+              .
+            </p>
+          </Reveal>
+          <Reveal delay={0.08}>
+            <GiftCardArt />
+          </Reveal>
         </div>
       </section>
 
-      <section id="how-it-works" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-16 sm:px-6">
-        <SectionLabel>How it works</SectionLabel>
-        <h2 className="mt-2 font-display text-3xl font-bold tracking-tight sm:text-4xl">From file to finished part</h2>
-        <ol className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {steps.map((s, i) => (
-            <li key={s.title}>
-              <Card className="h-full p-6">
-                <span className="grid h-10 w-10 place-items-center rounded-full bg-accent font-display text-lg font-bold text-accent-ink">
-                  {i + 1}
-                </span>
-                <h3 className="mt-4 font-semibold">{s.title}</h3>
-                <p className="mt-1 text-sm text-muted">{s.body}</p>
-              </Card>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <section id="pricing" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-16 sm:px-6">
-        <SectionLabel>Pricing</SectionLabel>
-        <h2 className="mt-2 font-display text-3xl font-bold tracking-tight sm:text-4xl">How your price is worked out</h2>
-        <div className="mt-8 grid gap-4 lg:grid-cols-[1fr_1fr]">
-          <Card className="p-6">
-            <dl className="divide-y divide-line text-sm">
-              <PriceRow label="Order fee (once per order)" value={money(p.baseFeeCents)} />
-              <PriceRow label="Filament" value={`${p.pricePerGramCents}¢ per gram`} />
-              <PriceRow label="Machine time" value={`${money(p.pricePerHourCents)} per hour`} />
-              <PriceRow label="Per printed piece" value={money(p.markupPerPieceCents)} />
-              <PriceRow label="Minimum order" value={money(p.minimumOrderCents)} />
-            </dl>
-            <p className="mt-4 text-xs text-faint">Some specialty spools, like PLA Wood, cost a little more per gram. All prices in CAD.</p>
-          </Card>
-          <Card className="p-6">
-            <h3 className="font-semibold">Example: a 20 mm cube in PLA</h3>
-            <p className="mt-1 text-sm text-muted">Standard quality, standard infill.</p>
-            {oneItem?.ok && (
-              <dl className="mt-4 space-y-1 text-sm">
-                <PriceRow label={`Filament (${oneItem.gramsEach.toFixed(1)} g)`} value={money(oneItem.filamentCents)} />
-                <PriceRow label={`Machine time (${hours(oneItem.hoursTotal)})`} value={money(oneItem.machineCents)} />
-                <PriceRow label="Per-piece fee" value={money(oneItem.markupCents)} />
-                <PriceRow label="Order fee" value={money(one.baseFeeCents)} />
-                {one.minimumAdjCents > 0 && <PriceRow label="Minimum order top-up" value={money(one.minimumAdjCents)} />}
-                <div className="flex justify-between border-t-2 border-line-strong pt-2 font-semibold">
-                  <span>1 cube</span>
-                  <span className="font-mono">{money(one.totalCents)}</span>
-                </div>
-                <div className="flex justify-between text-muted">
-                  <span>10 cubes in one order</span>
-                  <span className="font-mono">{money(ten.totalCents)}</span>
-                </div>
-              </dl>
-            )}
-          </Card>
-        </div>
-      </section>
-
-      <section id="materials" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-16 sm:px-6">
-        <SectionLabel>Materials</SectionLabel>
-        <h2 className="mt-2 font-display text-3xl font-bold tracking-tight sm:text-4xl">Materials and colours in stock</h2>
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
-          {cfg.materials.map((m) => {
-            const colors = m.colors.filter((c) => c.available);
-            return (
-              <Card key={m.id} className="p-6">
-                <h3 className="font-display text-xl font-bold">{m.name}</h3>
-                <p className="mt-1 text-sm text-muted">{m.description}</p>
-                <ul className="mt-4 space-y-1.5 text-sm" aria-label={`${m.name} colours`}>
-                  {colors.map((c) => (
-                    <li key={c.id} className="flex items-center gap-2">
-                      <span className="h-4 w-4 shrink-0 rounded-full border border-line-strong" style={{ background: c.hex }} />
-                      {c.name}
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-            );
-          })}
-        </div>
-      </section>
-
-      <section id="printers" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-16 sm:px-6">
-        <SectionLabel>Printers</SectionLabel>
-        <h2 className="mt-2 font-display text-3xl font-bold tracking-tight sm:text-4xl">Each part goes to the right printer</h2>
-        <p className="mt-2 max-w-2xl text-muted">
-          Small parts print on the A1 Mini. Bigger parts, and anything in PLA-CF, print on the Centauri Carbon. A {cfg.safetyMarginMm} mm margin is kept free on every side.
-        </p>
-        <div className="mt-8 grid gap-4 md:grid-cols-2">
-          {cfg.printers.map((pr) => (
-            <Card key={pr.id} className="p-6">
-              <h3 className="font-display text-xl font-bold">{pr.name}</h3>
-              <p className="mt-1 font-mono text-sm text-muted">
-                {pr.buildVolume.x} × {pr.buildVolume.y} × {pr.buildVolume.z} mm bed · max part {pr.buildVolume.x - cfg.safetyMarginMm} mm
-              </p>
-              <p className="mt-3 text-sm text-muted">Prints: {pr.materials.join(", ")}</p>
-            </Card>
-          ))}
-        </div>
-      </section>
-
-      <section id="faq" className="mx-auto max-w-3xl scroll-mt-20 px-4 py-16 sm:px-6">
-        <SectionLabel>FAQ</SectionLabel>
-        <h2 className="mt-2 font-display text-3xl font-bold tracking-tight sm:text-4xl">Questions</h2>
-        <div className="mt-8 space-y-3">
+      <section id="faq" className="mx-auto max-w-3xl scroll-mt-20 px-4 py-24 sm:px-6 sm:py-32">
+        <Reveal>
+          <SectionLabel>FAQ</SectionLabel>
+          <h2 className="mt-3 font-display text-3xl font-bold tracking-tight sm:text-4xl">Questions</h2>
+        </Reveal>
+        <div className="mt-12 space-y-4">
           {faqs.map((f) => (
-            <details key={f.q} className="group glass rounded-xl px-5 py-4 [&_summary::-webkit-details-marker]:hidden">
+            <details key={f.q} className="group glass rounded-2xl px-6 py-5 [&_summary::-webkit-details-marker]:hidden">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-medium">
                 {f.q}
                 <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 border-line text-accent-text transition-transform duration-300 group-open:rotate-45" aria-hidden>
                   +
                 </span>
               </summary>
-              <p className="mt-3 text-sm text-muted">
+              <p className="mt-4 text-sm leading-relaxed text-muted">
                 {f.a}{" "}
                 {f.link && (
                   <Link href={f.link.href} className="text-accent-text underline underline-offset-4">
@@ -208,10 +198,10 @@ export default async function Home() {
       </section>
 
       <section className="mx-auto max-w-7xl px-4 sm:px-6">
-        <div className="flex flex-col items-start justify-between gap-6 rounded-3xl bg-accent p-8 text-accent-ink sm:flex-row sm:items-center sm:p-10">
+        <div className="flex flex-col items-start justify-between gap-6 rounded-3xl bg-accent p-10 text-accent-ink sm:flex-row sm:items-center sm:p-14">
           <div>
             <h2 className="font-display text-2xl font-bold sm:text-3xl">Have an STL ready?</h2>
-            <p className="mt-1 opacity-80">Upload it and see the price in under a minute.</p>
+            <p className="mt-2 opacity-80">Upload it and see the price in under a minute.</p>
           </div>
           <ButtonLink href="/order" size="lg" variant="secondary">
             Start an order
@@ -222,39 +212,84 @@ export default async function Home() {
   );
 }
 
-function PriceRow({ label, value }: { label: string; value: string }) {
+function Rate({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between gap-4 py-2">
-      <dt className="text-muted">{label}</dt>
-      <dd className="font-mono font-medium">{value}</dd>
+    <div className="rounded-xl border border-line bg-surface px-3 py-2">
+      <dt className="text-xs text-faint">{label}</dt>
+      <dd className="mt-0.5 font-mono font-medium">{value}</dd>
     </div>
   );
 }
 
-/** Solid-colour stacked "print" made of blocks, with a few toy shapes. */
-function HeroBlocks() {
-  const layers = [
-    { w: "86%", c: "#0e4471" },
-    { w: "74%", c: "#185a92" },
-    { w: "62%", c: "#2f74b3" },
-    { w: "50%", c: "#4f91cc" },
-    { w: "38%", c: "#7bb0e0" },
-    { w: "26%", c: "#a9cdef" },
-  ];
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function clock(h: number) {
+  const suffix = h < 12 || h === 24 ? "am" : "pm";
+  const twelve = h % 12 === 0 ? 12 : h % 12;
+  return `${twelve} ${suffix}`;
+}
+
+/** Groups days with the same hours: "Monday to Friday, 4 pm to 8 pm". Week starts Monday. */
+function pickupHours(hoursByDay: Record<number, [number, number] | null>) {
+  const order = [1, 2, 3, 4, 5, 6, 0];
+  const groups: { days: number[]; hours: [number, number] }[] = [];
+  for (const d of order) {
+    const h = hoursByDay[d];
+    if (!h) continue;
+    const last = groups.at(-1);
+    const prevDay = last?.days.at(-1);
+    const adjacent = prevDay != null && order.indexOf(d) === order.indexOf(prevDay) + 1;
+    if (last && adjacent && last.hours[0] === h[0] && last.hours[1] === h[1]) last.days.push(d);
+    else groups.push({ days: [d], hours: h });
+  }
+  return groups.map((g) => {
+    const first = DAY_NAMES[g.days[0]];
+    const lastDay = DAY_NAMES[g.days.at(-1)!];
+    const days = g.days.length === 1 ? first : g.days.length === 2 ? `${first} and ${lastDay}` : `${first} to ${lastDay}`;
+    return { days, hours: `${clock(g.hours[0])} to ${clock(g.hours[1])}` };
+  });
+}
+
+/** Pickup hours and turnaround in one strip. No address here: that's only sent after payment. */
+function PickupStrip() {
+  const groups = pickupHours(pickup.hours);
   return (
-    <div className="relative mx-auto aspect-square w-full max-w-md" aria-hidden>
-      <div className="absolute inset-x-0 bottom-6 mx-auto h-4 w-[92%] rounded-sm bg-line-strong" />
-      <div className="absolute inset-x-0 bottom-10 flex flex-col-reverse items-center gap-1.5">
-        {layers.map((l, i) => (
-          <div
-            key={i}
-            className="h-10 rounded-full  motion-safe:animate-[layer-in_0.6s_cubic-bezier(0.34,1.56,0.64,1)_both]"
-            style={{ width: l.w, background: l.c, animationDelay: `${0.15 + i * 0.12}s` }}
-          />
-        ))}
-      </div>
-      <div className="absolute left-2 top-6 h-14 w-14 rotate-12 rounded-2xl  bg-seafoam motion-safe:animate-[bob_4s_ease-in-out_infinite]" />
-      <div className="absolute right-4 top-16 h-10 w-10 -rotate-12 rounded-full  bg-sand motion-safe:animate-[bob_5s_ease-in-out_0.6s_infinite]" />
+    <section aria-labelledby="pickup-title" className="mx-auto max-w-7xl px-4 pt-8 sm:px-6">
+      <Reveal>
+        <div className="grid gap-8 rounded-3xl border border-line bg-surface p-8 sm:p-12 md:grid-cols-[auto_auto_auto] md:items-center md:justify-between md:gap-16">
+          <h2 id="pickup-title" className="font-display text-2xl font-bold">
+            Local pickup
+          </h2>
+          <div>
+            <p className="text-sm text-faint">Ready in</p>
+            <p className="mt-1 font-display text-xl font-semibold">2 to 5 days</p>
+          </div>
+          <div>
+            <p className="text-sm text-faint">Pickup hours</p>
+            <ul className="mt-1 space-y-1 font-medium">
+              {groups.map((g) => (
+                <li key={g.days} className="md:whitespace-nowrap">
+                  {g.days}, {g.hours}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </Reveal>
+    </section>
+  );
+}
+
+/** A gift card in the printed slip's style: the wordmark lettering and the circle mark. */
+function GiftCardArt() {
+  return (
+    <div className="relative mx-auto aspect-[1.586] w-72 -rotate-3 rounded-2xl bg-accent p-5 text-accent-ink shadow-[var(--shadow)] transition-transform duration-200 hover:-translate-y-1 hover:rotate-0 sm:w-80" aria-hidden>
+      <CircleMark size={44} className="absolute right-4 top-4 rounded-full ring-2 ring-white/30" />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/brand/lettering/coastline-prints.png" alt="" className="h-5 w-auto invert" />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/brand/lettering/gift-card.png" alt="" className="mt-3 h-10 w-auto invert" />
+      <p className="absolute bottom-5 left-5 font-mono text-sm tracking-widest opacity-80">•••• •••• •••• 2026</p>
     </div>
   );
 }
