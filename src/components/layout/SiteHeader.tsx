@@ -5,7 +5,6 @@ import { motion, useScroll, useTransform } from "framer-motion";
 import { site } from "@config/site";
 import { buttonClass, ButtonLink } from "@/components/ui/Button";
 import { Logo } from "./Logo";
-import { ThemeToggle } from "./ThemeToggle";
 
 const nav = [
   { href: "/#how-it-works", label: "How it works" },
@@ -37,7 +36,6 @@ export function SiteHeader() {
           ))}
         </nav>
         <div className="flex items-center gap-3">
-          <ThemeToggle />
           {!pathname.startsWith("/admin") && (
             <Link href="/account" aria-label="Your account" title="Your account" className={buttonClass("secondary", "sm", "w-10 px-0")}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>

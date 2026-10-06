@@ -29,6 +29,8 @@ type Props = {
   boatAt?: { wide: number; narrow: number };
   boatSize?: number;
   sun?: boolean;
+  /** Where the sun sits, as fractions of the width and height (overrides the default spots). */
+  sunAt?: { x: number; y: number };
   birds?: boolean;
   /** Sail the Benchy in from the left edge when the scene appears. */
   enter?: boolean;
@@ -67,6 +69,7 @@ export function HeroWater({
   boatAt = { wide: 0.8, narrow: 0.7 },
   boatSize = 1,
   sun: showSun = true,
+  sunAt,
   birds = true,
   enter = false,
   enterSeconds = ENTER_S,
@@ -172,7 +175,7 @@ export function HeroWater({
   });
 
   // On phones the sun sits low on the horizon, clear of the buttons.
-  const sun = wide ? { x: w * 0.84, y: h * 0.2 } : { x: w * 0.84, y: surface - 6 };
+  const sun = sunAt ? { x: w * sunAt.x, y: h * sunAt.y } : wide ? { x: w * 0.84, y: h * 0.2 } : { x: w * 0.84, y: surface - 6 };
 
   return (
     <div ref={ref} className="pointer-events-none absolute inset-0 -z-10" aria-hidden>

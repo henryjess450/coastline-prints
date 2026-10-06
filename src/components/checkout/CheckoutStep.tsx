@@ -19,6 +19,7 @@ import { cartPayload, type CartQuote } from "@/lib/order/use-quote";
 import { PaymentMethods, type PaymentMethodsHandle, type SquareConfig } from "./PaymentMethods";
 import { PickupPicker, type PickupChoice } from "./PickupPicker";
 import { CodeBox } from "./CodeBox";
+import { useAccount } from "@/components/account/use-account";
 import { applyCodes, codeEntry, type CodeInfo } from "@/lib/codes/apply";
 
 type Contact = {
@@ -51,6 +52,21 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
     termsAccepted: false,
   });
   const [errors, setErrors] = useState<FieldErrors>({});
+
+  // Signed in: fill in their saved details (only boxes they haven't typed in), and glow them briefly.
+  const [flash, setFlash] = useState<Set<keyof Contact>>(new Set());
+  const typed = useRef(contact);
+  useEffect(() => {
+    typed.current = contact;
+  });
+  const account = useAccount((a) => {
+    if (!a.signedIn) return;
+    const fill = (["name", "email", "phone"] as const).filter((k) => !typed.current[k].trim() && a[k]);
+    if (!fill.length) return;
+    setContact((c) => ({ ...c, ...Object.fromEntries(fill.filter((k) => !c[k].trim()).map((k) => [k, a[k]])) }));
+    setFlash(new Set(fill));
+    setTimeout(() => setFlash(new Set()), 1600);
+  });
   const [pickup, setPickup] = useState<PickupChoice>(null);
   const [pickupError, setPickupError] = useState<string>();
   const [busy, setBusy] = useState<false | "verifying" | "charging" | "processing">(false);
@@ -250,6 +266,7 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
         <Card flat className="p-6 sm:p-8">
           <h2 className="font-display text-xl font-bold">Your details</h2>
           <p className="mt-2 text-sm leading-relaxed text-muted">We use these to send your receipt and tell you when your order is ready.</p>
+          <AccountNote account={account} />
           <div className="mt-6 grid gap-5 sm:grid-cols-2">
             <Field id="co-name" label="Full name" error={errors.name} valid={contact.name.trim().length >= 2} className="sm:col-span-2">
               <input
@@ -257,7 +274,7 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
                 autoComplete="name"
                 value={contact.name}
                 onChange={(e) => set("name", e.target.value)}
-                className={inputClass(errors.name)}
+                className={inputClass(errors.name, flash.has("name"))}
                 aria-invalid={!!errors.name}
                 aria-describedby="co-name-err"
               />
@@ -269,7 +286,7 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
                 autoComplete="email"
                 value={contact.email}
                 onChange={(e) => set("email", e.target.value)}
-                className={inputClass(errors.email)}
+                className={inputClass(errors.email, flash.has("email"))}
                 aria-invalid={!!errors.email}
                 aria-describedby="co-email-err"
               />
@@ -282,7 +299,7 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
                 placeholder="604 555 0123"
                 value={contact.phone}
                 onChange={(e) => set("phone", e.target.value)}
-                className={inputClass(errors.phone)}
+                className={inputClass(errors.phone, flash.has("phone"))}
                 aria-invalid={!!errors.phone}
                 aria-describedby="co-phone-err"
               />
@@ -462,10 +479,10 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
   );
 }
 
-function inputClass(error?: string) {
+function inputClass(error?: string, flash?: boolean) {
   return cn(
-    "h-11 w-full rounded-xl border bg-surface px-3.5 pr-10 text-sm text-fg outline-none transition-[border-color,box-shadow] placeholder:text-faint focus:border-accent-line focus:shadow-[0_0_0_4px_var(--accent-soft)]",
-    error ? "border-danger/60" : "border-line",
+    "h-11 w-full rounded-xl border bg-surface px-3.5 pr-10 text-sm text-fg outline-none transition-[border-color,box-shadow] duration-500 placeholder:text-faint focus:border-accent-line focus:shadow-[0_0_0_4px_var(--accent-soft)]",
+    error ? "border-danger/60" : flash ? "border-accent-line shadow-[0_0_0_4px_var(--accent-soft)]" : "border-line",
   );
 }
 
@@ -555,5 +572,49 @@ function Check({ id, checked, onChange, error, children }: { id: string; checked
       </label>
       {error && <p className="mt-1 pl-8 text-xs text-danger">{error}</p>}
     </div>
+  );
+}
+
+/** "Filled in from your account" when signed in, or a nudge to sign in when not. */
+function AccountNote({ account }: { account: ReturnType<typeof useAccount> }) {
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      {account?.signedIn ? (
+        <motion.div
+          key="in"
+          initial={{ opacity: 0, y: -8, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ type: "spring", stiffness: 320, damping: 22 }}
+          className="mt-4 flex items-center gap-3 rounded-2xl bg-accent-soft px-4 py-3 text-sm"
+        >
+          <motion.span className="relative grid h-8 w-8 shrink-0 place-items-center rounded-full bg-surface text-accent-text" initial={{ rotate: -90, scale: 0 }} animate={{ rotate: 0, scale: 1 }} transition={{ type: "spring", stiffness: 400, damping: 16, delay: 0.1 }} aria-hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" />
+            </svg>
+            <motion.span className="absolute -bottom-1 -right-1 grid h-4 w-4 place-items-center rounded-full bg-success text-white" initial={{ scale: 0 }} animate={{ scale: [0, 1.3, 1] }} transition={{ delay: 0.4, duration: 0.35 }}>
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 13l4 4L19 7" />
+              </svg>
+            </motion.span>
+          </motion.span>
+          <p className="min-w-0 leading-snug">
+            Signed in as <strong className="break-all">{account.email}</strong>. We filled in your details.{" "}
+            <Link href="/account/settings" target="_blank" className="whitespace-nowrap text-accent-text underline underline-offset-4">
+              Edit
+            </Link>
+          </p>
+        </motion.div>
+      ) : account ? (
+        <motion.p key="out" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="mt-3 text-sm text-muted">
+          Have an account?{" "}
+          <a href="/account" target="_blank" rel="noopener" className="text-accent-text underline underline-offset-4">
+            Sign in
+          </a>{" "}
+          and come back to this tab to fill this in for you.
+        </motion.p>
+      ) : null}
+    </AnimatePresence>
   );
 }

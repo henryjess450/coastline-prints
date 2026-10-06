@@ -12,6 +12,7 @@ import { Wallet } from "@/components/account/Wallet";
 import { Reveal } from "@/components/home/Reveal";
 import { Card } from "@/components/ui/Card";
 import { currentCustomer } from "@/lib/account/auth";
+import { firstName, profileFor } from "@/lib/account/profile";
 import { walletFor } from "@/lib/account/wallet";
 import { db } from "@/lib/db";
 import { money } from "@/lib/format";
@@ -29,19 +30,29 @@ export default async function AccountPage() {
       </div>
     );
 
-  const [items, points, orders] = await Promise.all([
+  const [items, points, orders, profile] = await Promise.all([
     walletFor(customer.id),
     rewardsSummary(customer.email),
-    db.order.findMany({ where: { customerEmail: customer.email }, orderBy: { createdAt: "desc" }, take: 20, select: { orderNumber: true, viewToken: true, status: true, totalCents: true, createdAt: true, customerName: true } }),
+    db.order.findMany({ where: { customerEmail: customer.email }, orderBy: { createdAt: "desc" }, take: 20, select: { orderNumber: true, viewToken: true, status: true, totalCents: true, createdAt: true } }),
+    profileFor(customer),
   ]);
-  // Greet them by the first name on their latest order, or the start of their email.
-  const name = orders[0]?.customerName.split(/\s+/)[0] || customer.email.split("@")[0].replace(/^./, (c) => c.toUpperCase());
+  // Greet them by their saved (or latest order's) first name, or the start of their email.
+  const name = firstName(profile);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 pb-16 pt-8 sm:px-6 sm:pt-12">
       <WelcomeBurst />
       <AccountHero name={name} email={customer.email}>
-        <SignOutButton />
+        <div className="flex flex-wrap items-center gap-3">
+          <Link href="/account/settings" className="group btn btn-secondary h-10 gap-2 px-4 text-sm">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform duration-500 group-hover:rotate-90" aria-hidden>
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+            </svg>
+            Settings
+          </Link>
+          <SignOutButton />
+        </div>
       </AccountHero>
 
       <Reveal>

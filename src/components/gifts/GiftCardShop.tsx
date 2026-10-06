@@ -1,6 +1,7 @@
 "use client";
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAccount } from "@/components/account/use-account";
 import { PaymentMethods, type PaymentMethodsHandle, type SquareConfig } from "@/components/checkout/PaymentMethods";
 import { AnimatedNumber } from "@/components/motion/AnimatedNumber";
 import { bounce, Button } from "@/components/ui/Button";
@@ -39,6 +40,11 @@ export function GiftCardShop({ square, range, demo = false }: { square: SquareCo
   const [result, setResult] = useState<PayResult>("pending");
   const [sent, setSent] = useState<{ recipientName: string; sendOn: string | null } | null>(null);
   const attempt = useRef<string | null>(null);
+  // Signed in: fill in "from" with their saved name and email, unless they've typed something.
+  useAccount((a) => {
+    if (!a.signedIn) return;
+    setFields((f) => ({ ...f, buyerName: f.buyerName || a.name, buyerEmail: f.buyerEmail || a.email }));
+  });
 
   const customCents = Math.round(Number(custom.replace(/[$,\s]/g, "")) * 100);
   const amountCents = preset === "custom" ? (Number.isFinite(customCents) ? customCents : 0) : preset;

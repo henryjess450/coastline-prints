@@ -263,6 +263,11 @@ model Customer {
   email      String            @unique
   /// Their customer record in Square (found or created once, never duplicated).
   squareCustomerId String?
+  /// Saved details, used to fill in checkout. Empty until they set them or place an order.
+  name       String?
+  phone      String?
+  /// "light" or "dark"; applied whenever they sign in.
+  theme      String?
   createdAt  DateTime          @default(now())
   lastSeenAt DateTime?
   sessions   CustomerSession[]

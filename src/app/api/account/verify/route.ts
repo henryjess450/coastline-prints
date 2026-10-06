@@ -1,4 +1,6 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { THEME_COOKIE, THEME_COOKIE_OPTIONS } from "@/lib/theme";
 import { z } from "zod";
 import { LoginError, normalizeEmail, startSession, verifyLoginCode } from "@/lib/account/auth";
 import { apiError } from "@/lib/api";
@@ -16,7 +18,9 @@ export async function POST(req: Request) {
   try {
     const customer = await verifyLoginCode(normalizeEmail(parsed.data.email), parsed.data.code);
     await startSession(customer.id);
-    return NextResponse.json({ ok: true, email: customer.email });
+    // Their saved light or dark choice follows them to this device.
+    if (customer.theme === "light" || customer.theme === "dark") (await cookies()).set(THEME_COOKIE, customer.theme, THEME_COOKIE_OPTIONS);
+    return NextResponse.json({ ok: true, email: customer.email, theme: customer.theme });
   } catch (err) {
     if (err instanceof LoginError) return apiError(401, err.message);
     throw err;

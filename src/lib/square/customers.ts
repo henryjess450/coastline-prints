@@ -128,3 +128,30 @@ export async function findOrCreateWithTimeout(c: CustomerDetails, ms = 4000): Pr
     clearTimeout(timer);
   }
 }
+
+/**
+ * Sends an account's changed name, phone or email to its Square customer.
+ * Never makes a duplicate: if another Square customer already has the new
+ * email, the account is pointed at that one instead; if the account has no
+ * Square customer yet (or it was deleted), it goes through
+ * findOrCreateSquareCustomer. Returns the Square id now linked to the account.
+ */
+export async function updateSquareCustomer(c: CustomerDetails & { squareCustomerId: string | null }): Promise<string> {
+  const email = c.email.trim().toLowerCase();
+  const byEmail = await searchByEmail(email);
+  const id = byEmail ?? c.squareCustomerId;
+  if (!id) return findOrCreateSquareCustomer({ ...c, email });
+
+  const [givenName, ...rest] = c.name.trim().split(/\s+/);
+  const phone = toE164(c.phone);
+  const details = { customerId: id, givenName: givenName || undefined, familyName: rest.join(" ") || undefined, emailAddress: email };
+  try {
+    await getSquare().customers.update({ ...details, phoneNumber: phone ?? undefined });
+  } catch (err) {
+    if (err instanceof SquareError && err.statusCode === 404) return findOrCreateSquareCustomer({ ...c, email }); // deleted in Square
+    // A phone number Square won't take shouldn't stop the rest from updating.
+    if (phone && err instanceof SquareError && err.errors.some((e) => /PHONE/i.test(`${e.code ?? ""} ${e.field ?? ""}`))) await getSquare().customers.update(details);
+    else throw err;
+  }
+  return id;
+}

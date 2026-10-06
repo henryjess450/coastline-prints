@@ -34,8 +34,11 @@ export async function createLoginCode(email: string, now = new Date()) {
 
 export class LoginError extends Error {}
 
-/** Checks a code. On success, returns the customer (creating the account on first sign-in). */
-export async function verifyLoginCode(email: string, code: string, now = new Date()) {
+/**
+ * Checks and uses up a code made by createLoginCode for `key` (an email, or
+ * an email-change key). Throws a LoginError if it's wrong, old or used.
+ */
+export async function consumeCode(email: string, code: string, now = new Date()) {
   const row = await db.loginCode.findFirst({ where: { email, usedAt: null }, orderBy: { createdAt: "desc" } });
   if (!row || row.expiresAt <= now) throw new LoginError("That code has expired. Please ask for a new one.");
   if (row.attempts >= CODE_TRIES) throw new LoginError("Too many wrong tries. Please ask for a new code.");
@@ -47,6 +50,11 @@ export async function verifyLoginCode(email: string, code: string, now = new Dat
   }
   const { count } = await db.loginCode.updateMany({ where: { id: row.id, usedAt: null }, data: { usedAt: now } });
   if (count !== 1) throw new LoginError("That code was already used. Please ask for a new one.");
+}
+
+/** Checks a code. On success, returns the customer (creating the account on first sign-in). */
+export async function verifyLoginCode(email: string, code: string, now = new Date()) {
+  await consumeCode(email, code, now);
   const customer = await db.customer.upsert({ where: { email }, create: { email, lastSeenAt: now }, update: { lastSeenAt: now } });
   if (!customer.squareCustomerId) await queueSquareSync(customer.id);
   return customer;
@@ -59,9 +67,13 @@ export async function verifyLoginCode(email: string, code: string, now = new Dat
  * Only with production or sandbox Square keys, so local testing with the
  * live keys never adds test customers to the real Square account.
  */
+export function squareSyncEnabled() {
+  if (!process.env.SQUARE_ACCESS_TOKEN) return false;
+  return process.env.NODE_ENV === "production" || process.env.SQUARE_ENVIRONMENT === "sandbox";
+}
+
 async function queueSquareSync(customerId: string) {
-  if (!process.env.SQUARE_ACCESS_TOKEN) return;
-  if (process.env.NODE_ENV !== "production" && process.env.SQUARE_ENVIRONMENT !== "sandbox") return;
+  if (!squareSyncEnabled()) return;
   const dedupeKey = `${customerId}:account-sync`;
   await db.outboxJob.upsert({
     where: { dedupeKey },

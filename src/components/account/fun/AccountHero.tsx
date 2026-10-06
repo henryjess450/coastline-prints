@@ -8,7 +8,7 @@ export function AccountHero({ name, email, children }: { name: string; email: st
   return (
     <section className="relative isolate overflow-hidden rounded-3xl border border-line bg-surface">
       <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden>
-        <HeroWater surface={{ wide: 0.66, narrow: 0.7 }} boatAt={{ wide: 0.84, narrow: 0.76 }} boatSize={0.62} enter enterSeconds={3} />
+        <HeroWater surface={{ wide: 0.66, narrow: 0.7 }} boatAt={{ wide: 0.84, narrow: 0.76 }} boatSize={0.62} sunAt={{ x: 0.9, y: 0.24 }} enter enterSeconds={3} />
       </div>
       <div className="flex min-h-[17rem] flex-col justify-start p-6 sm:min-h-[19rem] sm:p-10">
         <h1 className="font-display text-4xl font-bold tracking-tight sm:text-5xl" aria-label={greeting}>

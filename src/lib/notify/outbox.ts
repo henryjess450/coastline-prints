@@ -8,7 +8,8 @@ import { buildGiftEmail } from "@/lib/giftcards/emails";
 import { buildRewardEmail } from "@/lib/codes/reward-email";
 import { GIFT_EMAIL_TEMPLATES, loadGiftData, type GiftEmailTemplate } from "@/lib/giftcards/server";
 import { printCodeSlip, printOrderReceipt } from "@/lib/receipt/print";
-import { findOrCreateSquareCustomer } from "@/lib/square/customers";
+import { findOrCreateSquareCustomer, updateSquareCustomer } from "@/lib/square/customers";
+import { profileFor } from "@/lib/account/profile";
 import { postDiscordNewOrder } from "./discord";
 
 /**
@@ -89,9 +90,18 @@ async function deliver(kind: string, template: string, payload: Payload, jobId: 
     const account = await db.customer.findUnique({ where: { id: payload.customerId ?? "" } });
     if (!account) throw new UnknownJobError(`Account ${payload.customerId} not found`);
     if (account.squareCustomerId) return;
-    const last = await db.order.findFirst({ where: { customerEmail: account.email }, orderBy: { createdAt: "desc" }, select: { customerName: true, customerPhone: true } });
-    const id = await findOrCreateSquareCustomer({ name: last?.customerName ?? "", email: account.email, phone: last?.customerPhone ?? "" });
+    const profile = await profileFor(account);
+    const id = await findOrCreateSquareCustomer({ name: profile.name, email: account.email, phone: profile.phone });
     await db.customer.update({ where: { id: account.id }, data: { squareCustomerId: id } });
+    return;
+  }
+  if (kind === "square" && template === "account-update") {
+    // They changed their details in settings: update their Square customer (never a duplicate).
+    const account = await db.customer.findUnique({ where: { id: payload.customerId ?? "" } });
+    if (!account) throw new UnknownJobError(`Account ${payload.customerId} not found`);
+    const profile = await profileFor(account);
+    const id = await updateSquareCustomer({ name: profile.name, email: account.email, phone: profile.phone, squareCustomerId: account.squareCustomerId });
+    if (id !== account.squareCustomerId) await db.customer.update({ where: { id: account.id }, data: { squareCustomerId: id } });
     return;
   }
   if (kind === "square") {

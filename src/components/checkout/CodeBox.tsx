@@ -86,27 +86,65 @@ export function CodeBox({
       <label htmlFor="code-input" className="text-sm font-medium">
         Coupons or Gift Cards? Add them here!
       </label>
-      {/* Saved to their account: tap to use */}
+      {/* Saved to their account: they pop up here, tap one to use it */}
       <AnimatePresence initial={false}>
         {savedReady.length > 0 && (
-          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-            <p className="mt-3 text-xs font-medium text-muted">Saved to your account</p>
-            <ul className="mt-2 flex flex-wrap gap-2">
-              {savedReady.map((w, i) => (
-                <motion.li key={w.code} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
-                  <motion.button
-                    type="button"
-                    whileHover={{ y: -2 }}
-                    whileTap={{ scale: 0.94 }}
-                    disabled={disabled || checking}
-                    onClick={() => void add(w.code)}
-                    className="rounded-full border border-accent-line bg-accent-soft px-3.5 py-1.5 text-left text-xs font-medium text-fg"
-                  >
-                    {w.title} <span className="font-mono text-faint">···{w.code.slice(-4)}</span>
-                  </motion.button>
-                </motion.li>
-              ))}
-            </ul>
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ type: "spring", stiffness: 260, damping: 26 }}
+            className="overflow-hidden"
+          >
+            <div className="mt-3 rounded-2xl bg-accent-soft p-3">
+              <p className="flex items-center gap-2 text-xs font-semibold text-accent-text">
+                <motion.span className="inline-block h-2 w-2 rounded-full bg-sand" animate={{ scale: [1, 1.6, 1], opacity: [1, 0.6, 1] }} transition={{ duration: 1.4, repeat: Infinity }} aria-hidden />
+                {savedReady.length === 1 ? "You have 1 saved to your account. Tap to use it." : `You have ${savedReady.length} saved to your account. Tap to use them.`}
+              </p>
+              <ul className="mt-2.5 flex flex-wrap gap-2">
+                <AnimatePresence>
+                  {savedReady.map((w, i) => (
+                    <motion.li
+                      key={w.code}
+                      layout
+                      initial={{ opacity: 0, scale: 0.4, y: 10, rotate: -8 }}
+                      animate={{ opacity: 1, scale: 1, y: 0, rotate: 0 }}
+                      exit={{ opacity: 0, scale: 0.4, y: -12 }}
+                      transition={{ type: "spring", stiffness: 420, damping: 16, delay: 0.15 + i * 0.08 }}
+                    >
+                      <motion.button
+                        type="button"
+                        whileHover={{ y: -3, rotate: -2 }}
+                        whileTap={{ scale: 0.9 }}
+                        disabled={disabled || checking}
+                        onClick={() => void add(w.code)}
+                        className={
+                          w.kind === "GIFT_CARD"
+                            ? "flex items-center gap-2 rounded-xl bg-accent px-3 py-2 text-left text-xs font-medium text-accent-ink shadow-[var(--shadow)]"
+                            : "flex items-center gap-2 rounded-xl border border-accent-line bg-surface px-3 py-2 text-left text-xs font-medium text-fg"
+                        }
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          {w.kind === "GIFT_CARD" ? (
+                            <>
+                              <rect x="3" y="8" width="18" height="13" rx="2" />
+                              <path d="M12 8v13M3 12h18M12 8c-2-4-6-4-6-1s6 1 6 1 6 2 6-1-4-3-6 1" />
+                            </>
+                          ) : (
+                            <path d="M3 9a2 2 0 0 0 0 6v3h18v-3a2 2 0 0 1 0-6V6H3zM9 9l6 6" />
+                          )}
+                        </svg>
+                        <span>
+                          {w.title}
+                          <span className="ml-1.5 font-mono opacity-60">···{w.code.slice(-4)}</span>
+                        </span>
+                        <span className="ml-1 rounded-full bg-black/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">Use</span>
+                      </motion.button>
+                    </motion.li>
+                  ))}
+                </AnimatePresence>
+              </ul>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

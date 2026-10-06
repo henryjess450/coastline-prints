@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { pickup as pickupConfig } from "@config/pickup";
 import { SquareError } from "square";
 import { customerFromRequest } from "@/lib/account/auth";
+import { rememberOrderDetails } from "@/lib/account/profile";
 import { apiError, logError } from "@/lib/api";
 import { checkoutRequestSchema } from "@/lib/checkout/schema";
 import { applyCodes } from "@/lib/codes/apply";
@@ -74,7 +75,11 @@ export async function POST(req: Request) {
       return apiError(422, bad && !bad.ok ? bad.error : "One of your items can't be printed.");
     }
     // Codes saved to an account only work when signed in to it.
-    const account = codes.length ? await customerFromRequest(req) : null;
+    const account = await customerFromRequest(req);
+    // Signed in and ordering with their own email: keep the name and phone for next time, if not saved yet.
+    if (account && account.email === customer.email.trim().toLowerCase()) {
+      await rememberOrderDetails(account.id, account.email, customer).catch((e) => logError("checkout:remember", e));
+    }
     const { records, errors } = await lookupCodes(codes, new Date(), account?.id ?? null);
     if (errors.length) return apiError(409, `${errors[0].code}: ${errors[0].reason}`, { code: "CODE_INVALID", badCode: errors[0].code });
     const discount = applyCodes(priced.totalCents, records.map(toCodeInfo));
