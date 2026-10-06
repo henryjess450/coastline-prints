@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { pickup as pickupConfig } from "@config/pickup";
 import { SquareError } from "square";
+import { customerFromRequest } from "@/lib/account/auth";
 import { apiError, logError } from "@/lib/api";
 import { checkoutRequestSchema } from "@/lib/checkout/schema";
 import { applyCodes } from "@/lib/codes/apply";
@@ -72,7 +73,9 @@ export async function POST(req: Request) {
       const bad = priced.items.find((i) => !i.ok);
       return apiError(422, bad && !bad.ok ? bad.error : "One of your items can't be printed.");
     }
-    const { records, errors } = await lookupCodes(codes);
+    // Codes saved to an account only work when signed in to it.
+    const account = codes.length ? await customerFromRequest(req) : null;
+    const { records, errors } = await lookupCodes(codes, new Date(), account?.id ?? null);
     if (errors.length) return apiError(409, `${errors[0].code}: ${errors[0].reason}`, { code: "CODE_INVALID", badCode: errors[0].code });
     const discount = applyCodes(priced.totalCents, records.map(toCodeInfo));
     if (discount.rejected.length) return apiError(409, `${discount.rejected[0].code}: ${discount.rejected[0].reason}`, { code: "CODE_INVALID", badCode: discount.rejected[0].code });

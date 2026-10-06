@@ -21,7 +21,7 @@ export async function buildGiftEmail(template: GiftEmailTemplate, g: GiftData): 
     case "gift-recipient":
       to = g.recipientEmail;
       subject = `${g.buyerName.split(/\s+/)[0]} sent you a ${g.amount} Coastline Prints gift card`;
-      node = <GiftCardRecipient g={g} orderUrl={orderUrl} />;
+      node = <GiftCardRecipient g={g} orderUrl={orderUrl} redeemUrl={orderUrl.replace(/\/order$/, "/redeem")} />;
       break;
     case "gift-buyer":
       to = g.buyerEmail;

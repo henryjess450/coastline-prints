@@ -202,6 +202,14 @@ model PromoCode {
   redemptions CodeRedemption[]
   /// Set when the card was bought online on the gift card page.
   purchase    GiftPurchase?
+  /// Saved to (and locked to) a customer account at /redeem. Only that account can spend it.
+  ownerId       String?
+  owner         Customer? @relation(fields: [ownerId], references: [id])
+  savedAt       DateTime?
+  /// First-order thank-you coupons: the order they were made for (one per order).
+  rewardOrderId String?   @unique
+
+  @@index([ownerId])
 }
 
 /// A code held for a checkout. RESERVED while paying, USED once paid, RELEASED if the payment failed.
@@ -247,4 +255,59 @@ model GiftPurchase {
   updatedAt       DateTime   @updatedAt
 
   @@index([status, deliverAt])
+}
+
+/// A customer account. Sign-in is by a 6-digit code emailed to them; no passwords.
+model Customer {
+  id         String            @id @default(cuid())
+  email      String            @unique
+  /// Their customer record in Square (found or created once, never duplicated).
+  squareCustomerId String?
+  createdAt  DateTime          @default(now())
+  lastSeenAt DateTime?
+  sessions   CustomerSession[]
+  codes      PromoCode[]
+}
+
+/// A signed-in browser. The cookie holds a random token; only its hash is stored.
+model CustomerSession {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([customerId])
+}
+
+/// A one-time sign-in code (stored hashed), valid for a few minutes and a few tries.
+model LoginCode {
+  id        String    @id @default(cuid())
+  email     String
+  codeHash  String
+  attempts  Int       @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email, createdAt])
+}
+
+/// Rewards points ledger, by email (so points are earned even before someone
+/// makes an account). Earned when an order is picked up; spent on prizes.
+model PointsEntry {
+  id        String   @id @default(cuid())
+  email     String
+  /// Positive when earned, negative when spent on a prize.
+  points    Int
+  kind      String // EARN | REDEEM
+  /// EARN: the order that earned them (once per order).
+  orderId   String?  @unique
+  /// REDEEM: which prize, and the coupon or gift card it made.
+  prizeId   String?
+  codeId    String?
+  createdAt DateTime @default(now())
+
+  @@index([email])
 }

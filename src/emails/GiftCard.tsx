@@ -20,7 +20,7 @@ function CardDetails({ g }: { g: GiftData }) {
 const first = (name: string) => name.split(/\s+/)[0];
 
 /** To the loved one, at 9 am on the chosen day (or straight away). */
-export function GiftCardRecipient({ g, orderUrl }: { g: GiftData; orderUrl: string }) {
+export function GiftCardRecipient({ g, orderUrl, redeemUrl }: { g: GiftData; orderUrl: string; redeemUrl: string }) {
   return (
     <EmailLayout preview={`${first(g.buyerName)} sent you a ${g.amount} Coastline Prints gift card`}>
       <H1>
@@ -39,6 +39,13 @@ export function GiftCardRecipient({ g, orderUrl }: { g: GiftData; orderUrl: stri
       <P muted>
         Upload an STL file, choose the size, material and colour, and at checkout type the card number and PIN into the &ldquo;Coupons or Gift Cards&rdquo; box. Whatever you don&apos;t
         spend stays on the card for next time. It doesn&apos;t expire.
+      </P>
+      <P muted>
+        Tip: save it to your account at{" "}
+        <a href={redeemUrl} style={{ color: colors.brand }}>
+          {redeemUrl.replace(/^https?:\/\//, "")}
+        </a>
+        . Then it&apos;s ready to tap at checkout, and it&apos;s locked to you, so nobody else can use it.
       </P>
       <Section style={{ margin: "18px 0 4px" }}>
         <PillButton href={orderUrl}>Start an order</PillButton>

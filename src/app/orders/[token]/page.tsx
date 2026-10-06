@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/Card";
 import { db } from "@/lib/db";
 import { hours, money } from "@/lib/format";
 import { formatPickup } from "@/lib/pickup";
+import { orderSpend, pointsFor } from "@/lib/rewards/server";
 import type { AppliedCode } from "@/lib/codes/apply";
 
 export const metadata: Metadata = { title: "Order confirmed", robots: { index: false, follow: false } };
@@ -40,6 +41,14 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
           Order <span className="font-mono font-semibold text-fg">{order.orderNumber}</span> · paid {money(order.totalCents)} CAD
         </p>
         <p className="mt-1 text-sm text-faint">A receipt is on its way to {order.customerEmail}.</p>
+        {pointsFor(orderSpend(order)) > 0 && (
+          <p className="mt-3 text-sm">
+            You&apos;ll earn <strong className="text-accent-text">{pointsFor(orderSpend(order))} reward points</strong> when you pick it up.{" "}
+            <Link href="/rewards" className="text-accent-text underline underline-offset-4">
+              See prizes
+            </Link>
+          </p>
+        )}
       </div>
 
       <div className="mt-14 grid gap-6 md:grid-cols-2">

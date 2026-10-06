@@ -14,7 +14,8 @@ import { RECEIPT_WIDTH } from "./render";
 /**
  * Printed gift card and coupon slips, laid out like the owner's design:
  * hand-lettered heading, black panel with the number / PIN / amount,
- * "Can be redeemed at:" + QR code, "Questions or concerns?" + email.
+ * "Can be redeemed at:" + QR code to /redeem (save it to an account),
+ * "Questions or concerns?" + email.
  *
  * Hand lettering: drop transparent PNGs into public/brand/lettering/
  *   coastline-prints.png  gift-card.png  coupon.png  redeem.png  questions.png
@@ -80,7 +81,8 @@ export function renderSampleSlipPng(kind: "gift" | "coupon") {
 async function renderSlip(c: SlipCode) {
   const gift = c.kind === "GIFT_CARD";
 
-  const redeemUrl = `${(process.env.APP_URL ?? "https://coastlineprints.ca").replace(/\/$/, "")}/order`;
+  // The QR code opens /redeem, where they can save it to their account.
+  const redeemUrl = `${(process.env.APP_URL ?? "https://coastlineprints.ca").replace(/\/$/, "")}/redeem`;
   const qr = await QRCode.toString(redeemUrl, { type: "svg", margin: 0, errorCorrectionLevel: "M", color: { dark: "#000000", light: "#ffffff" } });
   const qrSrc = `data:image/svg+xml;base64,${Buffer.from(qr).toString("base64")}`;
 
@@ -131,6 +133,7 @@ async function renderSlip(c: SlipCode) {
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={qrSrc} width={176} height={176} alt={redeemUrl} style={{ marginTop: 10 }} />
       <div style={{ ...line, fontSize: 18, marginTop: 6 }}>{redeemUrl.replace(/^https?:\/\//, "")}</div>
+      <div style={{ ...line, fontSize: 16, marginTop: 2 }}>Scan to save it to your account</div>
 
       <div style={{ display: "flex", marginTop: 22 }}>
         <Heading name="questions" text="Questions or concerns?" height={50} />

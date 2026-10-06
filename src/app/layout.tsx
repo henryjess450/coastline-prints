@@ -15,13 +15,17 @@ const display = localFont({ src: "./fonts/SpaceGrotesk-Variable.woff2", variable
 export const metadata: Metadata = {
   title: { default: site.name, template: `%s · ${site.name}` },
   description: "Upload an STL file, set the size, material and colour, and see the price before you pay. PLA, PETG and PLA-CF prints for local pickup.",
+  // Installed on an iPhone home screen: full screen, with this name under the icon.
+  appleWebApp: { capable: true, title: "Coastline", statusBarStyle: "black-translucent" },
 };
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0f1014" },
-    { media: "(prefers-color-scheme: light)", color: "#faf7f2" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a1520" },
+    { media: "(prefers-color-scheme: light)", color: "#f5f8fb" },
   ],
+  // Lets the installed app draw under the notch; the header and footer pad themselves clear of it.
+  viewportFit: "cover",
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

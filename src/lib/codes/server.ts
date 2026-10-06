@@ -28,7 +28,7 @@ export function unusableReason(c: PromoCode | null, now = new Date()) {
   return null;
 }
 
-function pinMatches(expected: string, given: string) {
+export function pinMatches(expected: string, given: string) {
   const a = Buffer.from(expected);
   const b = Buffer.from(given);
   return a.length === b.length && timingSafeEqual(a, b);
@@ -37,8 +37,10 @@ function pinMatches(expected: string, given: string) {
 /**
  * Loads codes and checks each one. Entries are "CODE" or, for gift cards,
  * "NUMBER:PIN". A wrong PIN gives the same message as an unknown code.
+ * Codes saved to an account only work for that account (`customerId`), and
+ * its owner doesn't need the PIN.
  */
-export async function lookupCodes(raw: string[], now = new Date()) {
+export async function lookupCodes(raw: string[], now = new Date(), customerId: string | null = null) {
   const entries = new Map<string, string>();
   for (const r of raw) {
     const [c, p = ""] = r.split(":");
@@ -51,8 +53,13 @@ export async function lookupCodes(raw: string[], now = new Date()) {
   const errors: { code: string; reason: string }[] = [];
   for (const code of codes) {
     let row = rows.find((r) => r.code === code) ?? null;
-    // Fail closed: a 16-digit gift card number always needs its PIN.
-    const needsPin = !!row && (!!row.pin || (row.kind === "GIFT_CARD" && /^\d{16}$/.test(row.code)));
+    if (row?.ownerId && row.ownerId !== customerId) {
+      errors.push({ code, reason: "That one is saved to an account. Sign in to that account to use it." });
+      continue;
+    }
+    // Fail closed: a 16-digit gift card number always needs its PIN (unless it's saved to this account).
+    const owned = !!row?.ownerId && row.ownerId === customerId;
+    const needsPin = !owned && !!row && (!!row.pin || (row.kind === "GIFT_CARD" && /^\d{16}$/.test(row.code)));
     if (row && needsPin && !(row.pin && pinMatches(row.pin, entries.get(code)!))) row = null;
     const reason = unusableReason(row, now);
     if (reason) errors.push({ code, reason });

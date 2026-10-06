@@ -8,7 +8,9 @@ const links = [
   { href: "/order", label: "Start an order" },
   { href: "/library", label: "Find a model" },
   { href: "/gift-cards", label: "Gift cards" },
+  { href: "/rewards", label: "Rewards" },
   { href: "/status", label: "Order status" },
+  { href: "/app", label: "Get the app" },
   { href: "/#faq", label: "FAQ" },
   { href: "/terms", label: "Terms & Conditions" },
   { href: "/privacy", label: "Privacy Policy" },
@@ -16,7 +18,7 @@ const links = [
 
 export function SiteFooter() {
   return (
-    <footer className="mt-32 border-t border-line">
+    <footer className="mt-32 border-t border-line pb-[env(safe-area-inset-bottom)]">
       <div className="mx-auto max-w-7xl px-4 pt-16 sm:px-6">
         <div className="flex flex-col gap-6 rounded-3xl border border-line bg-surface p-8 sm:flex-row sm:items-center sm:gap-8 sm:p-12">
           <CircleMark size={64} className="shrink-0" />

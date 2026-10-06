@@ -32,6 +32,8 @@ type Props = {
   birds?: boolean;
   /** Sail the Benchy in from the left edge when the scene appears. */
   enter?: boolean;
+  /** How long the sail-in takes, in seconds (defaults to the order page's 6). */
+  enterSeconds?: number;
   /**
    * Called every frame while the Benchy sails in: how far it still is from its
    * parking spot (px, negative while arriving), where its stern is on screen,
@@ -67,6 +69,7 @@ export function HeroWater({
   sun: showSun = true,
   birds = true,
   enter = false,
+  enterSeconds = ENTER_S,
   onTow,
 }: Props = {}) {
   const ref = useRef<HTMLDivElement>(null);
@@ -143,7 +146,7 @@ export function HeroWater({
   let lean = 0;
   // While sailing in it starts just past the left edge, so it's in view
   // straight away; the towed box trails behind it, off screen at first.
-  const enterP = enter && !reduce ? Math.min(1, (time - START_TIME) / ENTER_S) : 1;
+  const enterP = enter && !reduce ? Math.min(1, (time - START_TIME) / enterSeconds) : 1;
   if (enterP < 1) {
     const from = -160;
     boatX = from + (parkedX - from) * glide(enterP);

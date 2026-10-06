@@ -5,6 +5,7 @@ import { buildEmail, EMAIL_TEMPLATES, type EmailTemplate } from "@/lib/email/bui
 import { loadOrderEmailData } from "@/lib/email/data";
 import { getMailer, PermanentEmailError, type Mailer } from "@/lib/email/transport";
 import { buildGiftEmail } from "@/lib/giftcards/emails";
+import { buildRewardEmail } from "@/lib/codes/reward-email";
 import { GIFT_EMAIL_TEMPLATES, loadGiftData, type GiftEmailTemplate } from "@/lib/giftcards/server";
 import { printCodeSlip, printOrderReceipt } from "@/lib/receipt/print";
 import { findOrCreateSquareCustomer } from "@/lib/square/customers";
@@ -26,7 +27,7 @@ export function backoffMs(attempts: number) {
   return BACKOFF_MIN[Math.min(attempts - 1, BACKOFF_MIN.length - 1)] * 60_000;
 }
 
-type Payload = { orderId: string; giftId?: string; codeId?: string; note?: string | null; test?: boolean };
+type Payload = { orderId: string; giftId?: string; codeId?: string; customerId?: string; note?: string | null; test?: boolean };
 
 let running: Promise<ProcessResult> | null = null;
 export type ProcessResult = { sent: number; failed: number; retrying: number };
@@ -83,6 +84,16 @@ async function run({ limit = 25, mailer, now = new Date() }: { limit?: number; m
 class UnknownJobError extends Error {}
 
 async function deliver(kind: string, template: string, payload: Payload, jobId: string, mailer?: Mailer) {
+  if (kind === "square" && template === "account-sync") {
+    // A new account: find or create them in Square (never a duplicate), using their details from any order.
+    const account = await db.customer.findUnique({ where: { id: payload.customerId ?? "" } });
+    if (!account) throw new UnknownJobError(`Account ${payload.customerId} not found`);
+    if (account.squareCustomerId) return;
+    const last = await db.order.findFirst({ where: { customerEmail: account.email }, orderBy: { createdAt: "desc" }, select: { customerName: true, customerPhone: true } });
+    const id = await findOrCreateSquareCustomer({ name: last?.customerName ?? "", email: account.email, phone: last?.customerPhone ?? "" });
+    await db.customer.update({ where: { id: account.id }, data: { squareCustomerId: id } });
+    return;
+  }
   if (kind === "square") {
     if (template !== "customer-sync") throw new UnknownJobError(`Unknown Square job ${template}`);
     const order = await db.order.findUnique({ where: { id: payload.orderId } });
@@ -108,6 +119,11 @@ async function deliver(kind: string, template: string, payload: Payload, jobId: 
   if (kind === "discord") {
     if (template !== "discord-new-order") throw new UnknownJobError(`Unknown Discord template ${template}`);
     return postDiscordNewOrder(data);
+  }
+  if (kind === "email" && template === "first-order-coupon") {
+    const email = await buildRewardEmail(data, payload.codeId ?? "");
+    if (!email) throw new UnknownJobError(`Coupon ${payload.codeId} not found`);
+    return (mailer ?? getMailer()).send(email, jobId);
   }
   if (kind === "email" && (EMAIL_TEMPLATES as readonly string[]).includes(template)) {
     const email = await buildEmail(template as EmailTemplate, data, { note: payload.note });

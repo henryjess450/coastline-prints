@@ -15,6 +15,7 @@ const square = {
   customers: {
     search: vi.fn(async () => ({ customers: [] })),
     create: vi.fn(async () => ({ customer: { id: "SQCUST1" } })),
+    get: vi.fn(async ({ customerId }: { customerId: string }) => ({ customer: { id: customerId } })),
   },
 };
 

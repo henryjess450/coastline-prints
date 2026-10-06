@@ -1,14 +1,16 @@
 "use client";
 import { AnimatePresence, motion, useAnimationControls } from "framer-motion";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { bounce } from "@/components/ui/Button";
 import { applyCodes, isCardNumber, MAX_CODES, normalizeCode, normalizePin, type ApplyResult, type CodeInfo } from "@/lib/codes/apply";
 import { money } from "@/lib/format";
+import type { WalletItem } from "@/lib/account/wallet";
 
 /**
  * "Coupons or Gift Cards? Add them here!" with applied codes as removable chips.
  * A rejected code shakes the input; an accepted one bounces Apply and the new
- * chip wobbles in.
+ * chip wobbles in. Signed-in customers also see their saved cards and coupons
+ * and can tap one to use it (no PIN needed, it's already locked to them).
  */
 export function CodeBox({
   orderTotalCents,
@@ -36,13 +38,24 @@ export function CodeBox({
   };
   const [checking, setChecking] = useState(false);
 
-  async function add() {
-    const code = normalizeCode(value);
+  // Saved cards and coupons for signed-in customers. Re-checked when the tab
+  // regains focus, in case they just signed in from another tab.
+  const [wallet, setWallet] = useState<{ signedIn: boolean; items: WalletItem[] } | null>(null);
+  useEffect(() => {
+    const load = () => fetch("/api/account/wallet").then((r) => (r.ok ? r.json() : null)).then((w) => w && setWallet(w), () => undefined);
+    load();
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, []);
+  const savedReady = (wallet?.items ?? []).filter((w) => w.usable && !codes.some((c) => c.code === w.code));
+
+  async function add(saved?: string) {
+    const code = saved ?? normalizeCode(value);
     if (!code) return;
     if (codes.some((c) => c.code === code)) return setError("That code is already added.");
     if (codes.length >= MAX_CODES) return setError(`You can add up to ${MAX_CODES} codes.`);
-    const cardPin = card ? normalizePin(pin) : "";
-    if (card && cardPin.length !== 7) return setError("Enter the gift card PIN (CP and 5 numbers).");
+    const cardPin = card && !saved ? normalizePin(pin) : "";
+    if (card && !saved && cardPin.length !== 7) return setError("Enter the gift card PIN (CP and 5 numbers).");
     setChecking(true);
     setError(undefined);
     try {
@@ -58,6 +71,7 @@ export function CodeBox({
       if (why) return setError(why.reason);
       onChange(next);
       bounce(applyBtn.current);
+      if (saved) return;
       setValue("");
       setPin("");
     } catch {
@@ -72,6 +86,39 @@ export function CodeBox({
       <label htmlFor="code-input" className="text-sm font-medium">
         Coupons or Gift Cards? Add them here!
       </label>
+      {/* Saved to their account: tap to use */}
+      <AnimatePresence initial={false}>
+        {savedReady.length > 0 && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+            <p className="mt-3 text-xs font-medium text-muted">Saved to your account</p>
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {savedReady.map((w, i) => (
+                <motion.li key={w.code} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
+                  <motion.button
+                    type="button"
+                    whileHover={{ y: -2 }}
+                    whileTap={{ scale: 0.94 }}
+                    disabled={disabled || checking}
+                    onClick={() => void add(w.code)}
+                    className="rounded-full border border-accent-line bg-accent-soft px-3.5 py-1.5 text-left text-xs font-medium text-fg"
+                  >
+                    {w.title} <span className="font-mono text-faint">···{w.code.slice(-4)}</span>
+                  </motion.button>
+                </motion.li>
+              ))}
+            </ul>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {wallet && !wallet.signedIn && (
+        <p className="mt-2 text-xs text-faint">
+          Saved a card to your account?{" "}
+          <a href="/account" target="_blank" rel="noopener" className="text-accent-text underline underline-offset-4">
+            Sign in
+          </a>{" "}
+          and come back to this tab.
+        </p>
+      )}
       <motion.div className="mt-3 flex flex-wrap gap-2" animate={shake}>
         <input
           id="code-input"
@@ -116,7 +163,7 @@ export function CodeBox({
             className="h-10 w-32 rounded-full border border-line bg-surface px-4 font-mono text-sm uppercase outline-none focus:border-accent-line"
           />
         )}
-        <button ref={applyBtn} type="button" onClick={add} disabled={disabled || checking || !value.trim()} className="btn btn-secondary h-10 px-4 text-sm">
+        <button ref={applyBtn} type="button" onClick={() => void add()} disabled={disabled || checking || !value.trim()} className="btn btn-secondary h-10 px-4 text-sm">
           {checking ? "Checking…" : "Apply"}
         </button>
       </motion.div>
