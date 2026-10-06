@@ -95,6 +95,8 @@ async function renderSlip(c: SlipCode) {
   const title = lettering("coastline-prints");
   const wordmark = dataUri(path.resolve(/* turbopackIgnore: true */ root(), "public/brand/wordmark-black.png"));
   const line = { display: "flex", justifyContent: "center", whiteSpace: "nowrap" } as const;
+  // Numbers: large, semibold and spaced out so they read easily on thermal paper.
+  const big = { fontSize: 40, fontWeight: 600, letterSpacing: 1.5, lineHeight: 1.15 } as const;
 
   const tree = (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%", height: "100%", background: "white", color: "black", fontFamily: "Montserrat", padding: "6px 4px" }}>
@@ -108,13 +110,18 @@ async function renderSlip(c: SlipCode) {
         <Heading name={gift ? "gift-card" : "coupon"} text={gift ? "Gift Card" : "Coupon"} height={76} grey />
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", alignSelf: "stretch", background: "black", color: "white", borderRadius: 34, padding: "22px 12px", marginTop: 18 }}>
-        <div style={{ ...line, fontSize: 25 }}>
-          {gift ? "Giftcard Number: " : "Coupon Number: "}
-          {formatCardNumber(c.code)}
-        </div>
-        {gift && c.pin && <div style={{ ...line, fontSize: 25, marginTop: 4 }}>Giftcard Pin: {c.pin}</div>}
-        <div style={{ ...line, fontSize: 25, marginTop: 26 }}>Amount: {amount}</div>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", alignSelf: "stretch", background: "black", color: "white", borderRadius: 34, padding: "20px 12px 22px", marginTop: 18 }}>
+        {/* Each number on its own line, big and bold, with a small label above */}
+        <div style={{ ...line, fontSize: 20 }}>{gift ? "Giftcard Number" : "Coupon Number"}</div>
+        <div style={{ ...line, ...big }}>{formatCardNumber(c.code)}</div>
+        {gift && c.pin && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: 14 }}>
+            <div style={{ ...line, fontSize: 20 }}>Giftcard Pin</div>
+            <div style={{ ...line, ...big }}>{c.pin}</div>
+          </div>
+        )}
+        <div style={{ ...line, fontSize: 20, marginTop: 18 }}>Amount</div>
+        <div style={{ ...line, ...big }}>{amount}</div>
       </div>
       {conditions.length > 0 && <div style={{ ...line, fontSize: 17, marginTop: 8 }}>{conditions.join("  ·  ")}</div>}
 
