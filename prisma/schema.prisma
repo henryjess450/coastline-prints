@@ -200,6 +200,8 @@ model PromoCode {
   updatedAt     DateTime  @updatedAt
 
   redemptions CodeRedemption[]
+  /// Set when the card was bought online on the gift card page.
+  purchase    GiftPurchase?
 }
 
 /// A code held for a checkout. RESERVED while paying, USED once paid, RELEASED if the payment failed.
@@ -215,4 +217,34 @@ model CodeRedemption {
 
   @@unique([codeId, checkoutId])
   @@index([checkoutId])
+}
+
+/// A gift card bought online. The card (PromoCode) is only created once
+/// Square confirms the payment; the gift email is queued for deliverAt.
+model GiftPurchase {
+  id              String     @id @default(cuid())
+  status          String     @default("PENDING") // PENDING | PAID | FAILED
+  idempotencyKey  String     @unique
+  amountCents     Int
+  buyerName       String
+  buyerEmail      String
+  recipientName   String
+  recipientEmail  String
+  message         String?
+  /// "YYYY-MM-DD" in the shop time zone, or null to send straight away.
+  sendOn          String?
+  /// When the gift email goes out (9 am Pacific on sendOn, or right after payment).
+  deliverAt       DateTime
+  squarePaymentId String?    @unique
+  receiptUrl      String?
+  cardBrand       String?
+  cardLast4       String?
+  failureReason   String?
+  codeId          String?    @unique
+  code            PromoCode? @relation(fields: [codeId], references: [id])
+  paidAt          DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([status, deliverAt])
 }

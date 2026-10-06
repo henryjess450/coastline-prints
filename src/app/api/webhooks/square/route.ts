@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { SquareError, WebhooksHelper } from "square";
 import { logError } from "@/lib/api";
+import { finalizeGiftPurchase, GIFT_REF_PREFIX } from "@/lib/giftcards/server";
 import { finalizeCheckout, paymentFacts, PaymentMismatchError } from "@/lib/orders/finalize";
 import { sendNotificationsSoon } from "@/lib/notify/kick";
 import { getSquare } from "@/lib/square/client";
@@ -9,7 +10,8 @@ export const runtime = "nodejs";
 
 /**
  * Backup source of truth for payments. If the browser closes before the
- * checkout response arrives, this still creates the order. Safe to receive
+ * checkout response arrives, this still creates the order (or, for a gift
+ * card purchase, the card and its emails). Safe to receive
  * the same event many times: finalizeCheckout is idempotent.
  */
 export async function POST(req: Request) {
@@ -41,7 +43,10 @@ export async function POST(req: Request) {
     // Fetch the payment from Square rather than trusting the event payload's shape.
     const { payment } = await getSquare().payments.get({ paymentId });
     if (!payment?.referenceId || payment.status !== "COMPLETED") return NextResponse.json({ ok: true });
-    const result = await finalizeCheckout(payment.referenceId, paymentFacts(payment));
+    const ref = payment.referenceId;
+    const result = ref.startsWith(GIFT_REF_PREFIX)
+      ? await finalizeGiftPurchase(ref.slice(GIFT_REF_PREFIX.length), paymentFacts(payment))
+      : await finalizeCheckout(ref, paymentFacts(payment));
     if (result?.created) sendNotificationsSoon("after-webhook");
     return NextResponse.json({ ok: true });
   } catch (err) {

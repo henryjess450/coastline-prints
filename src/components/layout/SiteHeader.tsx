@@ -12,6 +12,7 @@ const nav = [
   { href: "/library", label: "Find a model" },
   { href: "/#pricing", label: "Pricing" },
   { href: "/#materials", label: "Materials" },
+  { href: "/gift-cards", label: "Gift cards" },
   { href: "/status", label: "Order status" },
 ];
 

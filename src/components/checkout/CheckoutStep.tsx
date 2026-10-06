@@ -7,6 +7,8 @@ import { site } from "@config/site";
 import { useConfig } from "@/components/ConfigProvider";
 import { AnimatedNumber } from "@/components/motion/AnimatedNumber";
 import { PrintingLoader } from "@/components/motion/PrintingLoader";
+import { modelSilhouette, type Silhouette } from "@/lib/order/silhouette";
+import { OrderAnimation, type PayResult } from "./OrderAnimation";
 import { bounce, Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { customerSchema } from "@/lib/checkout/schema";
@@ -30,6 +32,9 @@ type Contact = {
 type FieldErrors = Partial<Record<keyof Contact, string>>;
 
 const formatTotal = (v: number) => money(Math.round(v));
+/** Tells the server the send-off is over, so the receipt, owner email and ticket go out now. */
+const releaseSendOff = (viewToken: string) =>
+  fetch("/api/sendoff", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order: viewToken }), keepalive: true }).catch(() => undefined);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function CheckoutStep({ items, cartQuote, square, onBack }: { items: CartItem[]; cartQuote: CartQuote; square: SquareConfig | null; onBack: () => void }) {
@@ -97,7 +102,30 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
     return null;
   }
 
+  // The full-screen send-off that plays while the payment goes through.
+  const [sendOff, setSendOff] = useState<{ result: PayResult; fileName: string; model: Silhouette | null; color: string } | null>(null);
+  const sending = useRef(false);
+  const paidToken = useRef<string | null>(null);
+
+  function startSendOff() {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !items.length) return;
+    const first = items[0];
+    const color = cfg.materials.find((m) => m.id === first.material)?.colors.find((c) => c.id === first.colorId)?.hex ?? "#3d7bb8";
+    sending.current = true;
+    setSendOff({ result: "pending", fileName: first.fileName, model: first.positions ? modelSilhouette(first.positions, color) : null, color });
+  }
+
+  function sendOffDone() {
+    // The Benchy has sailed: send the receipt and owner email, show the confirmation,
+    // then empty the cart once it's showing so checkout doesn't flash back to the upload step.
+    void releaseSendOff(paidToken.current!);
+    router.push(`/orders/${paidToken.current}`);
+    window.setTimeout(resetCart, 2000);
+  }
+
   function fail(message: string) {
+    sending.current = false;
+    setSendOff(null);
     setBusy(false);
     setPayError((p) => ({ message, n: (p?.n ?? 0) + 1 }));
   }
@@ -142,6 +170,7 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
 
   async function submit(sourceId: string, customer: ReturnType<typeof customerSchema.parse>) {
     setBusy("charging");
+    startSendOff();
     const attemptId = crypto.randomUUID();
     const body = JSON.stringify({
       attemptId,
@@ -202,12 +231,21 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
   }
 
   function done(viewToken: string) {
+    if (sending.current) {
+      // Let the send-off finish; it opens the confirmation when the Benchy is gone.
+      paidToken.current = viewToken;
+      setSendOff((s) => s && { ...s, result: "paid" });
+      return;
+    }
+    // No animation (reduced motion): send everything straight away.
+    void releaseSendOff(viewToken);
     resetCart();
     router.push(`/orders/${viewToken}`);
   }
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[minmax(0,1fr)_420px] lg:gap-10">
+      {sendOff && <OrderAnimation result={sendOff.result} fileName={sendOff.fileName} model={sendOff.model} color={sendOff.color} onDone={sendOffDone} />}
       <div className="min-w-0 space-y-6">
         <Card flat className="p-6 sm:p-8">
           <h2 className="font-display text-xl font-bold">Your details</h2>

@@ -3,6 +3,7 @@ import type { Square } from "square";
 import { Prisma } from "@/generated/prisma/client";
 import { logError } from "@/lib/api";
 import { db } from "@/lib/db";
+import { sendOffHold } from "@/lib/notify/sendoff";
 import type { ItemQuote, OrderQuote } from "@/lib/pricing/quote";
 import type { PricedCart } from "@/lib/pricing/server-quote";
 import { newOrderNumber, newViewToken } from "./number";
@@ -154,20 +155,26 @@ function orderItemData(line: CartSnapshot["lines"][number], q: ItemQuote) {
 }
 
 /** Queued in the same transaction as the order, so a mail outage can't lose them (sent in Phase 4). */
+/**
+ * What goes out for a new order. Emails, the ticket print and Discord wait
+ * for the send-off animation (see notify/sendoff); the Square customer sync
+ * doesn't, since the customer never sees it.
+ */
 function notificationJobs(orderId: string, needsSquareCustomer: boolean): Prisma.OutboxJobCreateManyInput[] {
+  const held = sendOffHold();
   const jobs: Prisma.OutboxJobCreateManyInput[] = [
     // Square was slow or unreachable at checkout: save the customer to Square in the background.
     ...(needsSquareCustomer && process.env.SQUARE_ACCESS_TOKEN
       ? [{ kind: "square", template: "customer-sync", payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:customer-sync` }]
       : []),
-    { kind: "email", template: "owner-new-order", payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:owner-new-order` },
-    { kind: "email", template: "customer-receipt", payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:customer-receipt` },
+    { kind: "email", template: "owner-new-order", payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:owner-new-order`, nextAttemptAt: held },
+    { kind: "email", template: "customer-receipt", payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:customer-receipt`, nextAttemptAt: held },
   ];
   if (process.env.RECEIPT_PRINTER_HOST) {
-    jobs.push({ kind: "print", template: "order-receipt", payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:order-receipt` });
+    jobs.push({ kind: "print", template: "order-receipt", payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:order-receipt`, nextAttemptAt: held });
   }
   if (process.env.DISCORD_WEBHOOK_URL) {
-    jobs.push({ kind: "discord", template: "discord-new-order", payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:discord-new-order` });
+    jobs.push({ kind: "discord", template: "discord-new-order", payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:discord-new-order`, nextAttemptAt: held });
   }
   return jobs;
 }

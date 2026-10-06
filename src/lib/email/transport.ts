@@ -4,7 +4,9 @@ import path from "node:path";
 import nodemailer, { type Transporter } from "nodemailer";
 import { site } from "@config/site";
 
-export type OutgoingEmail = { to: string; subject: string; html: string; text: string; replyTo?: string };
+/** An inline image (referenced in the HTML as src="cid:<cid>") or a plain attachment. */
+export type EmailAttachment = { filename: string; content: Buffer; contentType: string; cid?: string };
+export type OutgoingEmail = { to: string; subject: string; html: string; text: string; replyTo?: string; attachments?: EmailAttachment[] };
 
 export interface Mailer {
   readonly mode: "gmail" | "smtp" | "preview";
@@ -53,7 +55,7 @@ function smtpMailer(mode: "gmail" | "smtp", transport: Transporter, from: string
     mode,
     async send(email) {
       try {
-        await transport.sendMail({ from, to: email.to, replyTo: email.replyTo, subject: email.subject, html: email.html, text: email.text });
+        await transport.sendMail({ from, to: email.to, replyTo: email.replyTo, subject: email.subject, html: email.html, text: email.text, attachments: email.attachments });
       } catch (err) {
         const code = (err as { responseCode?: number }).responseCode;
         // 550/553 etc: mailbox doesn't exist or address rejected. Retrying won't help.
@@ -72,7 +74,10 @@ function previewMailer(): Mailer {
       await mkdir(dir, { recursive: true });
       const file = path.join(dir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${id}.html`);
       const banner = `<div style="font:13px monospace;background:#fff3c4;padding:8px 12px;border-bottom:1px solid #e0c060">PREVIEW (not sent) · To: ${escape(email.to)} · Subject: ${escape(email.subject)}</div>`;
-      await writeFile(file, banner + email.html);
+      // Inline images become data URIs so the preview shows them.
+      let html = email.html;
+      for (const a of email.attachments ?? []) if (a.cid) html = html.replaceAll(`cid:${a.cid}`, `data:${a.contentType};base64,${a.content.toString("base64")}`);
+      await writeFile(file, banner + html);
       console.info(`[email:preview] "${email.subject}" to ${email.to} → ${file}`);
     },
   };

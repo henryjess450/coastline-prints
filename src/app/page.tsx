@@ -162,6 +162,11 @@ export default async function Home() {
               </a>
               .
             </p>
+            <div className="mt-8">
+              <ButtonLink href="/gift-cards" size="lg">
+                Buy a gift card
+              </ButtonLink>
+            </div>
           </Reveal>
           <Reveal delay={0.08}>
             <GiftCardArt />

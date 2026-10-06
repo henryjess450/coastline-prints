@@ -7,6 +7,7 @@ import { ProudlyCanadian } from "./ProudlyCanadian";
 const links = [
   { href: "/order", label: "Start an order" },
   { href: "/library", label: "Find a model" },
+  { href: "/gift-cards", label: "Gift cards" },
   { href: "/status", label: "Order status" },
   { href: "/#faq", label: "FAQ" },
   { href: "/terms", label: "Terms & Conditions" },

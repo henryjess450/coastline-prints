@@ -40,8 +40,12 @@ export function jsonRequest(url: string, body: unknown, headers: Record<string, 
   return new Request(url, { method: "POST", headers: { "Content-Type": "application/json", "x-forwarded-for": randomUUID(), ...headers }, body: JSON.stringify(body) });
 }
 
-/** A paid order created through the real finalize path (no Square). */
-export async function createPaidOrder(over: { notes?: string } = {}) {
+/**
+ * A paid order created through the real finalize path (no Square). By
+ * default the send-off animation is treated as finished, so its emails are
+ * due straight away; pass { held: true } to leave them waiting.
+ */
+export async function createPaidOrder(over: { notes?: string; held?: boolean } = {}) {
   const { priceCart } = await import("@/lib/pricing/server-quote");
   const { finalizeCheckout } = await import("@/lib/orders/finalize");
   const up = await cubeUpload();
@@ -70,6 +74,10 @@ export async function createPaidOrder(over: { notes?: string } = {}) {
     cardBrand: "VISA",
     last4: "4242",
   });
+  if (!over.held) {
+    const { releaseSendOff } = await import("@/lib/notify/sendoff");
+    await releaseSendOff(res!.order.id);
+  }
   return res!.order;
 }
 

@@ -64,6 +64,36 @@ describe("email templates", () => {
   });
 });
 
+describe("send-off hold", () => {
+  it("holds the receipt until the animation finishes, then sends it", async () => {
+    const { POST: sendoff } = await import("@/app/api/sendoff/route");
+    const { jsonRequest } = await import("../helpers/fixtures");
+    const order = await createPaidOrder({ held: true });
+    const { mailer, sent } = fakeMailer();
+    expect((await processOutbox({ mailer })).sent).toBe(0); // still animating
+
+    expect(sent).toHaveLength(0);
+
+    const res = await sendoff(jsonRequest("http://test/api/sendoff", { order: order.viewToken }));
+    expect(res.status).toBe(200);
+    // The endpoint starts sending by itself; wait for that run, then check both went out.
+    await processOutbox({ mailer });
+    await processOutbox({ mailer });
+    const jobs = await db.outboxJob.findMany({ where: { dedupeKey: { startsWith: order.id } } });
+    expect(jobs.map((j) => [j.template, j.status]).sort()).toEqual([
+      ["customer-receipt", "SENT"],
+      ["owner-new-order", "SENT"],
+    ]);
+  });
+
+  it("sends anyway if the browser never says the animation finished", async () => {
+    const { SENDOFF_HOLD_MS } = await import("@/lib/notify/sendoff");
+    await createPaidOrder({ held: true });
+    const { mailer } = fakeMailer();
+    expect((await processOutbox({ mailer, now: new Date(Date.now() + SENDOFF_HOLD_MS + 1000) })).sent).toBe(2);
+  });
+});
+
 describe("outbox", () => {
   it("queues receipt + owner email with the order and sends them once", async () => {
     const order = await createPaidOrder();
