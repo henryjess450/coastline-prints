@@ -19,7 +19,8 @@ COPY . .
 ARG NEXT_PUBLIC_MAX_UPLOAD_MB=100
 ENV NEXT_PUBLIC_MAX_UPLOAD_MB=$NEXT_PUBLIC_MAX_UPLOAD_MB \
     DATABASE_URL=file:/app/data/coastline.db
-RUN npx prisma generate && npx next build
+# Cap the build at 3 GB so a small Docker VM does not kill it (raise it if the build says "heap out of memory").
+RUN npx prisma generate && NODE_OPTIONS=--max-old-space-size=3072 npx next build
 
 # 3. Run it.
 FROM base AS runner
