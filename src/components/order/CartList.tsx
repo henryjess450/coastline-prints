@@ -4,7 +4,8 @@ import { useConfig } from "@/components/ConfigProvider";
 import { ProgressRing } from "@/components/motion/ProgressRing";
 import { cn } from "@/lib/cn";
 import { bytes } from "@/lib/format";
-import { deriveItem } from "@/lib/order/derive";
+import { deriveItem, itemSpec } from "@/lib/order/derive";
+import { quoteItem } from "@/lib/pricing/quote";
 import { useOrder, type CartItem } from "@/lib/order/store";
 
 export function CartList() {
@@ -99,6 +100,11 @@ function StatusText({ item }: { item: CartItem }) {
   const d = deriveItem(item, cfg);
   if (!d.size) return null;
   const dims = `${d.size.x.toFixed(0)}×${d.size.y.toFixed(0)}×${d.size.z.toFixed(0)} mm`;
-  if (d.assignment?.ok) return <>{dims} · {d.assignment.printer.shortName}</>;
+  if (d.assignment?.ok) {
+    const spec = itemSpec(item);
+    const q = spec ? quoteItem(spec, cfg) : null;
+    if (q && !q.ok && q.tooLong) return <span className="text-warning">{dims} · over {q.tooLong.maxHours} h to print</span>;
+    return <>{dims} · {d.assignment.printer.shortName}</>;
+  }
   return <span className="text-warning">{dims} · too large</span>;
 }

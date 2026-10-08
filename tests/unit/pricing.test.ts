@@ -122,3 +122,32 @@ describe("order pricing", () => {
     expect(quoteOrder([], cfg).ok).toBe(false);
   });
 });
+
+describe("print time limit", () => {
+  const max = cfg.estimation.maxHoursPerPiece;
+  /** A solid cube `mm` on a side. */
+  const block = (mm: number, over: Partial<ItemSpec> = {}) => cube({ size: { x: mm, y: mm, z: mm }, volumeMm3: mm ** 3, surfaceAreaMm2: 6 * mm * mm, infill: "solid", ...over });
+
+  it("refuses a piece that would print for longer than the limit, and suggests a size that fits", () => {
+    const q = quoteItem(block(150), cfg);
+    expect(q.ok).toBe(false);
+    if (q.ok) return;
+    expect(q.tooLong?.maxHours).toBe(max);
+    expect(q.tooLong!.hours).toBeGreaterThan(max);
+    const pct = q.tooLong!.fitPercent!;
+    expect(q.error).toContain(`${pct}%`);
+    // The suggested size really does fit, and a bit bigger doesn't.
+    expect(quoteItem(block(150 * (pct / 100)), cfg).ok).toBe(true);
+    expect(quoteItem(block(150 * ((pct + 2) / 100)), cfg).ok).toBe(false);
+  });
+
+  it("only counts one piece: lots of short copies are fine", () => {
+    const q = quoteItem(cube({ quantity: 50 }), cfg);
+    expect(q.ok).toBe(true);
+    if (q.ok) expect(q.hoursTotal).toBeLessThan(max * 50);
+  });
+
+  it("blocks the whole order", () => {
+    expect(quoteOrder([cube(), block(150)], cfg).ok).toBe(false);
+  });
+});

@@ -27,13 +27,15 @@ export function PrinterCard({ quote }: { quote: ItemQuote | null }) {
         >
           <PrinterIcon active={!!printer} big={printer ? printer.buildVolume.x > 200 : false} />
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold uppercase tracking-wider text-faint">{printer ? "Printing on" : quote && !quote.ok ? "Can't print yet" : "Assigning printer"}</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-faint">{quote && !quote.ok ? "Can't print yet" : printer ? "Printing on" : "Assigning printer"}</p>
             {printer ? (
               <>
                 <p className="font-display text-lg font-semibold leading-tight">{printer.name}</p>
                 <p className="mt-0.5 font-mono text-xs text-muted">
                   Bed {printer.buildVolume.x} × {printer.buildVolume.y} × {printer.buildVolume.z} mm · usable {printer.buildVolume.x - cfg.safetyMarginMm} mm
                 </p>
+                {/* It fits, but something else stops it (like taking too long to print) */}
+                {quote && !quote.ok && <p className="mt-1.5 text-sm text-danger">{quote.error}</p>}
               </>
             ) : quote && !quote.ok ? (
               <p className="mt-0.5 text-sm text-danger">{quote.error}</p>

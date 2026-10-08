@@ -40,6 +40,11 @@ export const estimation = {
   wallThicknessMm: 1.2,
   /** Per-print overhead: heating, levelling, purge (hours, added once per plate). */
   setupHours: 0.15,
+  /**
+   * Longest single print we take, in hours (one piece, setup included). The
+   * printers can't be babysat overnight, so anything longer can't be ordered.
+   */
+  maxHoursPerPiece: 12,
 };
 
 export type QualityId = (typeof qualityPresets)[number]["id"];
