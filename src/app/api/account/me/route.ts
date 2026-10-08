@@ -4,6 +4,7 @@ import { z } from "zod";
 import { customerFromRequest } from "@/lib/account/auth";
 import { profileFor, updateProfile } from "@/lib/account/profile";
 import { apiError } from "@/lib/api";
+import { addressSchema } from "@/lib/checkout/schema";
 import { THEME_COOKIE, THEME_COOKIE_OPTIONS } from "@/lib/theme";
 
 export const runtime = "nodejs";
@@ -19,9 +20,11 @@ const body = z.object({
   name: z.string().trim().max(120).refine((v) => v === "" || v.length >= 2, "Please enter your full name.").optional(),
   phone: z.string().trim().max(40).refine((v) => v === "" || v.replace(/\D/g, "").length >= 10, "Please enter a phone number with area code.").optional(),
   theme: z.enum(["light", "dark"]).optional(),
+  /** null removes the saved address. */
+  address: addressSchema.nullable().optional(),
 });
 
-/** Saves their name, phone and light or dark choice. */
+/** Saves their name, phone, shipping address and light or dark choice. */
 export async function PATCH(req: Request) {
   const customer = await customerFromRequest(req);
   if (!customer) return apiError(401, "Please sign in again.");

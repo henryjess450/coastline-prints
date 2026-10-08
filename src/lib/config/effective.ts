@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { logError } from "@/lib/api";
+import { canadaPostConfigured, postageTax } from "@/lib/shipping/canada-post";
 import { materialsSchema, pricingSchema } from "./schema";
 import { defaultConfig, type AppConfig } from "./types";
 
@@ -20,5 +21,9 @@ export async function getEffectiveConfig(): Promise<AppConfig> {
       logError(`config:${row.key}`, err);
     }
   }
+  // Tracked parcel mailers need live Canada Post rates; without API keys, don't offer them.
+  if (!canadaPostConfigured()) cfg.shipping.mailer.parcel.enabled = false;
+  // Tax on postage, live from Canada Post when it can be (cached), so a GST/HST change follows through.
+  cfg.shipping.tax = await postageTax();
   return cfg;
 }

@@ -4,7 +4,7 @@ import { statusInfo } from "@/lib/orders/status";
 import { colors, EmailLayout, H1, P, PillButton } from "./components/Layout";
 
 export function StatusUpdate({ d, note }: { d: OrderEmailData; note?: string | null }) {
-  const s = statusInfo(d.status);
+  const s = statusInfo(d.status, d.fulfillment);
   return (
     <EmailLayout preview={`Order ${d.orderNumber}: ${s.label}`}>
       <H1>Order update: {s.label}</H1>

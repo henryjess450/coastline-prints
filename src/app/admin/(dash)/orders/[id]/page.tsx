@@ -13,7 +13,9 @@ import { db } from "@/lib/db";
 import { money, returningLabel } from "@/lib/format";
 import { formatPickup } from "@/lib/pickup";
 import type { AppliedCode } from "@/lib/codes/apply";
-import { statusInfo } from "@/lib/orders/status";
+import { statusInfo, trackingUrl } from "@/lib/orders/status";
+import { isTracked, shippingAddressLines, shippingBoxesOf } from "@/lib/shipping/address";
+import { packageName } from "@/lib/shipping/pack";
 
 export const metadata = { title: "Order" };
 
@@ -23,6 +25,7 @@ const jobLabel: Record<string, string> = {
   "customer-receipt": "Receipt to customer",
   "owner-new-order": "New-order email to you",
   "ready-for-pickup": "Ready-for-pickup email",
+  shipped: "Shipped email",
   "status-update": "Status update email",
   "discord-new-order": "Discord message",
   "order-receipt": "Printed receipt",
@@ -70,7 +73,7 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
             ← All orders
           </Link>
           <h1 className="mt-1 flex items-center gap-3 font-display text-3xl font-bold">
-            <span className="font-mono">{order.orderNumber}</span> <StatusBadge status={order.status} className="text-sm" />
+            <span className="font-mono">{order.orderNumber}</span> <StatusBadge status={order.status} fulfillment={order.fulfillment} className="text-sm" />
           </h1>
           <p className="text-sm text-muted">
             Placed {when(order.createdAt)} · {money(order.totalCents)} paid
@@ -80,7 +83,7 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
 
       <Card className="p-5">
         <h2 className="mb-4 font-display text-lg font-semibold">Status</h2>
-        <StatusControl key={order.status} orderId={order.id} current={order.status} />
+        <StatusControl key={order.status} orderId={order.id} current={order.status} fulfillment={order.fulfillment} trackingNumber={order.trackingNumber} tracked={isTracked(order)} />
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -107,8 +110,39 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
                 {order.customerPhone}
               </a>
             </p>
-            <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-faint">Pickup</h3>
-            <p className="font-medium">{formatPickup(order.pickupDate, order.pickupTime, pickup) ?? "Not booked"}</p>
+            {order.fulfillment === "SHIP" ? (
+              <>
+                <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-faint">Ship to</h3>
+                <address className="select-all font-medium not-italic">
+                  {shippingAddressLines(order)?.map((l) => (
+                    <span key={l} className="block">
+                      {l}
+                    </span>
+                  ))}
+                </address>
+                <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-faint">Pack in</h3>
+                <ul className="space-y-0.5">
+                  {shippingBoxesOf(order).map((b, i) => (
+                    <li key={i}>
+                      <span className="font-medium">{packageName(b)}</span>{" "}
+                      <span className="text-muted">
+                        · {b.pieces} {b.pieces === 1 ? "piece" : "pieces"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {order.trackingNumber && (
+                  <a href={trackingUrl(order.trackingNumber)} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block font-mono text-accent-text hover:underline">
+                    {order.trackingNumber}
+                  </a>
+                )}
+              </>
+            ) : (
+              <>
+                <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-faint">Pickup</h3>
+                <p className="font-medium">{formatPickup(order.pickupDate, order.pickupTime, pickup) ?? "Not booked"}</p>
+              </>
+            )}
             {order.notes && (
               <>
                 <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-faint">Notes</h3>
@@ -123,13 +157,22 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
               <Row label="Items" value={money(order.subtotalCents)} />
               <Row label="Order fee" value={money(order.baseFeeCents)} />
               {order.minimumAdjCents > 0 && <Row label="Minimum top-up" value={money(order.minimumAdjCents)} />}
+              {order.fulfillment === "SHIP" && <Row label="Shipping" value={money(order.shippingCents)} />}
               {(JSON.parse(order.appliedCodes) as AppliedCode[]).map((a) => (
                 <Row key={a.code} label={a.kind === "GIFT_CARD" ? `Gift card ${a.code}` : a.label} value={`−${money(a.amountCents)}`} />
               ))}
+              {order.etransferDiscountCents > 0 && <Row label="e-Transfer discount" value={`−${money(order.etransferDiscountCents)}`} />}
               <Row label="Total paid" value={money(order.totalCents)} strong />
               {order.cardLast4 && <Row label="Card" value={`${order.cardBrand ?? "Card"} •••• ${order.cardLast4}`} />}
+              {order.paymentMethod === "ETRANSFER" && <Row label="Paid by" value="Interac e-Transfer" />}
             </dl>
-            <p className="mt-2 break-all font-mono text-xs text-faint">{order.squarePaymentId.startsWith("nopay_") ? "No card payment (covered by gift card)" : `Square payment ${order.squarePaymentId}`}</p>
+            <p className="mt-2 break-all font-mono text-xs text-faint">{order.squarePaymentId.startsWith("nopay_")
+                ? "No card payment (covered by gift card)"
+                : order.paymentMethod === "ETRANSFER"
+                  ? order.squarePaymentId.startsWith("etr_manual_")
+                    ? "e-Transfer marked received by you"
+                    : "e-Transfer matched from the deposit email"
+                  : `Square payment ${order.squarePaymentId}`}</p>
             {order.squareCustomerId ? (
               <a href={`https://app.squareup.com/dashboard/customers/directory/customer/${order.squareCustomerId}`} target="_blank" rel="noopener noreferrer" className="mt-1 block text-accent-text hover:underline">
                 Customer in Square
@@ -183,7 +226,7 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
               {order.events.map((e) => (
                 <li key={e.id} className="relative">
                   <span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-accent-line" aria-hidden />
-                  <p className="font-medium">{statusInfo(e.toStatus).label}</p>
+                  <p className="font-medium">{statusInfo(e.toStatus, order.fulfillment).label}</p>
                   <p className="text-xs text-faint">
                     {when(e.createdAt)}
                     {e.customerNotified ? " · customer emailed" : ""}

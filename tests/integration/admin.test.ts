@@ -68,6 +68,26 @@ describe("status pipeline", () => {
     expect((await db.outboxJob.findFirstOrThrow()).template).toBe("ready-for-pickup");
   });
 
+  it("shipping an order emails the tracking number, never the pickup address", async () => {
+    const order = await createPaidOrder({ ship: true });
+    await db.outboxJob.deleteMany();
+    await expect(changeOrderStatus(order.id, "READY_FOR_PICKUP", { trackingNumber: "12 3" })).rejects.toThrow(/tracking/);
+    await changeOrderStatus(order.id, "READY_FOR_PICKUP", { trackingNumber: "7023 2104 1234 5678" });
+    expect((await db.order.findUniqueOrThrow({ where: { id: order.id } })).trackingNumber).toBe("7023210412345678");
+    expect((await db.outboxJob.findFirstOrThrow()).template).toBe("shipped");
+
+    const { buildEmail } = await import("@/lib/email/build");
+    const { loadOrderEmailData } = await import("@/lib/email/data");
+    const d = (await loadOrderEmailData(order.id))!;
+    // Even if a pickup email were queued by mistake, a shipped order gets the shipped one.
+    for (const template of ["shipped", "ready-for-pickup", "customer-receipt"] as const) {
+      const email = await buildEmail(template, d);
+      expect(email.html).not.toContain("123 Example Street");
+      expect(email.html).toContain("Halifax");
+    }
+    expect((await buildEmail("shipped", d)).html).toContain("7023210412345678");
+  });
+
   it("rejects unknown statuses and no-op changes", async () => {
     const order = await createPaidOrder();
     await expect(changeOrderStatus(order.id, "SHIPPED")).rejects.toThrow(StatusChangeError);

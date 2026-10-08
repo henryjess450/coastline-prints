@@ -28,9 +28,9 @@ describe("customer details", () => {
   it("normalises email", () => {
     expect(customerSchema.parse(ok).email).toBe("sam@example.com");
   });
-  it("requires pickup acknowledgement and terms", () => {
-    expect(customerSchema.safeParse({ ...ok, pickupAcknowledged: false }).success).toBe(false);
+  it("requires the terms (pickup acknowledgement is checked only for pickup orders)", () => {
     expect(customerSchema.safeParse({ ...ok, termsAccepted: false }).success).toBe(false);
+    expect(customerSchema.safeParse({ ...ok, pickupAcknowledged: false }).success).toBe(true);
   });
   it("rejects short phone numbers", () => {
     expect(customerSchema.safeParse({ ...ok, phone: "555-0123" }).success).toBe(false);

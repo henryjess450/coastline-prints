@@ -45,30 +45,35 @@ export function jsonRequest(url: string, body: unknown, headers: Record<string, 
  * default the send-off animation is treated as finished, so its emails are
  * due straight away; pass { held: true } to leave them waiting.
  */
-export async function createPaidOrder(over: { notes?: string; held?: boolean } = {}) {
+export async function createPaidOrder(over: { notes?: string; held?: boolean; ship?: boolean } = {}) {
   const { priceCart } = await import("@/lib/pricing/server-quote");
   const { finalizeCheckout } = await import("@/lib/orders/finalize");
   const up = await cubeUpload();
   const priced = await priceCart([cartItem(up.id, { quantity: 2 })] as never);
   const { config: _c, ...quote } = priced;
   void _c;
+  // Shipped orders use the tracked box (a 2-piece cube order would also fit a mailer).
+  const quote_ = priced.shipping!;
+  const ship = quote_.ok ? quote_.options.find((o) => o.method === "box")! : null;
+  const shippingCents = over.ship && ship ? ship.totalCents : 0;
   const checkout = await db.checkout.create({
     data: {
       idempotencyKey: randomUUID(),
       cart: JSON.stringify({ lines: priced.lines, quote }),
-      totalCents: priced.totalCents,
+      totalCents: priced.totalCents + shippingCents,
       customerName: customer.name,
       customerEmail: customer.email,
       customerPhone: customer.phone,
       notes: over.notes ?? "Please print it blue side up",
-      pickupDate: "2026-10-10",
-      pickupTime: "17:00",
+      ...(over.ship
+        ? { fulfillment: "SHIP", shippingCents, shippingBoxes: JSON.stringify(ship?.boxes ?? []), shipName: "Sam Rivers", shipLine1: "1 Main Street", shipCity: "Halifax", shipProvince: "NS", shipPostal: "B3H 1A1" }
+        : { pickupDate: "2026-10-10", pickupTime: "17:00" }),
     },
   });
   const res = await finalizeCheckout(checkout.id, {
     id: `pay_${randomUUID()}`,
     status: "COMPLETED",
-    amountCents: priced.totalCents,
+    amountCents: priced.totalCents + shippingCents,
     currency: "CAD",
     receiptUrl: "https://squareup.com/receipt/preview/test",
     cardBrand: "VISA",
@@ -86,5 +91,7 @@ export async function validPickup() {
   const { pickup } = await import("@config/pickup");
   const { availableDays } = await import("@/lib/pickup");
   const day = availableDays(pickup)[0];
-  return { date: day.date, time: day.slots[0].time };
+  return { method: "pickup" as const, date: day.date, time: day.slots[0].time };
 }
+
+export const shipAddress = { name: "Sam Rivers", line1: "1 Main Street", line2: "", city: "Halifax", province: "NS", postal: "b3h 1a1" };

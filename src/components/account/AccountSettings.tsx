@@ -5,10 +5,12 @@ import { useRef, useState } from "react";
 import { Reveal } from "@/components/home/Reveal";
 import { bounce, Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { AddressForm, emptyAddress, type AddressDraft, type AddressErrors } from "@/components/checkout/Delivery";
+import { addressSchema } from "@/lib/checkout/schema";
 import { cn } from "@/lib/cn";
 
 type Theme = "light" | "dark";
-type Profile = { email: string; name: string; phone: string; theme: Theme | null };
+type Profile = { email: string; name: string; phone: string; theme: Theme | null; address: AddressDraft | null };
 
 
 const input =
@@ -26,6 +28,9 @@ export function AccountSettings({ profile, current }: { profile: Profile; curren
     <div className="space-y-6">
       <Reveal>
         <Details profile={profile} />
+      </Reveal>
+      <Reveal>
+        <ShippingAddress initial={profile.address} name={profile.name} />
       </Reveal>
       <Reveal>
         <Email email={profile.email} />
@@ -77,6 +82,78 @@ function Details({ profile }: { profile: Profile }) {
           <Button ref={button} type="submit" disabled={busy || !dirty}>
             {busy ? "Saving…" : "Save details"}
           </Button>
+          <Feedback msg={msg} />
+        </div>
+      </form>
+    </Card>
+  );
+}
+
+/** Where their orders ship. Fills in checkout when they choose shipping. */
+function ShippingAddress({ initial, name }: { initial: AddressDraft | null; name: string }) {
+  const start = initial ?? { ...emptyAddress, name };
+  const [value, setValue] = useState<AddressDraft>(start);
+  const [saved, setSaved] = useState<AddressDraft | null>(initial);
+  const [errors, setErrors] = useState<AddressErrors>({});
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string; n: number } | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const say = (ok: boolean, text: string) => setMsg((m) => ({ ok, text, n: (m?.n ?? 0) + 1 }));
+  const dirty = JSON.stringify(value) !== JSON.stringify(saved ?? start);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    const r = addressSchema.safeParse(value);
+    if (!r.success) {
+      const next: AddressErrors = {};
+      for (const issue of r.error.issues) next[issue.path[0] as keyof AddressDraft] ??= issue.message;
+      setErrors(next);
+      return;
+    }
+    setBusy(true);
+    const res = await send("PATCH", "/api/account/me", { address: r.data });
+    setBusy(false);
+    if (!res.ok) return say(false, res.error);
+    const clean = { ...r.data, line2: r.data.line2 ?? "" };
+    setValue(clean);
+    setSaved(clean);
+    say(true, "Saved. Checkout will fill this in when you ship.");
+    bounce(button.current);
+  }
+
+  async function remove() {
+    setBusy(true);
+    const res = await send("PATCH", "/api/account/me", { address: null });
+    setBusy(false);
+    if (!res.ok) return say(false, res.error);
+    setSaved(null);
+    setValue({ ...emptyAddress, name });
+    say(true, "Address removed.");
+  }
+
+  return (
+    <Card flat className="p-6 sm:p-8">
+      <h2 className="font-display text-xl font-bold">Shipping address</h2>
+      <p className="mt-2 text-sm leading-relaxed text-muted">We fill this in when you choose shipping at checkout. Canada only.</p>
+      <form onSubmit={save} className="mt-5 space-y-5">
+        <AddressForm
+          value={value}
+          onChange={(k, v) => {
+            setValue((a) => ({ ...a, [k]: v }));
+            setErrors((e) => ({ ...e, [k]: undefined }));
+            setMsg(null);
+          }}
+          errors={errors}
+        />
+        <div className="flex flex-wrap items-center gap-4">
+          <Button ref={button} type="submit" disabled={busy || !dirty}>
+            {busy ? "Saving…" : "Save address"}
+          </Button>
+          {saved && (
+            <Button type="button" variant="secondary" disabled={busy} onClick={remove}>
+              Remove
+            </Button>
+          )}
           <Feedback msg={msg} />
         </div>
       </form>

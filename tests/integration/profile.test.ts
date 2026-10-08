@@ -26,6 +26,29 @@ beforeEach(() => {
   square.customers.create.mockReset().mockImplementation(async () => ({ customer: { id: `SQ_${randomUUID().slice(0, 6)}` } }));
 });
 
+describe("saved shipping address", () => {
+  const addr = { name: "Sam Rivers", line1: "1 Main Street", line2: "", city: "Halifax", province: "NS", postal: "B3H 1A1" };
+
+  it("is saved from their first shipped order, and kept after that", async () => {
+    const a = await account();
+    expect((await profileFor(a)).address).toBeNull();
+    await rememberOrderDetails(a.id, a.email, { name: "Sam", phone: "604 555 0123" }, addr);
+    expect((await profileFor(await db.customer.findUniqueOrThrow({ where: { id: a.id } }))).address).toEqual(addr);
+    // A later order to somewhere else doesn't replace the one they have.
+    await rememberOrderDetails(a.id, a.email, { name: "Sam", phone: "604 555 0123" }, { ...addr, city: "Truro" });
+    expect((await profileFor(await db.customer.findUniqueOrThrow({ where: { id: a.id } }))).address?.city).toBe("Halifax");
+  });
+
+  it("can be changed and removed in settings", async () => {
+    const a = await account();
+    await updateProfile(a, { address: { ...addr, city: "Dartmouth" } });
+    const b = await db.customer.findUniqueOrThrow({ where: { id: a.id } });
+    expect((await profileFor(b)).address?.city).toBe("Dartmouth");
+    await updateProfile(b, { address: null });
+    expect((await profileFor(await db.customer.findUniqueOrThrow({ where: { id: a.id } }))).address).toBeNull();
+  });
+});
+
 describe("saved details", () => {
   it("falls back to the latest order's name and phone until they set their own", async () => {
     const order = await createPaidOrder();

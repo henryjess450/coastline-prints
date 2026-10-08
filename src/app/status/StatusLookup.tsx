@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useActionState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { ORDER_STATUSES, statusIndex, statusInfo } from "@/lib/orders/status";
+import { orderStatuses, statusIndex, statusInfo } from "@/lib/orders/status";
 import { cn } from "@/lib/cn";
 import { lookupOrderAction, type LookupState } from "./actions";
 
@@ -41,6 +41,8 @@ export function StatusLookup({ prefill }: { prefill: string }) {
 
 function Tracker({ order }: { order: NonNullable<LookupState["order"]> }) {
   const reduce = useReducedMotion();
+  const ORDER_STATUSES = orderStatuses(order.fulfillment);
+  const info = statusInfo(order.status, order.fulfillment);
   const current = statusIndex(order.status);
   const at = (id: string) => order.history.findLast((h) => h.status === id)?.at;
   const fmt = (iso: string) => new Date(iso).toLocaleString("en-CA", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -52,8 +54,8 @@ function Tracker({ order }: { order: NonNullable<LookupState["order"]> }) {
           <h2 className="font-mono text-xl font-bold">{order.orderNumber}</h2>
           <span className="text-sm text-muted">Placed {fmt(order.placedAt)}</span>
         </div>
-        <p className="mt-1 text-lg font-semibold">{statusInfo(order.status).label}</p>
-        <p className="text-muted">{statusInfo(order.status).customer}</p>
+        <p className="mt-1 text-lg font-semibold">{info.label}</p>
+        <p className="text-muted">{info.customer}</p>
 
         <ol className="relative mt-8 space-y-0" aria-label="Order progress">
           {ORDER_STATUSES.map((s, i) => {
@@ -103,11 +105,25 @@ function Tracker({ order }: { order: NonNullable<LookupState["order"]> }) {
       </Card>
 
       <div className="grid gap-6 sm:grid-cols-2">
-        <Card flat className="p-6">
-          <h3 className="font-display font-semibold">Pickup</h3>
-          <p className="mt-1">{order.pickupWhen ?? "Not booked yet"}</p>
-          <p className="mt-1 text-xs text-faint">The address is in your receipt email. Need a different time? Reply to that email.</p>
-        </Card>
+        {order.shipping ? (
+          <Card flat className="p-6">
+            <h3 className="font-display font-semibold">Shipping</h3>
+            <p className="mt-1">Canada Post to {order.shipping.place}</p>
+            {order.shipping.tracking ? (
+              <a href={order.shipping.tracking.url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block font-mono text-sm text-accent-text underline underline-offset-4">
+                Track {order.shipping.tracking.number}
+              </a>
+            ) : (
+              <p className="mt-1 text-xs text-faint">{order.shipping.tracked ? "You'll get a tracking number by email when it ships." : "Sent in a bubble mailer by Lettermail, which has no tracking. We'll email you when it ships."}</p>
+            )}
+          </Card>
+        ) : (
+          <Card flat className="p-6">
+            <h3 className="font-display font-semibold">Pickup</h3>
+            <p className="mt-1">{order.pickupWhen ?? "Not booked yet"}</p>
+            <p className="mt-1 text-xs text-faint">The address is in your receipt email. Need a different time? Reply to that email.</p>
+          </Card>
+        )}
         <Card flat className="p-6">
           <h3 className="font-display font-semibold">Items</h3>
           <ul className="mt-1 space-y-1 text-sm">

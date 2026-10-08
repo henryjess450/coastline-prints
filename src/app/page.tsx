@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { gallery } from "@config/gallery";
 import { pickup } from "@config/pickup";
+import { shipping } from "@config/shipping";
 import { legal, uploads } from "@config/site";
 import { HeroDrop } from "@/components/home/HeroDrop";
 import { HowItWorks } from "@/components/home/HowItWorks";
@@ -21,8 +22,8 @@ export const dynamic = "force-dynamic"; // shows live rates from admin settings
 const steps = [
   { title: "Upload", body: `Drag in one or more .stl files, up to ${uploads.maxFileMb} MB each. Each file is checked for holes and unit mistakes.` },
   { title: "Size", body: "Scale the model in the 3D preview and pick PLA, PETG or PLA-CF and a colour. The price updates as you change things." },
-  { title: "Pay", body: "Pay by card, Apple Pay or Google Pay through Square, and choose a pickup time. The order is only placed once the payment goes through." },
-  { title: "Pick up", body: "You get an email when your print is ready. The pickup address comes with your receipt." },
+  { title: "Pay", body: "Pay by Interac e-Transfer (2% off) or by card, Apple Pay or Google Pay, and choose a pickup time or shipping. The order is only placed once the payment goes through." },
+  { title: "Pick up or ship", body: "You get an email when your print is ready, or when it ships. The pickup address comes with your receipt." },
 ];
 
 const faqs = [
@@ -40,7 +41,11 @@ const faqs = [
   },
   {
     q: "Where do I pick up my order?",
-    a: "The pickup address is shown after you pay and is in your confirmation email. There is no shipping.",
+    a: "The pickup address is shown after you pay and is in your confirmation email.",
+  },
+  {
+    q: "Do you ship?",
+    a: `Yes, anywhere in Canada with Canada Post. Small, flat prints can go in a padded bubble mailer by Lettermail (from ${money(shipping.mailer.rates[0].priceCents + shipping.mailer.packingFeeCents)}, no tracking). Anything else, or if you want tracking, goes in the smallest flat rate box it fits (from ${money(shipping.boxes[0].priceCents + shipping.packingFeePerBoxCents)}). Prices include packing.`,
   },
   {
     q: "Which printers do you use?",

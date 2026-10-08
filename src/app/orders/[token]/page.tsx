@@ -13,6 +13,8 @@ import { hours, money } from "@/lib/format";
 import { formatPickup } from "@/lib/pickup";
 import { orderSpend, pointsFor } from "@/lib/rewards/server";
 import type { AppliedCode } from "@/lib/codes/apply";
+import { trackingUrl } from "@/lib/orders/status";
+import { isTracked, shippingAddressLines, shippingSummary } from "@/lib/shipping/address";
 
 export const metadata: Metadata = { title: "Order confirmed", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
@@ -20,7 +22,7 @@ export const dynamic = "force-dynamic";
 /**
  * Private confirmation page, reached via an unguessable link (also emailed
  * with the receipt). This and the emails are the only places the pickup
- * address appears.
+ * address appears, and only for pickup orders.
  */
 export default async function OrderConfirmationPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -31,6 +33,11 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
   const firstName = order.customerName.split(/\s+/)[0];
   const pickupWhen = formatPickup(order.pickupDate, order.pickupTime, pickup);
   const statusHref = `/status?order=${encodeURIComponent(order.orderNumber)}`;
+  const shipTo = shippingAddressLines(order);
+  const tracked = isTracked(order);
+  const steps = shipTo
+    ? ["We check your files and queue them on the right printer.", "Your parts are printed and cleaned up.", "We pack them and send them with Canada Post.", tracked ? "You get an email with your tracking number." : "You get an email when it's in the mail."]
+    : ["We check your files and queue them on the right printer.", "Your parts are printed and cleaned up.", "You get a “ready for pickup” email.", "Collect your order at your pickup time."];
 
   return (
     <div className="mx-auto max-w-3xl px-4 pb-12 pt-12 sm:px-6 sm:pt-16">
@@ -43,7 +50,7 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
         <p className="mt-1 text-sm text-faint">A receipt is on its way to {order.customerEmail}.</p>
         {pointsFor(orderSpend(order)) > 0 && (
           <p className="mt-3 text-sm">
-            You&apos;ll earn <strong className="text-accent-text">{pointsFor(orderSpend(order))} reward points</strong> when you pick it up.{" "}
+            You&apos;ll earn <strong className="text-accent-text">{pointsFor(orderSpend(order))} reward points</strong> when {shipTo ? "it arrives" : "you pick it up"}.{" "}
             <Link href="/rewards" className="text-accent-text underline underline-offset-4">
               See prizes
             </Link>
@@ -52,6 +59,26 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
       </div>
 
       <div className="mt-14 grid gap-6 md:grid-cols-2">
+        {shipTo ? (
+          <Card flat highlight className="p-6 sm:p-8">
+            <h2 className="font-display text-lg font-semibold">Shipping</h2>
+            <p className="mt-2 text-sm text-muted">{shippingSummary(order)}. {tracked ? "We'll email you the tracking number when it ships." : "Lettermail has no tracking; we'll email you when it's in the mail."}</p>
+            <address className="mt-3 rounded-xl bg-accent-soft px-4 py-3 not-italic">
+              <span className="block text-xs text-faint">Shipping to</span>
+              {shipTo.map((l, i) => (
+                <span key={i} className={i ? "block text-fg" : "block font-semibold text-fg"}>
+                  {l}
+                </span>
+              ))}
+            </address>
+            {order.trackingNumber && (
+              <a href={trackingUrl(order.trackingNumber)} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block font-mono text-sm text-accent-text underline underline-offset-4">
+                Track {order.trackingNumber}
+              </a>
+            )}
+            <p className="mt-2 text-xs text-faint">Something wrong with the address? Reply to your receipt email before it ships.</p>
+          </Card>
+        ) : (
         <Card flat highlight className="p-6 sm:p-8">
           <h2 className="font-display text-lg font-semibold">Pickup</h2>
           <p className="mt-2 text-sm text-muted">{site.fulfillmentLabel}. We&apos;ll email you when your order is ready, before your pickup time.</p>
@@ -67,11 +94,12 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
           </address>
           <p className="mt-2 text-xs text-faint">Please keep this address private. Need a different time? Reply to your receipt email.</p>
         </Card>
+        )}
 
         <Card flat className="p-6 sm:p-8">
           <h2 className="font-display text-lg font-semibold">What happens next</h2>
           <ol className="mt-4 space-y-3 text-sm leading-relaxed text-muted">
-            {["We check your files and queue them on the right printer.", "Your parts are printed and cleaned up.", "You get a “ready for pickup” email.", "Collect your order at your pickup time."].map((t, i) => (
+            {steps.map((t, i) => (
               <Reveal as="li" key={t} className="flex gap-3" delay={0.5 + i * 0.1}>
                 <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-accent text-xs font-bold text-accent-ink">{i + 1}</span>
                 {t}
@@ -101,11 +129,14 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
         <dl className="mt-2 space-y-1 border-t border-line pt-3 text-sm">
           <Row label="Order fee" value={money(order.baseFeeCents)} />
           {order.minimumAdjCents > 0 && <Row label="Minimum order top-up" value={money(order.minimumAdjCents)} />}
+          {shipTo && <Row label="Shipping" value={money(order.shippingCents)} />}
           {(JSON.parse(order.appliedCodes) as AppliedCode[]).map((a) => (
             <Row key={a.code} label={a.label} value={`−${money(a.amountCents)}`} />
           ))}
+          {order.etransferDiscountCents > 0 && <Row label="e-Transfer discount" value={`−${money(order.etransferDiscountCents)}`} />}
           <Row label="Total paid (CAD)" value={money(order.totalCents)} strong />
           {order.cardLast4 && <Row label="Paid with" value={`${formatBrand(order.cardBrand)} •••• ${order.cardLast4}`} />}
+          {order.paymentMethod === "ETRANSFER" && <Row label="Paid with" value="Interac e-Transfer" />}
         </dl>
         {order.receiptUrl && (
           <a href={order.receiptUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block text-sm text-accent-text underline underline-offset-4">

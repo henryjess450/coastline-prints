@@ -5,6 +5,7 @@
 import type { MaterialId } from "@config/materials";
 import type { AppConfig } from "@/lib/config/types";
 import { assignPrinter, type PrinterAssignment } from "@/lib/printers/fit";
+import { quoteShipping, type ShippingQuote } from "@/lib/shipping/pack";
 import type { Vec3 } from "@/lib/stl/analyze";
 
 export type ItemSpec = {
@@ -48,9 +49,12 @@ export type OrderQuote = {
   baseFeeCents: number;
   subtotalCents: number;
   minimumAdjCents: number;
+  /** Pickup total: prints, fees and minimum top-up. Shipping is added on top when chosen. */
   totalCents: number;
   /** False if any item can't be printed; checkout must be blocked. */
   ok: boolean;
+  /** Flat rate boxes for this order, or why it can't ship. Null until every item prices. */
+  shipping: ShippingQuote | null;
 };
 
 /**
@@ -146,5 +150,14 @@ export function quoteOrder(specs: ItemSpec[], cfg: AppConfig): OrderQuote {
   const baseFeeCents = cfg.pricing.baseFeeCents;
   const raw = baseFeeCents + subtotalCents;
   const minimumAdjCents = Math.max(0, cfg.pricing.minimumOrderCents - raw);
-  return { items, baseFeeCents, subtotalCents, minimumAdjCents, totalCents: raw + minimumAdjCents, ok };
+  const shipping = ok
+    ? quoteShipping(
+        specs.flatMap((s, i) => {
+          const q = items[i];
+          return q.ok ? Array.from({ length: s.quantity }, () => ({ sizeMm: s.size, grams: q.gramsEach })) : [];
+        }),
+        cfg.shipping,
+      )
+    : null;
+  return { items, baseFeeCents, subtotalCents, minimumAdjCents, totalCents: raw + minimumAdjCents, ok, shipping };
 }

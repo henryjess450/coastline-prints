@@ -14,7 +14,7 @@ const display = localFont({ src: "./fonts/SpaceGrotesk-Variable.woff2", variable
 
 export const metadata: Metadata = {
   title: { default: site.name, template: `%s · ${site.name}` },
-  description: "Upload an STL file, set the size, material and colour, and see the price before you pay. PLA, PETG and PLA-CF prints for local pickup.",
+  description: "Upload an STL file, set the size, material and colour, and see the price before you pay. PLA, PETG and PLA-CF prints for local pickup or shipping in Canada.",
   // Installed on an iPhone home screen: full screen, with this name under the icon.
   appleWebApp: { capable: true, title: "Coastline", statusBarStyle: "black-translucent" },
 };

@@ -11,7 +11,7 @@ export function ReadyForPickup({ d, pickupWindowDays }: { d: OrderEmailData; pic
         Order <strong style={{ color: colors.text }}>{d.orderNumber}</strong> is printed, cleaned up and waiting for you.
       </P>
       <Label>Pickup details</Label>
-      <AddressBox address={d.pickupAddress} when={d.pickupWhen} />
+      <AddressBox address={d.pickupAddress ?? ""} when={d.pickupWhen} />
       <P muted>
         {d.pickupWhen
           ? "See you then! If that time no longer works, reply to this email and we'll find another one. Please bring your order number."

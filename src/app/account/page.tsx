@@ -33,7 +33,7 @@ export default async function AccountPage() {
   const [items, points, orders, profile] = await Promise.all([
     walletFor(customer.id),
     rewardsSummary(customer.email),
-    db.order.findMany({ where: { customerEmail: customer.email }, orderBy: { createdAt: "desc" }, take: 20, select: { orderNumber: true, viewToken: true, status: true, totalCents: true, createdAt: true } }),
+    db.order.findMany({ where: { customerEmail: customer.email }, orderBy: { createdAt: "desc" }, take: 20, select: { orderNumber: true, viewToken: true, status: true, fulfillment: true, totalCents: true, createdAt: true } }),
     profileFor(customer),
   ]);
   // Greet them by their saved (or latest order's) first name, or the start of their email.
@@ -88,6 +88,7 @@ export default async function AccountPage() {
                   orderNumber: o.orderNumber,
                   viewToken: o.viewToken,
                   status: o.status,
+                  fulfillment: o.fulfillment,
                   total: money(o.totalCents),
                   date: o.createdAt.toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Vancouver" }),
                 }))}

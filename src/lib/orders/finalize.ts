@@ -6,12 +6,13 @@ import { db } from "@/lib/db";
 import { sendOffHold } from "@/lib/notify/sendoff";
 import type { ItemQuote, OrderQuote } from "@/lib/pricing/quote";
 import type { PricedCart } from "@/lib/pricing/server-quote";
+import type { ShippingOption } from "@/lib/shipping/pack";
 import { newOrderNumber, newViewToken } from "./number";
 
 /** What we stored on the Checkout row before charging: the server-priced cart. */
 export type CartSnapshot = {
   lines: PricedCart["lines"];
-  quote: Pick<OrderQuote, "items" | "baseFeeCents" | "subtotalCents" | "minimumAdjCents" | "totalCents">;
+  quote: Pick<OrderQuote, "items" | "baseFeeCents" | "subtotalCents" | "minimumAdjCents" | "totalCents"> & { shipping?: ShippingOption | null };
 };
 
 /** The payment fields we rely on, normalised from Square's Payment object. */
@@ -86,6 +87,15 @@ export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts
             notes: checkout.notes,
             pickupDate: checkout.pickupDate,
             pickupTime: checkout.pickupTime,
+            fulfillment: checkout.fulfillment,
+            shippingCents: checkout.shippingCents,
+            shippingBoxes: checkout.shippingBoxes,
+            shipName: checkout.shipName,
+            shipLine1: checkout.shipLine1,
+            shipLine2: checkout.shipLine2,
+            shipCity: checkout.shipCity,
+            shipProvince: checkout.shipProvince,
+            shipPostal: checkout.shipPostal,
             subtotalCents: cart.quote.subtotalCents,
             baseFeeCents: cart.quote.baseFeeCents,
             minimumAdjCents: cart.quote.minimumAdjCents,
@@ -97,6 +107,8 @@ export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts
             totalCents: checkout.totalCents,
             currency: checkout.currency,
             squarePaymentId: payment.id,
+            paymentMethod: checkout.paymentMethod,
+            etransferDiscountCents: checkout.etransferDiscountCents,
             receiptUrl: payment.receiptUrl,
             cardBrand: payment.cardBrand,
             cardLast4: payment.last4,

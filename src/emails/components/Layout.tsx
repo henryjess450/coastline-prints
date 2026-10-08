@@ -68,6 +68,20 @@ export function Label({ children }: { children: React.ReactNode }) {
   return <Text style={{ margin: "18px 0 6px", fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: colors.faint }}>{children}</Text>;
 }
 
+/** The customer's own shipping address. */
+export function ShipToBox({ lines, label = "Shipping to" }: { lines: string[]; label?: string }) {
+  return (
+    <Section style={{ backgroundColor: colors.brandSoft, borderRadius: 12, padding: "14px 16px", margin: "4px 0 6px" }}>
+      <Text style={{ margin: 0, fontSize: 12, color: colors.muted }}>{label}</Text>
+      {lines.map((l, i) => (
+        <Text key={i} style={{ margin: i ? 0 : "2px 0 0", fontSize: 16, lineHeight: "22px", fontWeight: i ? 400 : 700, color: colors.brand }}>
+          {l}
+        </Text>
+      ))}
+    </Section>
+  );
+}
+
 /** Highlighted pickup box (receipt and ready emails only). */
 export function AddressBox({ address, when }: { address: string; when?: string | null }) {
   return (

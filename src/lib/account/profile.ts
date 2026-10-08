@@ -1,11 +1,23 @@
 import "server-only";
 import { db } from "@/lib/db";
+import { addressSchema, type AddressInput } from "@/lib/checkout/schema";
 import { consumeCode, createLoginCode, LoginError, normalizeEmail, squareSyncEnabled } from "./auth";
 
 export type Theme = "light" | "dark";
-export type Profile = { email: string; name: string; phone: string; theme: Theme | null };
+export type Profile = { email: string; name: string; phone: string; theme: Theme | null; address: AddressInput | null };
 
-type Account = { id: string; email: string; name: string | null; phone: string | null; theme: string | null };
+type Account = { id: string; email: string; name: string | null; phone: string | null; theme: string | null; shipAddress: string | null };
+
+/** A saved address, or null if there isn't one (or it no longer validates). */
+function savedAddress(json: string | null): AddressInput | null {
+  if (!json) return null;
+  try {
+    const r = addressSchema.safeParse(JSON.parse(json));
+    return r.success ? r.data : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Their saved details, filled in from their latest order where they haven't set them yet. */
 export async function profileFor(account: Account): Promise<Profile> {
@@ -16,6 +28,7 @@ export async function profileFor(account: Account): Promise<Profile> {
     name: account.name ?? last?.customerName ?? "",
     phone: account.phone ?? last?.customerPhone ?? "",
     theme: account.theme === "light" || account.theme === "dark" ? account.theme : null,
+    address: savedAddress(account.shipAddress),
   };
 }
 
@@ -24,22 +37,24 @@ export function firstName(profile: Pick<Profile, "name" | "email">) {
   return profile.name.trim().split(/\s+/)[0] || profile.email.split("@")[0].replace(/^./, (c) => c.toUpperCase());
 }
 
-/** Saves name, phone and theme. Name or phone changes are sent on to their Square customer. */
-export async function updateProfile(account: Account, data: { name?: string; phone?: string; theme?: Theme }) {
+/** Saves name, phone, theme and shipping address (null removes it). Name or phone changes are sent on to their Square customer. */
+export async function updateProfile(account: Account, data: { name?: string; phone?: string; theme?: Theme; address?: AddressInput | null }) {
   const next = {
     name: data.name !== undefined ? data.name.trim() || null : undefined,
     phone: data.phone !== undefined ? data.phone.trim() || null : undefined,
     theme: data.theme,
+    shipAddress: data.address === undefined ? undefined : data.address ? JSON.stringify(data.address) : null,
   };
   await db.customer.update({ where: { id: account.id }, data: next });
   const changed = (next.name !== undefined && next.name !== account.name) || (next.phone !== undefined && next.phone !== account.phone);
   if (changed) await queueSquareUpdate(account.id);
 }
 
-/** Fills in a missing name or phone from an order they just placed while signed in. */
-export async function rememberOrderDetails(accountId: string, email: string, details: { name: string; phone: string }) {
+/** Fills in a missing name, phone or shipping address from an order they just placed while signed in. */
+export async function rememberOrderDetails(accountId: string, email: string, details: { name: string; phone: string }, address?: AddressInput | null) {
   await db.customer.updateMany({ where: { id: accountId, email, name: null }, data: { name: details.name } });
   await db.customer.updateMany({ where: { id: accountId, email, phone: null }, data: { phone: details.phone } });
+  if (address) await db.customer.updateMany({ where: { id: accountId, email, shipAddress: null }, data: { shipAddress: JSON.stringify(address) } });
 }
 
 /** Codes for an email change are kept apart from sign-in codes, so one can't be used as the other. */

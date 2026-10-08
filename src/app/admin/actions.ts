@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import { sendNotificationsSoon } from "@/lib/notify/kick";
 import { retryJob } from "@/lib/notify/outbox";
 import { changeOrderStatus, StatusChangeError } from "@/lib/orders/admin";
+import { confirmByOwner, EtransferConfirmError } from "@/lib/payments/etransfer.server";
 import { rateLimit } from "@/lib/ratelimit";
 import { generateCode, generatePin } from "@/lib/codes/server";
 import { formatCardNumber, normalizeCode, type CodeKind } from "@/lib/codes/apply";
@@ -44,7 +45,11 @@ export async function updateStatusAction(_: ActionState, form: FormData): Promis
   const orderId = String(form.get("orderId") ?? "");
   const status = String(form.get("status") ?? "");
   try {
-    const r = await changeOrderStatus(orderId, status, { notify: form.get("notify") === "on", note: String(form.get("note") ?? "") });
+    const r = await changeOrderStatus(orderId, status, {
+      notify: form.get("notify") === "on",
+      note: String(form.get("note") ?? ""),
+      trackingNumber: String(form.get("trackingNumber") ?? ""),
+    });
     if (r.notified) sendNotificationsSoon("status-change");
     revalidatePath(`/admin/orders/${orderId}`);
     revalidatePath("/admin");
@@ -55,6 +60,30 @@ export async function updateStatusAction(_: ActionState, form: FormData): Promis
     logError("admin:status", err);
     return { error: "Couldn't update the status." };
   }
+}
+
+export async function confirmEtransferAction(_: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const checkoutId = String(form.get("checkoutId") ?? "");
+  const depositId = String(form.get("depositId") ?? "") || null;
+  if (!checkoutId) return { error: "Choose the order it pays for." };
+  try {
+    const r = await confirmByOwner(checkoutId, depositId);
+    revalidatePath("/admin/etransfers");
+    revalidatePath("/admin");
+    return { ok: true, message: r ? `Confirmed. Order ${r.order.orderNumber} is paid.` : "Confirmed." };
+  } catch (err) {
+    if (err instanceof EtransferConfirmError) return { error: err.message };
+    logError("admin:etransfer", err);
+    return { error: "Couldn't confirm it." };
+  }
+}
+
+export async function ignoreDepositAction(form: FormData) {
+  await requireAdmin();
+  const id = String(form.get("depositId") ?? "");
+  await db.etransferDeposit.updateMany({ where: { id, status: "REVIEW" }, data: { status: "IGNORED" } });
+  revalidatePath("/admin/etransfers");
 }
 
 export async function retryJobAction(form: FormData) {

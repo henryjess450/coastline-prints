@@ -10,6 +10,6 @@ const tone: Record<string, string> = {
   PICKED_UP: "bg-surface-strong text-muted",
 };
 
-export function StatusBadge({ status, className }: { status: string; className?: string }) {
-  return <span className={cn("inline-flex whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold", tone[status] ?? tone.PICKED_UP, className)}>{statusInfo(status).label}</span>;
+export function StatusBadge({ status, fulfillment, className }: { status: string; fulfillment?: string; className?: string }) {
+  return <span className={cn("inline-flex whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold", tone[status] ?? tone.PICKED_UP, className)}>{statusInfo(status, fulfillment).label}</span>;
 }

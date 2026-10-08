@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
-export type AccountProfile = { signedIn: true; email: string; name: string; phone: string; theme: "light" | "dark" | null } | { signedIn: false };
+export type SavedAddress = { name: string; line1: string; line2: string; city: string; province: string; postal: string };
+export type AccountProfile = { signedIn: true; email: string; name: string; phone: string; theme: "light" | "dark" | null; address: SavedAddress | null } | { signedIn: false };
 
 /**
  * The signed-in customer's saved details (or `{ signedIn: false }`), null

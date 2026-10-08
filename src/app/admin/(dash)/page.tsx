@@ -18,6 +18,9 @@ export const metadata = { title: "Orders" };
 
 const PAGE = 50;
 
+/** These tabs hold both pickup and shipped orders. */
+const TAB_LABELS: Record<string, string> = { READY_FOR_PICKUP: "Ready / shipped", PICKED_UP: "Picked up / delivered" };
+
 type Search = { status?: string; printer?: string; q?: string; page?: string };
 
 export default async function OrdersPage({ searchParams }: { searchParams: Promise<Search> }) {
@@ -48,7 +51,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   const countOf = (s: string) => counts.find((c) => c.status === s)?._count ?? 0;
   const activeCount = counts.filter((c) => c.status !== "PICKED_UP").reduce((n, c) => n + c._count, 0);
 
-  const tabs = [{ id: "ACTIVE", label: "Active", n: activeCount }, ...ORDER_STATUSES.map((s) => ({ id: s.id, label: s.label, n: countOf(s.id) })), { id: "ALL", label: "All", n: counts.reduce((n, c) => n + c._count, 0) }];
+  const tabs = [{ id: "ACTIVE", label: "Active", n: activeCount }, ...ORDER_STATUSES.map((s) => ({ id: s.id, label: TAB_LABELS[s.id] ?? s.label, n: countOf(s.id) })), { id: "ALL", label: "All", n: counts.reduce((n, c) => n + c._count, 0) }];
   const href = (over: Partial<Search>) => {
     const p = new URLSearchParams();
     const merged = { status, printer: sp.printer, q: sp.q, ...over };
@@ -93,7 +96,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
               <tr>
                 <th className="px-4 py-3 font-medium">Order</th>
                 <th className="px-4 py-3 font-medium">Customer</th>
-                <th className="px-4 py-3 font-medium">Pickup</th>
+                <th className="px-4 py-3 font-medium">Pickup / ship</th>
                 <th className="px-4 py-3 font-medium">Printers</th>
                 <th className="px-4 py-3 text-right font-medium">Total</th>
                 <th className="px-4 py-3 font-medium">Status</th>
@@ -116,12 +119,12 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
                       {o.customerOrderCount > 1 && <span className="ml-2 rounded-full bg-sand/20 px-2 py-0.5 text-[11px] font-semibold text-sand">★ Returning</span>}
                       <div className="text-xs text-faint">{pieces} piece{pieces === 1 ? "" : "s"}</div>
                     </td>
-                    <td className="px-4 py-3 text-muted">{formatPickup(o.pickupDate, o.pickupTime, pickup) ?? "Not booked"}</td>
+                    <td className="px-4 py-3 text-muted">{o.fulfillment === "SHIP" ? `Ship to ${o.shipCity}, ${o.shipProvince}` : (formatPickup(o.pickupDate, o.pickupTime, pickup) ?? "Not booked")}</td>
                     <td className="px-4 py-3 text-muted">{printers}</td>
                     <td className="px-4 py-3 text-right font-mono">{money(o.totalCents)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <StatusBadge status={o.status} />
+                        <StatusBadge status={o.status} fulfillment={o.fulfillment} />
                         <PrintButton action={printReceiptAction} name="orderId" value={o.id} label={`Reprint ticket for ${o.orderNumber}`} className="rounded-full border border-line px-2 py-0.5 text-xs text-muted hover:border-accent-line hover:text-fg">
                           Reprint
                         </PrintButton>

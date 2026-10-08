@@ -14,12 +14,14 @@ import type { WalletItem } from "@/lib/account/wallet";
  */
 export function CodeBox({
   orderTotalCents,
+  shippingCents = 0,
   codes,
   result,
   onChange,
   disabled,
 }: {
   orderTotalCents: number;
+  shippingCents?: number;
   codes: CodeInfo[];
   result: ApplyResult;
   onChange: (codes: CodeInfo[]) => void;
@@ -67,7 +69,7 @@ export function CodeBox({
       const body = await res.json().catch(() => ({}));
       if (!res.ok) return setError(body.error ?? "That code isn't valid.");
       const next = [...codes, { ...(body.code as CodeInfo), pin: cardPin || undefined }];
-      const why = applyCodes(orderTotalCents, next).rejected.find((r) => r.code === code);
+      const why = applyCodes(orderTotalCents, next, shippingCents).rejected.find((r) => r.code === code);
       if (why) return setError(why.reason);
       onChange(next);
       bounce(applyBtn.current);

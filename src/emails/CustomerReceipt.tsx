@@ -1,12 +1,16 @@
 import { Link, Section, Text } from "@react-email/components";
 import { money } from "@/lib/format";
 import type { OrderEmailData } from "@/lib/email/data";
-import { AddressBox, colors, EmailLayout, H1, Label, P, PillButton } from "./components/Layout";
+import { AddressBox, colors, EmailLayout, H1, Label, P, PillButton, ShipToBox } from "./components/Layout";
 import { ItemTable } from "./ItemTable";
 
 export function CustomerReceipt({ d }: { d: OrderEmailData }) {
   const first = d.customerName.split(/\s+/)[0];
-  const steps = ["We check your files and queue them on the right printer.", "Your parts are printed and cleaned up.", "We email you when it's ready, before your pickup time."];
+  const steps = [
+    "We check your files and queue them on the right printer.",
+    "Your parts are printed and cleaned up.",
+    d.shipTo ? (d.tracked ? "We pack it and send it with Canada Post, then email you the tracking number." : "We pack it in a padded mailer and send it by Canada Post Lettermail (no tracking), then email you.") : "We email you when it's ready, before your pickup time.",
+  ];
   return (
     <EmailLayout preview={`Order ${d.orderNumber} confirmed · ${money(d.totalCents)} paid`}>
       <H1>Thanks, {first}. Your order is confirmed.</H1>
@@ -32,14 +36,24 @@ export function CustomerReceipt({ d }: { d: OrderEmailData }) {
         </Text>
       ))}
 
-      <Label>Pickup</Label>
-      <P muted>
-        {d.pickupWhen
-          ? "Here's the pickup time you chose. We'll email you to confirm once your order is ready. If the time stops working for you, just reply to this email."
-          : "This order is for local pickup. Please wait for the \"ready for pickup\" email before coming by."}
-      </P>
-      <AddressBox address={d.pickupAddress} when={d.pickupWhen} />
-      <Text style={{ margin: "0 0 20px", fontSize: 12, color: colors.faint }}>Please keep this address private.</Text>
+      {d.shipTo ? (
+        <>
+          <Label>Shipping</Label>
+          <P muted>Prints usually take 2 to 5 days, then Canada Post delivery takes a few more. If anything in this address is wrong, reply to this email before it ships.</P>
+          <ShipToBox lines={d.shipTo} />
+        </>
+      ) : (
+        <>
+          <Label>Pickup</Label>
+          <P muted>
+            {d.pickupWhen
+              ? "Here's the pickup time you chose. We'll email you to confirm once your order is ready. If the time stops working for you, just reply to this email."
+              : "This order is for local pickup. Please wait for the \"ready for pickup\" email before coming by."}
+          </P>
+          <AddressBox address={d.pickupAddress ?? ""} when={d.pickupWhen} />
+          <Text style={{ margin: "0 0 20px", fontSize: 12, color: colors.faint }}>Please keep this address private.</Text>
+        </>
+      )}
 
       <Section style={{ margin: "8px 0 4px" }}>
         <PillButton href={d.links.status}>Track your order</PillButton>

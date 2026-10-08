@@ -55,6 +55,26 @@ model Checkout {
   notes            String?
   pickupDate       String? // "YYYY-MM-DD", shop time zone
   pickupTime       String? // "HH:MM" slot start
+  /// PICKUP or SHIP (Canada Post bubble mailer or flat rate box).
+  fulfillment      String   @default("PICKUP")
+  /// Shipping charged: postage plus packing fee. 0 for pickup.
+  shippingCents    Int      @default(0)
+  /// JSON packages: the mailer or flat rate boxes, and how many pieces in each.
+  shippingBoxes    String?
+  shipName         String?
+  shipLine1        String?
+  shipLine2        String?
+  shipCity         String?
+  shipProvince     String?
+  shipPostal       String?
+  /// CARD (Square) or ETRANSFER (Interac, matched from the deposit email).
+  paymentMethod    String   @default("CARD")
+  /// The code the customer puts in the e-Transfer message, e.g. "PAY-7K4QX".
+  etransferCode    String?  @unique
+  /// Discount for paying by e-Transfer (no card fees).
+  etransferDiscountCents Int @default(0)
+  /// e-Transfer checkouts are cancelled if nothing arrives by then.
+  expiresAt        DateTime?
   squarePaymentId  String?  @unique
   squareCustomerId String?
   /// JSON AppliedCode[]: coupons and gift cards used, with amounts.
@@ -67,6 +87,7 @@ model Checkout {
 
   order       Order?
   redemptions CodeRedemption[]
+  etransferDeposit EtransferDeposit?
 }
 
 model Order {
@@ -83,6 +104,20 @@ model Order {
   notes           String?
   pickupDate      String? // "YYYY-MM-DD", shop time zone
   pickupTime      String? // "HH:MM" slot start
+  /// PICKUP or SHIP (Canada Post bubble mailer or flat rate box).
+  fulfillment      String   @default("PICKUP")
+  /// Shipping charged: postage plus packing fee. 0 for pickup.
+  shippingCents    Int      @default(0)
+  /// JSON packages: the mailer or flat rate boxes, and how many pieces in each.
+  shippingBoxes    String?
+  shipName         String?
+  shipLine1        String?
+  shipLine2        String?
+  shipCity         String?
+  shipProvince     String?
+  shipPostal       String?
+  /// Canada Post tracking number, added when the order ships.
+  trackingNumber   String?
   subtotalCents   Int
   baseFeeCents    Int
   minimumAdjCents Int      @default(0)
@@ -92,7 +127,10 @@ model Order {
   appliedCodes    String   @default("[]")
   totalCents      Int
   currency        String   @default("CAD")
-  /// "nopay_<checkoutId>" when a gift card covered the whole order.
+  /// CARD or ETRANSFER.
+  paymentMethod   String   @default("CARD")
+  etransferDiscountCents Int @default(0)
+  /// "nopay_<checkoutId>" when a gift card covered the whole order; "etr_<depositId>" for e-Transfers.
   squarePaymentId String   @unique
   squareCustomerId String?
   /// 1 = first order from this email, 2 = second, ...
@@ -266,6 +304,8 @@ model Customer {
   /// Saved details, used to fill in checkout. Empty until they set them or place an order.
   name       String?
   phone      String?
+  /// JSON AddressInput: where they ship to, filled in at checkout when shipping.
+  shipAddress String?
   /// "light" or "dark"; applied whenever they sign in.
   theme      String?
   createdAt  DateTime          @default(now())
@@ -315,4 +355,27 @@ model PointsEntry {
   createdAt DateTime @default(now())
 
   @@index([email])
+}
+
+/// An Interac e-Transfer deposit email read from the shop's inbox.
+model EtransferDeposit {
+  id          String   @id @default(cuid())
+  /// The email's Message-ID, so each deposit is handled once.
+  messageId   String   @unique
+  receivedAt  DateTime
+  amountCents Int
+  senderName  String?
+  /// What the customer wrote in the e-Transfer message.
+  memo        String?
+  reference   String?
+  /// True when the email's DKIM signature is Interac's (not forged).
+  verified    Boolean  @default(false)
+  /// MATCHED (paid an order) | REVIEW (needs the owner) | IGNORED
+  status      String
+  note        String?
+  checkoutId  String?  @unique
+  checkout    Checkout? @relation(fields: [checkoutId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([status])
 }

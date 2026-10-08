@@ -1,3 +1,4 @@
+import { etransfer } from "@config/payments";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { legal, site } from "@config/site";
@@ -22,7 +23,7 @@ export default function TermsPage() {
     >
       <Section title="Who we are">
         <p>
-          {site.name} is a small 3D printing business based in {legal.province}, Canada. We print customer-supplied STL files in PLA, PETG and PLA-CF. Orders are for local pickup only. We don&apos;t ship.
+          {site.name} is a small 3D printing business based in {legal.province}, Canada. We print customer-supplied STL files in PLA, PETG and PLA-CF. Orders can be picked up locally or shipped anywhere in Canada with Canada Post.
         </p>
       </Section>
 
@@ -30,7 +31,10 @@ export default function TermsPage() {
         <ul>
           <li>All prices are in Canadian dollars (CAD).</li>
           <li>The total shown at checkout is the amount you pay. It is calculated by our server from your file, size, material and settings.</li>
-          <li>Payments are processed by Square. Your order is only placed once Square confirms the payment.</li>
+          <li>Card payments are processed by Square. A card order is only placed once Square confirms the payment.</li>
+          <li>
+            You can also pay by Interac e-Transfer, with {etransfer.discountPercent}% off. Send the exact amount shown, with your payment code in the message. Your order is confirmed once the money arrives. If it hasn&apos;t arrived within {etransfer.payWindowMinutes / 60} hours, the order is cancelled. If you send it after that, we&apos;ll confirm the order if we still can, or refund the transfer.
+          </li>
           <li>If we can&apos;t print an order after you&apos;ve paid (for example, the file turns out to be unprintable), we&apos;ll contact you and refund the full amount.</li>
         </ul>
       </Section>
@@ -66,7 +70,7 @@ export default function TermsPage() {
             <strong>After printing starts:</strong> orders are custom-made and can&apos;t be cancelled.
           </li>
           <li>
-            <strong>Defects we caused</strong> (failed layers, wrong material or colour, wrong size): tell us within {legal.problemReportDays} days of pickup and we&apos;ll reprint the part or refund it.
+            <strong>Defects we caused</strong> (failed layers, wrong material or colour, wrong size): tell us within {legal.problemReportDays} days of pickup or delivery and we&apos;ll reprint the part or refund it.
           </li>
           <li>Problems that come from the design of the file are not covered.</li>
         </ul>
@@ -78,6 +82,17 @@ export default function TermsPage() {
           <li>
             Please collect your order within {legal.pickupWindowDays} days of the ready email. After that we&apos;ll try to contact you. Orders that still aren&apos;t collected may be recycled, and are not refunded.
           </li>
+        </ul>
+      </Section>
+
+      <Section title="Shipping">
+        <ul>
+          <li>We ship within Canada only, with Canada Post. The shipping price is Canada Post&apos;s price plus a small packing fee, shown at checkout before you pay.</li>
+          <li>Small, flat orders can go in a padded bubble mailer by Lettermail. Lettermail has no tracking and no loss coverage, so if a mailer goes missing we can&apos;t prove it was delivered. Choose a tracked box at checkout if you want tracking.</li>
+          <li>Tracked flat rate boxes include a tracking number, which we email you when your order ships. Delivery times are set by Canada Post and aren&apos;t guaranteed by us.</li>
+          <li>Please check your address before paying. If a package is returned because the address was wrong or it wasn&apos;t collected, we can reship it if you pay the shipping again.</li>
+          <li>If your order arrives damaged, email us a photo within {legal.problemReportDays} days of delivery and we&apos;ll reprint or refund the damaged parts.</li>
+          <li>Coupons don&apos;t apply to shipping. Gift cards do.</li>
         </ul>
       </Section>
 

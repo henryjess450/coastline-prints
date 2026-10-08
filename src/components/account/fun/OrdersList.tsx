@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { ORDER_STATUSES, statusIndex, statusInfo } from "@/lib/orders/status";
 
-type Row = { orderNumber: string; viewToken: string; status: string; total: string; date: string };
+type Row = { orderNumber: string; viewToken: string; status: string; fulfillment: string; total: string; date: string };
 
 /** Orders slide in one by one; each has a little track that fills up to its status, with the current step pulsing. */
 export function OrdersList({ orders }: { orders: Row[] }) {
@@ -22,7 +22,7 @@ export function OrdersList({ orders }: { orders: Row[] }) {
                     {o.date} · <span className="font-mono text-fg">{o.total}</span>
                   </span>
                 </div>
-                <div className="mt-3 flex items-center gap-1.5" aria-label={`Status: ${statusInfo(o.status).label}`}>
+                <div className="mt-3 flex items-center gap-1.5" aria-label={`Status: ${statusInfo(o.status, o.fulfillment).label}`}>
                   {ORDER_STATUSES.map((s, k) => (
                     <span key={s.id} className="flex flex-1 items-center gap-1.5">
                       <motion.span
@@ -42,7 +42,7 @@ export function OrdersList({ orders }: { orders: Row[] }) {
                   ))}
                 </div>
                 <p className="mt-2 text-sm text-muted">
-                  {statusInfo(o.status).label}
+                  {statusInfo(o.status, o.fulfillment).label}
                   <span className="ml-2 inline-block text-accent-text opacity-0 transition-[opacity,transform] duration-200 group-hover:translate-x-1 group-hover:opacity-100">View →</span>
                 </p>
               </motion.div>

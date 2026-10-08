@@ -23,7 +23,7 @@ export const uploads = {
  * Have these reviewed before going live.
  */
 export const legal = {
-  lastUpdated: "October 4, 2026",
+  lastUpdated: "October 7, 2026",
   province: "British Columbia",
   contactEmail: process.env.NEXT_PUBLIC_CONTACT_EMAIL ?? "coastline.printz@gmail.com",
   /** Days a finished order is held after the "ready for pickup" email. */

@@ -9,10 +9,11 @@ const links = [
   { href: "/admin", label: "Orders" },
   { href: "/admin/queues", label: "Printer queues" },
   { href: "/admin/codes", label: "Codes" },
+  { href: "/admin/etransfers", label: "e-Transfers" },
   { href: "/admin/settings", label: "Settings" },
 ];
 
-export function AdminNav({ failedEmails }: { failedEmails: number }) {
+export function AdminNav({ failedEmails, etransferReview = 0 }: { failedEmails: number; etransferReview?: number }) {
   const path = usePathname();
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -28,6 +29,11 @@ export function AdminNav({ failedEmails }: { failedEmails: number }) {
         })}
       </nav>
       <div className="flex items-center gap-3 text-sm">
+        {etransferReview > 0 && (
+          <Link href="/admin/etransfers" className="rounded-full bg-warning/15 px-3 py-1 font-medium text-warning">
+            {etransferReview} e-Transfer{etransferReview === 1 ? "" : "s"} to check
+          </Link>
+        )}
         {failedEmails > 0 && (
           <Link href="/admin?status=EMAIL_FAILED" className="rounded-full bg-danger/15 px-3 py-1 font-medium text-danger">
             {failedEmails} email{failedEmails === 1 ? "" : "s"} failed

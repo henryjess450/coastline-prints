@@ -23,7 +23,9 @@ export async function postDiscordNewOrder(d: OrderEmailData) {
             { name: "Customer", value: `${d.customerName}${d.returning ? ` (${d.returning})` : ""}\n${d.customerEmail}\n${d.customerPhone}`, inline: true },
             ...(d.discounts.length ? [{ name: "Codes used", value: d.discounts.map((x) => `${x.label}: -${money(x.amountCents)}`).join("\n"), inline: false }] : []),
             { name: "Estimate", value: `${d.totalGrams.toFixed(0)} g · ${d.totalHoursLabel}`, inline: true },
-            { name: "Pickup", value: d.pickupWhen ?? "Not booked", inline: true },
+            d.shipTo
+              ? { name: "Ship", value: `${d.shipTo.at(-2)}\n${d.shippingLabel ?? "Canada Post"}`, inline: true }
+              : { name: "Pickup", value: d.pickupWhen ?? "Not booked", inline: true },
             ...(d.notes ? [{ name: "Notes", value: d.notes.slice(0, 1000) }] : []),
           ],
           timestamp: d.createdAt,

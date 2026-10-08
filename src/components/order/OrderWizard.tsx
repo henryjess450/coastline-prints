@@ -1,5 +1,6 @@
 "use client";
 import { AnimatePresence, motion } from "framer-motion";
+import type { EtransferPublic } from "@/lib/payments/etransfer";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CheckoutStep } from "@/components/checkout/CheckoutStep";
 import type { SquareConfig } from "@/components/checkout/PaymentMethods";
@@ -25,7 +26,7 @@ const stepMotion = {
   transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] },
 } as const;
 
-export function OrderWizard({ square }: { square: SquareConfig | null }) {
+export function OrderWizard({ square, etransfer }: { square: SquareConfig | null; etransfer: EtransferPublic }) {
   const items = useOrder((s) => s.items);
   const selectedKey = useOrder((s) => s.selectedKey);
   const selectedIndex = Math.max(
@@ -137,7 +138,7 @@ export function OrderWizard({ square }: { square: SquareConfig | null }) {
               <h1 id="checkout-title" className="sr-only">
                 Checkout
               </h1>
-              <CheckoutStep items={items} cartQuote={cartQuote} square={square} onBack={() => goTo("customize")} />
+              <CheckoutStep items={items} cartQuote={cartQuote} square={square} etransfer={etransfer} onBack={() => goTo("customize")} />
             </motion.section>
           ) : (
             <motion.section

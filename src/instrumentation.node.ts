@@ -1,8 +1,9 @@
 import { cleanupFiles } from "@/lib/cleanup";
 import { processOutbox } from "@/lib/notify/outbox";
+import { checkInbox, etransferSettings, expireEtransfers, hasWaitingEtransfers } from "@/lib/payments/etransfer.server";
 
 const INTERVAL_MS = 60_000;
-const g = globalThis as unknown as { __outboxTimer?: NodeJS.Timeout; __cleanupTimer?: NodeJS.Timeout };
+const g = globalThis as unknown as { __outboxTimer?: NodeJS.Timeout; __cleanupTimer?: NodeJS.Timeout; __etransferTimer?: NodeJS.Timeout };
 
 const tick = () => processOutbox().catch((err) => console.error("[outbox:interval]", err));
 
@@ -19,4 +20,22 @@ if (!g.__cleanupTimer) {
   setTimeout(clean, 60_000).unref?.();
   g.__cleanupTimer = setInterval(clean, 24 * 60 * 60_000);
   g.__cleanupTimer.unref?.();
+}
+
+// e-Transfers: read the inbox every minute while someone is waiting to pay, otherwise every 10
+// (to catch late payments), and cancel unpaid ones whose time is up.
+if (!g.__etransferTimer && etransferSettings()) {
+  let ticks = 0;
+  const run = async () => {
+    ticks++;
+    try {
+      if ((await hasWaitingEtransfers()) || ticks % 10 === 0) await checkInbox({ minGapMs: 30_000 });
+      await expireEtransfers();
+    } catch (err) {
+      console.error("[etransfer]", err);
+    }
+  };
+  setTimeout(run, 20_000).unref?.();
+  g.__etransferTimer = setInterval(run, 60_000);
+  g.__etransferTimer.unref?.();
 }

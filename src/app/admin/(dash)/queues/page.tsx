@@ -19,7 +19,7 @@ export default async function QueuesPage() {
   const cfg = await getEffectiveConfig();
   const items = await db.orderItem.findMany({
     where: { order: { status: { in: ON_PRINTER } } },
-    include: { order: { select: { id: true, orderNumber: true, status: true, pickupDate: true, pickupTime: true, customerName: true } } },
+    include: { order: { select: { id: true, orderNumber: true, status: true, pickupDate: true, pickupTime: true, customerName: true, fulfillment: true } } },
   });
   // Soonest pickup first; unbooked last.
   items.sort((a, b) => `${a.order.pickupDate ?? "9999"}${a.order.pickupTime ?? ""}`.localeCompare(`${b.order.pickupDate ?? "9999"}${b.order.pickupTime ?? ""}`));
@@ -61,7 +61,7 @@ export default async function QueuesPage() {
                             {i.fileName} × {i.quantity} · {i.material} {i.colorName}
                           </p>
                           <p className="text-xs text-muted">
-                            {i.sizeX.toFixed(0)}×{i.sizeY.toFixed(0)}×{i.sizeZ.toFixed(0)} mm · {i.quality} · about {hours(i.hoursEach * i.quantity)} · pickup {formatPickup(i.order.pickupDate, i.order.pickupTime, pickup) ?? "not booked"}
+                            {i.sizeX.toFixed(0)}×{i.sizeY.toFixed(0)}×{i.sizeZ.toFixed(0)} mm · {i.quality} · about {hours(i.hoursEach * i.quantity)} · {i.order.fulfillment === "SHIP" ? "shipping" : `pickup ${formatPickup(i.order.pickupDate, i.order.pickupTime, pickup) ?? "not booked"}`}
                           </p>
                         </Link>
                       </li>

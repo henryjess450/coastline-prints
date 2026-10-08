@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { hours, money, returningLabel } from "@/lib/format";
 import type { AppliedCode } from "@/lib/codes/apply";
 import { pickupParts } from "@/lib/pickup";
+import { shippingAddressLines, shippingBoxesOf } from "@/lib/shipping/address";
 
 /** 72 mm of printable width at 203 dpi on the TSP650II series. */
 export const RECEIPT_WIDTH = 576;
@@ -20,6 +21,9 @@ export type ReceiptData = {
   customerPhone: string;
   pickupDate: string | null;
   pickupTime: string | null;
+  /** Shipped orders: the address label and which boxes to pack. */
+  ship: { lines: string[]; boxes: string[] } | null;
+  shippingCents: number;
   notes: string | null;
   items: { fileName: string; quantity: number; detail: string; lineCents: number }[];
   baseFeeCents: number;
@@ -43,6 +47,8 @@ export async function loadReceiptData(orderId: string): Promise<ReceiptData | nu
     customerPhone: o.customerPhone,
     pickupDate: parts?.date ?? null,
     pickupTime: parts?.time ?? null,
+    ship: o.fulfillment === "SHIP" ? { lines: shippingAddressLines(o) ?? [], boxes: shippingBoxesOf(o).map((b) => `${b.name} box: ${b.pieces} ${b.pieces === 1 ? "piece" : "pieces"}`) } : null,
+    shippingCents: o.shippingCents,
     notes: o.notes,
     items: o.items.map((i) => ({
       fileName: i.fileName,
@@ -52,11 +58,14 @@ export async function loadReceiptData(orderId: string): Promise<ReceiptData | nu
     })),
     baseFeeCents: o.baseFeeCents,
     minimumAdjCents: o.minimumAdjCents,
-    discounts: (JSON.parse(o.appliedCodes) as AppliedCode[]).map((a) => ({ label: a.label, amountCents: a.amountCents })),
+    discounts: [
+      ...(JSON.parse(o.appliedCodes) as AppliedCode[]).map((a) => ({ label: a.label, amountCents: a.amountCents })),
+      ...(o.etransferDiscountCents > 0 ? [{ label: "e-Transfer discount", amountCents: o.etransferDiscountCents }] : []),
+    ],
     returning: returningLabel(o.customerOrderCount),
     totalCents: o.totalCents,
-    card: o.cardLast4 ? `${(o.cardBrand ?? "Card").replace(/_/g, " ")} ending ${o.cardLast4}` : null,
-    paymentId: o.squarePaymentId.startsWith("nopay_") ? "none (gift card)" : o.squarePaymentId,
+    card: o.paymentMethod === "ETRANSFER" ? "Interac e-Transfer" : o.cardLast4 ? `${(o.cardBrand ?? "Card").replace(/_/g, " ")} ending ${o.cardLast4}` : null,
+    paymentId: o.squarePaymentId.startsWith("nopay_") ? "none (gift card)" : o.paymentMethod === "ETRANSFER" ? "e-Transfer" : o.squarePaymentId,
   };
 }
 
@@ -103,7 +112,7 @@ const Row = ({ left, right, size = 22, bold = false }: { left: string; right: st
 export async function renderReceiptPng(d: ReceiptData, opts: { test?: boolean } = {}): Promise<Buffer> {
   const fonts = loadFonts();
   const noteLines = d.notes ? Math.ceil(d.notes.length / 40) + d.notes.split("\n").length : 0;
-  const height = Math.min(4000, 640 + d.discounts.length * 26 + d.items.length * 70 + noteLines * 26 + (d.minimumAdjCents ? 28 : 0) + (opts.test ? 50 : 0));
+  const height = Math.min(4000, 640 + d.discounts.length * 26 + d.items.length * 70 + noteLines * 26 + (d.minimumAdjCents ? 28 : 0) + (d.ship ? 60 + (d.ship.lines.length + d.ship.boxes.length) * 30 : 0) + (opts.test ? 50 : 0));
 
   const tree = (
     <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", background: "white", color: "black", fontFamily: fonts.family, padding: "0 4px", fontSize: 22, lineHeight: 1.2 }}>
@@ -120,7 +129,21 @@ export async function renderReceiptPng(d: ReceiptData, opts: { test?: boolean } 
       </div>
       <Rule />
 
-      {d.pickupDate ? (
+      {d.ship ? (
+        <div style={{ display: "flex", flexDirection: "column", border: "3px solid black", padding: "4px 10px" }}>
+          <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: 1 }}>SHIP · CANADA POST</span>
+          {d.ship.lines.map((l, i) => (
+            <span key={i} style={{ fontSize: i ? 22 : 26, fontWeight: 700 }}>
+              {l}
+            </span>
+          ))}
+          {d.ship.boxes.map((b, i) => (
+            <span key={`b${i}`} style={{ fontSize: 20, marginTop: i ? 0 : 6 }}>
+              {b}
+            </span>
+          ))}
+        </div>
+      ) : d.pickupDate ? (
         <div style={{ display: "flex", flexDirection: "column", border: "3px solid black", padding: "4px 10px" }}>
           <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: 1 }}>PICKUP</span>
           <span style={{ fontSize: 30, fontWeight: 700 }}>{d.pickupDate}</span>
@@ -146,6 +169,7 @@ export async function renderReceiptPng(d: ReceiptData, opts: { test?: boolean } 
       ))}
       <Row left="Order fee" right={money(d.baseFeeCents)} size={20} />
       {d.minimumAdjCents > 0 && <Row left="Minimum order top-up" right={money(d.minimumAdjCents)} size={20} />}
+      {d.ship && <Row left="Shipping" right={money(d.shippingCents)} size={20} />}
       {d.discounts.map((x) => (
         <Row key={x.label} left={x.label} right={`-${money(x.amountCents)}`} size={20} />
       ))}

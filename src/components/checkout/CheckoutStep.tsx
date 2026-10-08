@@ -11,7 +11,7 @@ import { modelSilhouette, type Silhouette } from "@/lib/order/silhouette";
 import { OrderAnimation, type PayResult } from "./OrderAnimation";
 import { bounce, Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { customerSchema } from "@/lib/checkout/schema";
+import { addressSchema, customerSchema } from "@/lib/checkout/schema";
 import { cn } from "@/lib/cn";
 import { hours, money } from "@/lib/format";
 import { useOrder, type CartItem } from "@/lib/order/store";
@@ -19,8 +19,13 @@ import { cartPayload, type CartQuote } from "@/lib/order/use-quote";
 import { PaymentMethods, type PaymentMethodsHandle, type SquareConfig } from "./PaymentMethods";
 import { PickupPicker, type PickupChoice } from "./PickupPicker";
 import { CodeBox } from "./CodeBox";
+import { Field, inputClass } from "./fields";
+import { AddressForm, BoxSummary, emptyAddress, MethodToggle, ShipOptions, type AddressDraft, type AddressErrors, type DeliveryMethod } from "./Delivery";
+import { withParcel, type ShippingMethod, type ShippingOption } from "@/lib/shipping/pack";
 import { useAccount } from "@/components/account/use-account";
 import { applyCodes, codeEntry, type CodeInfo } from "@/lib/codes/apply";
+import { etransferDiscount, type EtransferPublic } from "@/lib/payments/etransfer";
+import { EtransferWaiting, type EtransferDetails } from "./EtransferWaiting";
 
 type Contact = {
   name: string;
@@ -38,7 +43,7 @@ const releaseSendOff = (viewToken: string) =>
   fetch("/api/sendoff", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order: viewToken }), keepalive: true }).catch(() => undefined);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export function CheckoutStep({ items, cartQuote, square, onBack }: { items: CartItem[]; cartQuote: CartQuote; square: SquareConfig | null; onBack: () => void }) {
+export function CheckoutStep({ items, cartQuote, square, etransfer, onBack }: { items: CartItem[]; cartQuote: CartQuote; square: SquareConfig | null; etransfer: EtransferPublic; onBack: () => void }) {
   const cfg = useConfig();
   const router = useRouter();
   const resetCart = useOrder((s) => s.reset);
@@ -59,8 +64,17 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
   useEffect(() => {
     typed.current = contact;
   });
+  const [address, setAddress] = useState<AddressDraft>(emptyAddress);
+  const typedAddress = useRef<AddressDraft>(emptyAddress);
+  const [addressFlash, setAddressFlash] = useState(false);
   const account = useAccount((a) => {
     if (!a.signedIn) return;
+    // Their saved shipping address, if they haven't started typing one.
+    if (a.address && Object.values(typedAddress.current).every((v) => !v.trim())) {
+      setAddress({ ...emptyAddress, ...a.address, line2: a.address.line2 ?? "" });
+      setAddressFlash(true);
+      setTimeout(() => setAddressFlash(false), 1600);
+    }
     const fill = (["name", "email", "phone"] as const).filter((k) => !typed.current[k].trim() && a[k]);
     if (!fill.length) return;
     setContact((c) => ({ ...c, ...Object.fromEntries(fill.filter((k) => !c[k].trim()).map((k) => [k, a[k]])) }));
@@ -69,6 +83,13 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
   });
   const [pickup, setPickup] = useState<PickupChoice>(null);
   const [pickupError, setPickupError] = useState<string>();
+  const [method, setMethod] = useState<DeliveryMethod>("pickup");
+  const [addressErrors, setAddressErrors] = useState<AddressErrors>({});
+  useEffect(() => {
+    typedAddress.current = address;
+  });
+  /** null = the default (cheapest) option. */
+  const [shipChoice, setShipChoice] = useState<ShippingMethod | null>(null);
   const [busy, setBusy] = useState<false | "verifying" | "charging" | "processing">(false);
   const [payError, setPayError] = useState<{
     message: string;
@@ -78,10 +99,43 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
   const quote = cartQuote.quote;
   const [codes, setCodes] = useState<CodeInfo[]>([]);
   const orderTotal = quote?.ok ? quote.totalCents : 0;
-  const discount = applyCodes(orderTotal, codes);
-  const total = discount.totalCents;
-  const covered = !!quote?.ok && total === 0;
-  const canPay = (!!square || covered) && !!quote?.ok && cartQuote.confirmed && !busy;
+  const shippingQuote = quote?.ok ? quote.shipping : null;
+  // The cart changed and can't ship any more: fall back to pickup.
+  const ships = method === "ship" && !!shippingQuote?.ok;
+  // The tracked-mailer price depends on the destination, so it's fetched once the postal code is in.
+  const parcel = shippingQuote?.ok ? shippingQuote.parcel : null;
+  const postalKey = /^[A-Z]\d[A-Z]\s?\d[A-Z]\d$/i.test(address.postal.trim()) ? address.postal.toUpperCase().replace(/\s/g, "") : "";
+  const rateKey = method === "ship" && parcel && postalKey && cartQuote.ready ? `${JSON.stringify(cartPayload(items))}|${postalKey}` : "";
+  const [parcelRate, setParcelRate] = useState<{ key: string; option: ShippingOption | null } | null>(null);
+  useEffect(() => {
+    if (!rateKey) return;
+    const ctrl = new AbortController();
+    const t = setTimeout(async () => {
+      const [cart, postal] = rateKey.split("|");
+      const res = await fetch("/api/shipping/rates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: JSON.parse(cart), postal }), signal: ctrl.signal }).catch(() => null);
+      const data = res?.ok ? await res.json().catch(() => null) : null;
+      if (!ctrl.signal.aborted) setParcelRate({ key: rateKey, option: data?.option ?? null });
+    }, 350);
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
+  }, [rateKey]);
+  const parcelOption = parcelRate?.key === rateKey && rateKey ? parcelRate.option : null;
+  const parcelHint = !parcel ? null : !postalKey ? "postal" : parcelRate?.key !== rateKey ? "loading" : null;
+  const shipOptions = shippingQuote?.ok ? withParcel(shippingQuote.options, parcelOption) : [];
+  // If the cart changes and the chosen option goes away (no longer fits a mailer), use the default.
+  const shipOption = shipOptions.find((o) => o.method === shipChoice) ?? shipOptions[0] ?? null;
+  const shippingCents = ships && shipOption ? shipOption.totalCents : 0;
+  const discount = applyCodes(orderTotal, codes, shippingCents);
+  // e-Transfer is the preferred way to pay (no card fees), with a small discount for it.
+  const [payBy, setPayBy] = useState<"etransfer" | "card">(etransfer ? "etransfer" : "card");
+  const byEtransfer = payBy === "etransfer" && !!etransfer;
+  const covered = !!quote?.ok && discount.totalCents === 0;
+  const etransferOff = byEtransfer && !covered ? etransferDiscount(discount.totalCents, etransfer.discountPercent) : 0;
+  const total = discount.totalCents - etransferOff;
+  const [waiting, setWaiting] = useState<EtransferDetails | null>(null);
+  const canPay = (covered || (byEtransfer ? true : !!square)) && !!quote?.ok && cartQuote.confirmed && !busy && (method === "pickup" || ships);
 
   // The pay button hops once when everything is ready.
   const payButton = useRef<HTMLButtonElement>(null);
@@ -96,27 +150,58 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
     if (errors[k]) setErrors((e) => ({ ...e, [k]: undefined }));
   };
 
+  const setAddr = (k: keyof AddressDraft, v: string) => {
+    setAddress((a) => ({ ...a, [k]: v }));
+    if (addressErrors[k]) setAddressErrors((e) => ({ ...e, [k]: undefined }));
+  };
+
+  function chooseMethod(m: DeliveryMethod) {
+    setMethod(m);
+    // Most people ship to themselves.
+    if (m === "ship" && !address.name.trim() && contact.name.trim()) setAddress((a) => ({ ...a, name: contact.name.trim() }));
+  }
+
+  /** The customer and where the order goes, or null after showing what's missing. */
   function validate() {
     const r = customerSchema.safeParse(contact);
-    const pickupOk = !!pickup?.date && !!pickup.time;
-    setPickupError(pickupOk ? undefined : "Please choose a pickup day and time.");
-    if (r.success && pickupOk) {
-      setErrors({});
-      return r.data;
+    const next: FieldErrors = {};
+    if (!r.success) {
+      for (const issue of r.error.issues) {
+        const k = issue.path[0] as keyof Contact;
+        next[k] ??= issue.message;
+      }
     }
-    if (r.success) {
-      document.getElementById("co-pickup")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (method === "pickup" && !contact.pickupAcknowledged) next.pickupAcknowledged = "Please confirm you'll pick up your order.";
+    setErrors(next);
+    if (Object.keys(next).length) {
+      document.getElementById(`co-${Object.keys(next)[0]}`)?.focus();
       return null;
     }
-    const next: FieldErrors = {};
-    for (const issue of r.error.issues) {
-      const k = issue.path[0] as keyof Contact;
-      next[k] ??= issue.message;
+    const customer = r.data!;
+
+    if (method === "pickup") {
+      const pickupOk = !!pickup?.date && !!pickup.time;
+      setPickupError(pickupOk ? undefined : "Please choose a pickup day and time.");
+      if (!pickupOk) {
+        document.getElementById("co-pickup")?.scrollIntoView({ behavior: "smooth", block: "center" });
+        return null;
+      }
+      return { customer, fulfillment: { method: "pickup" as const, date: pickup!.date, time: pickup!.time } };
     }
-    setErrors(next);
-    document.getElementById(`co-${Object.keys(next)[0]}`)?.focus();
-    return null;
+
+    const a = addressSchema.safeParse(address);
+    if (!a.success) {
+      const errs: AddressErrors = {};
+      for (const issue of a.error.issues) errs[issue.path[0] as keyof AddressDraft] ??= issue.message;
+      setAddressErrors(errs);
+      document.getElementById(`ship-${Object.keys(errs)[0]}`)?.focus();
+      return null;
+    }
+    setAddressErrors({});
+    setAddress((d) => ({ ...d, postal: a.data.postal }));
+    return { customer, fulfillment: { method: "ship" as const, option: shipOption!.method, address: a.data } };
   }
+  type Checked = NonNullable<ReturnType<typeof validate>>;
 
   // The full-screen send-off that plays while the payment goes through.
   const [sendOff, setSendOff] = useState<{ result: PayResult; fileName: string; model: Silhouette | null; color: string } | null>(null);
@@ -148,10 +233,11 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
 
   async function payWithCard() {
     setPayError(null);
-    const customer = validate();
-    if (!customer) return;
-    // Gift cards cover everything: no card needed.
-    if (covered) return submit("", customer);
+    const checked = validate();
+    if (!checked) return;
+    const { customer } = checked;
+    // Gift cards cover everything, or paying by e-Transfer: no card needed.
+    if (covered || byEtransfer) return submit("", checked);
     if (!payRef.current) return;
     setBusy("verifying");
     const [givenName, ...rest] = customer.name.split(/\s+/);
@@ -174,25 +260,28 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
     } catch (err) {
       return fail(err instanceof Error ? err.message : "Please check your card details.");
     }
-    await submit(token, customer);
+    await submit(token, checked);
   }
 
   async function payWithWallet(token: string) {
     setPayError(null);
-    const customer = validate();
-    if (!customer) return fail("Please fill in your contact details first, then try again.");
-    await submit(token, customer);
+    const checked = validate();
+    if (!checked) return fail(method === "ship" ? "Please fill in your contact details and shipping address first, then try again." : "Please fill in your contact details first, then try again.");
+    await submit(token, checked);
   }
 
-  async function submit(sourceId: string, customer: ReturnType<typeof customerSchema.parse>) {
+  async function submit(sourceId: string, { customer, fulfillment }: Checked) {
+    const payment = byEtransfer && !covered ? "etransfer" : "card";
     setBusy("charging");
-    startSendOff();
+    // e-Transfer orders get their send-off once the money lands.
+    if (payment === "card") startSendOff();
     const attemptId = crypto.randomUUID();
     const body = JSON.stringify({
       attemptId,
+      payment,
       sourceId,
       customer,
-      pickup,
+      fulfillment,
       items: cartPayload(items),
       expectedTotalCents: total,
       codes: codes.map(codeEntry),
@@ -216,6 +305,12 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
       }
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.status === "paid") return done(data.viewToken);
+      if (res.ok && data.status === "awaiting_etransfer") {
+        setBusy(false);
+        setWaiting({ attemptId: data.attemptId, code: data.code, amountCents: data.amountCents, sendTo: data.sendTo, expiresAt: data.expiresAt });
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
       if (res.status === 202) return pollUntilDone(attemptId);
       if (res.status === 503 && data.retryable && attempt === 0) {
         await sleep(1500);
@@ -228,6 +323,14 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
       if (data.code === "CODE_INVALID") {
         if (data.badCode) setCodes((cs) => cs.filter((c) => c.code !== data.badCode));
         return fail(`${data.error ?? "One of your codes can't be used."} Your card was not charged.`);
+      }
+      if (data.code === "SHIPPING_CHANGED") {
+        setShipChoice(null);
+        return fail(`${data.error} Your card was not charged.`);
+      }
+      if (data.code === "SHIPPING_UNAVAILABLE") {
+        setMethod("pickup");
+        return fail(`${data.error ?? "Shipping isn't available for this order."} Your card was not charged.`);
       }
       if (data.code === "PRICE_CHANGED") return fail(`The price changed to ${money(data.totalCents)}. Please review it and pay again.`);
       return fail(data.error ?? "The payment didn't go through. Your card was not charged.");
@@ -257,6 +360,22 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
     void releaseSendOff(viewToken);
     resetCart();
     router.push(`/orders/${viewToken}`);
+  }
+
+  if (waiting) {
+    return (
+      <div>
+        {sendOff && <OrderAnimation result={sendOff.result} fileName={sendOff.fileName} model={sendOff.model} color={sendOff.color} onDone={sendOffDone} />}
+        <EtransferWaiting
+          details={waiting}
+          onPaid={(viewToken) => {
+            // The money's in: now the Benchy sails, then the confirmation.
+            startSendOff();
+            done(viewToken);
+          }}
+        />
+      </div>
+    );
   }
 
   return (
@@ -318,9 +437,11 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
           </div>
 
           <div className="mt-6 space-y-4">
-            <Check id="co-pickupAcknowledged" checked={contact.pickupAcknowledged} onChange={(v) => set("pickupAcknowledged", v)} error={errors.pickupAcknowledged}>
-              I understand this order is <strong className="text-fg">local pickup only</strong>. The pickup address is shown after payment and in my receipt email.
-            </Check>
+            {method === "pickup" && (
+              <Check id="co-pickupAcknowledged" checked={contact.pickupAcknowledged} onChange={(v) => set("pickupAcknowledged", v)} error={errors.pickupAcknowledged}>
+                I&apos;ll <strong className="text-fg">pick up this order</strong>. The pickup address is shown after payment and in my receipt email.
+              </Check>
+            )}
             <Check id="co-termsAccepted" checked={contact.termsAccepted} onChange={(v) => set("termsAccepted", v)} error={errors.termsAccepted}>
               I agree to the{" "}
               <Link href="/terms" target="_blank" className="text-accent-text underline underline-offset-4">
@@ -336,24 +457,52 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
         </Card>
 
         <Card flat id="co-pickup" className="p-6 sm:p-8">
-          <h2 className="font-display text-xl font-bold">Pickup time</h2>
-          <div className="mt-3">
-            <PickupPicker
-              value={pickup}
-              onChange={(v) => {
-                setPickup(v);
-                if (v?.time) setPickupError(undefined);
-              }}
-              error={pickupError}
-            />
+          <h2 className="font-display text-xl font-bold">Pickup or shipping</h2>
+          <div className="mt-4">
+            <MethodToggle value={ships ? "ship" : "pickup"} onChange={chooseMethod} shipping={shippingQuote} />
           </div>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={ships ? "ship" : "pickup"}
+              className="mt-6"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18 }}
+            >
+              {ships && shipOption ? (
+                <div className="space-y-5">
+                  <ShipOptions options={shipOptions} value={shipOption.method} onChange={setShipChoice} parcelHint={parcelHint} />
+                  <BoxSummary option={shipOption} />
+                  {account?.signedIn && account.address && <p className="-mb-2 text-sm text-muted">Filled in from your account. Change it here for this order, or in <Link href="/account/settings" target="_blank" className="text-accent-text underline underline-offset-4">settings</Link>.</p>}
+                  <AddressForm value={address} onChange={setAddr} errors={addressErrors} flash={addressFlash} />
+                  <p className="text-xs text-faint">Prints take about 2 to 5 days, then Canada Post takes a few business days depending on where you are. {shipOption.tracked ? "We email you the tracking number when it ships." : "We email you when it ships."}</p>
+                </div>
+              ) : (
+                <PickupPicker
+                  value={pickup}
+                  onChange={(v) => {
+                    setPickup(v);
+                    if (v?.time) setPickupError(undefined);
+                  }}
+                  error={pickupError}
+                />
+              )}
+            </motion.div>
+          </AnimatePresence>
         </Card>
 
         <Card flat className="relative overflow-hidden p-6 sm:p-8">
           <h2 className="font-display text-xl font-bold">Payment</h2>
           <div className="mt-5">
+            {!covered && etransfer && <PayByToggle value={payBy} onChange={setPayBy} discountPercent={etransfer.discountPercent} />}
             {covered ? (
               <p className="rounded-xl bg-success/15 p-3 text-sm text-success">Your gift card covers this whole order. No card needed.</p>
+            ) : byEtransfer ? (
+              <p className="mt-4 rounded-2xl bg-accent-soft p-4 text-sm leading-relaxed">
+                After you place the order, we&apos;ll show you where to send the e-Transfer and a code to put in the message. It&apos;s confirmed automatically when it lands. You have{" "}
+                {etransfer.payWindowMinutes >= 60 ? `${etransfer.payWindowMinutes / 60} hour${etransfer.payWindowMinutes === 60 ? "" : "s"}` : `${etransfer.payWindowMinutes} minutes`} to send it.
+              </p>
             ) : square ? (
               <PaymentMethods ref={payRef} config={square} totalCents={total} disabled={!canPay} onWalletToken={payWithWallet} onWalletError={fail} />
             ) : (
@@ -383,7 +532,7 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
           </AnimatePresence>
 
           <Button ref={payButton} size="lg" className="mt-6 w-full" disabled={!canPay} onClick={payWithCard}>
-            {covered ? "Place order" : `Pay ${quote?.ok ? money(total) : ""}`}
+            {covered ? "Place order" : byEtransfer ? `Place order, pay ${quote?.ok ? money(total) : ""} by e-Transfer` : `Pay ${quote?.ok ? money(total) : ""}`}
           </Button>
           {!cartQuote.confirmed && <p className="mt-2 text-center text-xs text-faint">Confirming your price…</p>}
 
@@ -450,8 +599,8 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
               </div>
             )}
             <div className="flex justify-between">
-              <dt className="text-muted">{site.fulfillmentLabel}</dt>
-              <dd className="font-mono">Free</dd>
+              <dt className="text-muted">{ships ? (shipOption?.method === "mailer" ? "Shipping (bubble mailer)" : shipOption?.method === "parcel" ? "Shipping (tracked mailer)" : "Shipping (tracked box)") : site.fulfillmentLabel}</dt>
+              <dd className="font-mono">{ships ? money(shippingCents) : "Free"}</dd>
             </div>
             <AnimatePresence initial={false}>
               {discount.applied.map((a) => (
@@ -467,64 +616,22 @@ export function CheckoutStep({ items, cartQuote, square, onBack }: { items: Cart
                 </motion.div>
               ))}
             </AnimatePresence>
+            <AnimatePresence initial={false}>
+              {etransferOff > 0 && (
+                <motion.div key="etr" className="flex justify-between overflow-hidden text-success" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
+                  <dt>e-Transfer discount ({etransfer?.discountPercent}%)</dt>
+                  <dd className="font-mono">−{money(etransferOff)}</dd>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </dl>
-          <CodeBox orderTotalCents={orderTotal} codes={codes} result={discount} onChange={setCodes} disabled={!!busy || !quote?.ok} />
+          <CodeBox orderTotalCents={orderTotal} shippingCents={shippingCents} codes={codes} result={discount} onChange={setCodes} disabled={!!busy || !quote?.ok} />
           <div className="mt-4 flex items-end justify-between border-t-2 border-line-strong pt-4">
             <span className="text-sm text-muted">Total (CAD)</span>
             <AnimatedNumber value={total} format={formatTotal} className="font-display text-3xl font-bold tabular-nums" pulse />
           </div>
         </Card>
       </div>
-    </div>
-  );
-}
-
-function inputClass(error?: string, flash?: boolean) {
-  return cn(
-    "h-11 w-full rounded-xl border bg-surface px-3.5 pr-10 text-sm text-fg outline-none transition-[border-color,box-shadow] duration-500 placeholder:text-faint focus:border-accent-line focus:shadow-[0_0_0_4px_var(--accent-soft)]",
-    error ? "border-danger/60" : flash ? "border-accent-line shadow-[0_0_0_4px_var(--accent-soft)]" : "border-line",
-  );
-}
-
-function Field({ id, label, error, valid, className, children }: { id: string; label: string; error?: string; valid?: boolean; className?: string; children: React.ReactNode }) {
-  return (
-    <div className={className}>
-      <label htmlFor={id} className="mb-1.5 block text-xs font-medium text-muted">
-        {label}
-      </label>
-      <div className="relative">
-        {children}
-        {/* A small tick pops in once the field looks right */}
-        <AnimatePresence>
-          {valid && !error && (
-            <motion.span
-              className="pointer-events-none absolute right-3 top-3 grid h-5 w-5 place-items-center rounded-full bg-success/15 text-success"
-              initial={{ scale: 0, rotate: -45 }}
-              animate={{ scale: 1, rotate: 0 }}
-              exit={{ scale: 0 }}
-              transition={{ type: "spring", stiffness: 500, damping: 18 }}
-              aria-hidden
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
-                <motion.path d="M5 13l4 4L19 7" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ delay: 0.1, duration: 0.25 }} />
-              </svg>
-            </motion.span>
-          )}
-        </AnimatePresence>
-      </div>
-      <AnimatePresence>
-        {error && (
-          <motion.p
-            id={`${id}-err`}
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0, x: [0, -4, 4, -2, 0] }}
-            exit={{ opacity: 0 }}
-            className="mt-1.5 text-xs text-danger"
-          >
-            {error}
-          </motion.p>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
@@ -616,5 +723,34 @@ function AccountNote({ account }: { account: ReturnType<typeof useAccount> }) {
         </motion.p>
       ) : null}
     </AnimatePresence>
+  );
+}
+
+/** e-Transfer (preferred) or card. */
+function PayByToggle({ value, onChange, discountPercent }: { value: "etransfer" | "card"; onChange: (v: "etransfer" | "card") => void; discountPercent: number }) {
+  const options = [
+    { id: "etransfer" as const, title: "Interac e-Transfer", detail: `Preferred · ${discountPercent}% off · no fees` },
+    { id: "card" as const, title: "Card", detail: "Visa, Mastercard, Apple Pay, Google Pay" },
+  ];
+  return (
+    <div role="radiogroup" aria-label="How to pay" className="grid gap-3 sm:grid-cols-2">
+      {options.map((o) => {
+        const active = value === o.id;
+        return (
+          <button
+            key={o.id}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(o.id)}
+            className={cn("relative rounded-2xl border px-4 py-3 text-left transition-[border-color,transform] duration-150 active:scale-[0.97]", active ? "border-accent-line" : "border-line hover:border-accent-line")}
+          >
+            {active && <motion.span layoutId="pay-by-active" className="absolute -inset-px rounded-2xl border-2 border-accent-line bg-accent-soft" transition={{ type: "spring", stiffness: 420, damping: 32 }} />}
+            <span className="relative block font-semibold">{o.title}</span>
+            <span className={cn("relative block text-sm", o.id === "etransfer" ? "text-success" : "text-muted")}>{o.detail}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 }

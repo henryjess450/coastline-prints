@@ -5,7 +5,7 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SquareError } from "square";
-import { cartItem, cubeUpload, customer, jsonRequest, validPickup } from "../helpers/fixtures";
+import { cartItem, cubeUpload, customer, jsonRequest, shipAddress, validPickup } from "../helpers/fixtures";
 
 const square = {
   payments: {
@@ -50,7 +50,7 @@ async function priceFor(items: unknown[]) {
 
 async function pay(items: unknown[], over: Record<string, unknown> = {}) {
   const expectedTotalCents = await priceFor(items);
-  const body = { attemptId: randomUUID(), sourceId: "cnon:card-nonce-ok", customer, items, expectedTotalCents, pickup: await validPickup(), ...over };
+  const body = { attemptId: randomUUID(), sourceId: "cnon:card-nonce-ok", customer, items, expectedTotalCents, fulfillment: await validPickup(), ...over };
   const res = await checkout(jsonRequest("http://test/api/checkout", body));
   return { res, data: await res.json(), body };
 }
@@ -115,14 +115,14 @@ describe("checkout", () => {
   it("blocks items that don't fit any printer before charging", async () => {
     const up = await cubeUpload();
     const items = [cartItem(up.id, { scale: { x: 20, y: 20, z: 20 } })]; // 400 mm cube
-    const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "x", customer, items, expectedTotalCents: 100, pickup: await validPickup() }));
+    const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "x", customer, items, expectedTotalCents: 100, fulfillment: await validPickup() }));
     expect(res.status).toBe(422);
     expect(square.payments.create).not.toHaveBeenCalled();
   });
 
   it("rejects missing pickup acknowledgement", async () => {
     const up = await cubeUpload();
-    const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "x", customer: { ...customer, pickupAcknowledged: false }, items: [cartItem(up.id)], expectedTotalCents: 100, pickup: await validPickup() }));
+    const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "x", customer: { ...customer, pickupAcknowledged: false }, items: [cartItem(up.id)], expectedTotalCents: 100, fulfillment: await validPickup() }));
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/pick up/i);
   });
@@ -221,17 +221,144 @@ describe("square webhook", () => {
   });
 });
 
+describe("shipping", () => {
+  async function shippingFor(items: unknown[]) {
+    const res = await quote(jsonRequest("http://test/api/quote", { items }));
+    return (await res.json()).quote.shipping;
+  }
+
+  it("charges prints plus the flat rate box and keeps the address on the order", async () => {
+    const up = await cubeUpload();
+    square.payments.create.mockImplementation(async (req) => ({ payment: completedPayment(req) }));
+    const items = [cartItem(up.id)];
+    const quoted = await shippingFor(items);
+    // A 20 mm cube is too thick for a mailer, so the tracked box is the only option.
+    expect(quoted.options).toHaveLength(1);
+    const ship = quoted.options[0];
+    expect(ship).toMatchObject({ method: "box", tracked: true, boxes: [{ id: "xs", pieces: 1 }], taxCents: 95, totalCents: 1899 + 95 + 200 });
+
+    const expectedTotalCents = (await priceFor(items)) + ship.totalCents;
+    const body = {
+      attemptId: randomUUID(),
+      sourceId: "cnon:card-nonce-ok",
+      // No pickup to acknowledge when shipping.
+      customer: { ...customer, pickupAcknowledged: false },
+      items,
+      expectedTotalCents,
+      fulfillment: { method: "ship", option: "box", address: shipAddress },
+    };
+    const res = await checkout(jsonRequest("http://test/api/checkout", body));
+    const data = await res.json();
+    expect(res.status).toBe(200);
+
+    const sent = square.payments.create.mock.calls[0][0];
+    expect(Number(sent.amountMoney.amount)).toBe(expectedTotalCents);
+    expect(sent.shippingAddress).toMatchObject({ addressLine1: "1 Main Street", locality: "Halifax", administrativeDistrictLevel1: "NS", postalCode: "B3H 1A1", country: "CA" });
+
+    const order = await db.order.findUniqueOrThrow({ where: { orderNumber: data.orderNumber } });
+    expect(order).toMatchObject({ fulfillment: "SHIP", shippingCents: 2194, shipCity: "Halifax", shipPostal: "B3H 1A1", pickupDate: null, totalCents: expectedTotalCents });
+    expect(JSON.parse(order.shippingBoxes!)).toEqual([{ id: "xs", name: "Extra Small", priceCents: 1899, pieces: 1 }]);
+  });
+
+  it("refuses to ship a print too big for any box, before charging", async () => {
+    // A 200 mm wireframe cube: quick to print, but taller than every box is deep.
+    const up = await db.upload.update({ where: { id: (await cubeUpload()).id }, data: { bboxX: 200, bboxY: 200, bboxZ: 200, volumeMm3: 4000, surfaceAreaMm2: 3000 } });
+    const items = [cartItem(up.id)];
+    expect((await shippingFor(items)).ok).toBe(false);
+    const res = await checkout(
+      jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "x", customer, items, expectedTotalCents: 1, fulfillment: { method: "ship", option: "box", address: shipAddress } }),
+    );
+    expect(res.status).toBe(422);
+    expect((await res.json()).code).toBe("SHIPPING_UNAVAILABLE");
+    expect(square.payments.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects an address outside Canada", async () => {
+    const up = await cubeUpload();
+    const res = await checkout(
+      jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "x", customer, items: [cartItem(up.id)], expectedTotalCents: 1, fulfillment: { method: "ship", option: "box", address: { ...shipAddress, postal: "90210" } } }),
+    );
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("bubble mailer", () => {
+  it("charges the Lettermail price for a flat print and refuses a mailer the order doesn't fit", async () => {
+    // A 60 × 40 × 3 mm tag.
+    const flat = await db.upload.update({ where: { id: (await cubeUpload()).id }, data: { bboxX: 60, bboxY: 40, bboxZ: 3, volumeMm3: 7200, surfaceAreaMm2: 5400 } });
+    square.payments.create.mockImplementation(async (req) => ({ payment: completedPayment(req) }));
+    const items = [cartItem(flat.id)];
+    const quoted = (await (await quote(jsonRequest("http://test/api/quote", { items }))).json()).quote.shipping;
+    expect(quoted.options.map((o: { method: string }) => o.method)).toEqual(["mailer", "box"]);
+    const mailer = quoted.options[0];
+
+    const total = (await priceFor(items)) + mailer.totalCents;
+    const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:ok", customer, items, expectedTotalCents: total, fulfillment: { method: "ship", option: "mailer", address: shipAddress } }));
+    const data = await res.json();
+    expect(res.status).toBe(200);
+    const order = await db.order.findUniqueOrThrow({ where: { orderNumber: data.orderNumber } });
+    expect(order.shippingCents).toBe(mailer.totalCents);
+    expect(JSON.parse(order.shippingBoxes!)[0].id).toBe("mailer");
+
+    // The cube is too thick for a mailer.
+    const cube = await cubeUpload();
+    const bad = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:ok", customer, items: [cartItem(cube.id)], expectedTotalCents: 1, fulfillment: { method: "ship", option: "mailer", address: shipAddress } }));
+    expect(bad.status).toBe(409);
+    expect((await bad.json()).code).toBe("SHIPPING_CHANGED");
+  });
+});
+
+describe("tracked bubble mailer (parcel)", () => {
+  it("prices it live from Canada Post and charges that at checkout", async () => {
+    process.env.CANADA_POST_USERNAME = "user";
+    process.env.CANADA_POST_PASSWORD = "pass";
+    process.env.CANADA_POST_FROM_POSTAL = "A1A1A1";
+    const realFetch = globalThis.fetch;
+    const cp = vi.fn(async () => new Response(`<price-quotes><price-quote><service-code>DOM.RP</service-code><price-details><taxes><gst>0.55</gst></taxes><due>11.55</due></price-details></price-quote></price-quotes>`));
+    globalThis.fetch = cp as never;
+    try {
+      // 30 mm thick: too thick for Lettermail, fine for a parcel mailer.
+      const up = await db.upload.update({ where: { id: (await cubeUpload()).id }, data: { bboxX: 100, bboxY: 60, bboxZ: 30, volumeMm3: 9000, surfaceAreaMm2: 6000 } });
+      const items = [cartItem(up.id)];
+      const { POST: rates } = await import("@/app/api/shipping/rates/route");
+      const { option } = await (await rates(jsonRequest("http://test/api/shipping/rates", { items, postal: "b3h 1a1" }))).json();
+      expect(option).toMatchObject({ method: "parcel", tracked: true, postageCents: 1100, taxCents: 55, taxLabel: "GST", totalCents: 1100 + 55 + 200 });
+      const bodies = cp.mock.calls.map((c) => String(((c as unknown[])[1] as RequestInit).body));
+      // The tax rate is read once, from the shop's own postal code (tax depends on where it's mailed from).
+      expect(bodies[0]).toContain("<postal-code>A1A1A1</postal-code>");
+      const sent = bodies.find((b) => b.includes("B3H1A1"))!;
+      expect(sent).toContain("<origin-postal-code>A1A1A1</origin-postal-code>");
+      expect(sent).toContain("<postal-code>B3H1A1</postal-code>");
+      expect(sent).toContain("<quote-type>counter</quote-type>");
+
+      square.payments.create.mockImplementation(async (req) => ({ payment: completedPayment(req) }));
+      const total = (await priceFor(items)) + option.totalCents;
+      const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:ok", customer, items, expectedTotalCents: total, fulfillment: { method: "ship", option: "parcel", address: shipAddress } }));
+      const data = await res.json();
+      expect(res.status).toBe(200);
+      const order = await db.order.findUniqueOrThrow({ where: { orderNumber: data.orderNumber } });
+      expect(order.shippingCents).toBe(1355);
+      expect(JSON.parse(order.shippingBoxes!)[0].id).toBe("parcel-mailer");
+    } finally {
+      globalThis.fetch = realFetch;
+      delete process.env.CANADA_POST_USERNAME;
+      delete process.env.CANADA_POST_PASSWORD;
+      delete process.env.CANADA_POST_FROM_POSTAL;
+    }
+  });
+});
+
 describe("pickup booking", () => {
   it("rejects a pickup slot outside the schedule and stores a valid one on the order", async () => {
     const up = await cubeUpload();
-    const bad = await pay([cartItem(up.id)], { pickup: { date: "2020-01-01", time: "03:00" } });
+    const bad = await pay([cartItem(up.id)], { fulfillment: { method: "pickup", date: "2020-01-01", time: "03:00" } });
     expect(bad.res.status).toBe(400);
     expect(bad.data.code).toBe("PICKUP_UNAVAILABLE");
     expect(square.payments.create).not.toHaveBeenCalled();
 
     square.payments.create.mockImplementation(async (req) => ({ payment: completedPayment(req) }));
     const slot = await validPickup();
-    const ok = await pay([cartItem(up.id)], { pickup: slot });
+    const ok = await pay([cartItem(up.id)], { fulfillment: slot });
     const order = await db.order.findUniqueOrThrow({ where: { orderNumber: ok.data.orderNumber } });
     expect(order.pickupDate).toBe(slot.date);
     expect(order.pickupTime).toBe(slot.time);
@@ -253,7 +380,7 @@ describe("coupons, gift cards and customers", () => {
     const items = [cartItem(up.id)];
     const full = await quoteTotal(items);
     const expected = full - Math.round(full / 2);
-    const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:ok", customer, items, expectedTotalCents: expected, pickup: await validPickup(), codes: [c.code.toLowerCase()] }));
+    const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:ok", customer, items, expectedTotalCents: expected, fulfillment: await validPickup(), codes: [c.code.toLowerCase()] }));
     const data = await res.json();
     expect(res.status, JSON.stringify(data)).toBe(200);
     const sent = square.payments.create.mock.calls.at(-1)![0];
@@ -266,7 +393,7 @@ describe("coupons, gift cards and customers", () => {
 
     // Used up: a second checkout with it is refused before charging.
     const calls = square.payments.create.mock.calls.length;
-    const again = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:ok", customer, items, expectedTotalCents: expected, pickup: await validPickup(), codes: [c.code] }));
+    const again = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:ok", customer, items, expectedTotalCents: expected, fulfillment: await validPickup(), codes: [c.code] }));
     expect(again.status).toBe(409);
     expect((await again.json()).code).toBe("CODE_INVALID");
     expect(square.payments.create.mock.calls.length).toBe(calls);
@@ -277,7 +404,7 @@ describe("coupons, gift cards and customers", () => {
     const gc = await code({ kind: "GIFT_CARD", initialCents: 100000, balanceCents: 100000 });
     const items = [cartItem(up.id)];
     const full = await quoteTotal(items);
-    const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), customer, items, expectedTotalCents: 0, pickup: await validPickup(), codes: [gc.code] }));
+    const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), customer, items, expectedTotalCents: 0, fulfillment: await validPickup(), codes: [gc.code] }));
     const data = await res.json();
     expect(res.status, JSON.stringify(data)).toBe(200);
     expect(square.payments.create).not.toHaveBeenCalled();
@@ -293,7 +420,7 @@ describe("coupons, gift cards and customers", () => {
     square.payments.create.mockRejectedValue(new SquareError({ statusCode: 402, body: { errors: [{ category: "PAYMENT_METHOD_ERROR", code: "CARD_DECLINED" }] } }));
     const items = [cartItem(up.id)];
     const full = await quoteTotal(items);
-    const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:declined", customer, items, expectedTotalCents: full - 300, pickup: await validPickup(), codes: [gc.code] }));
+    const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:declined", customer, items, expectedTotalCents: full - 300, fulfillment: await validPickup(), codes: [gc.code] }));
     expect(res.status).toBe(402);
     expect((await db.promoCode.findUniqueOrThrow({ where: { id: gc.id } })).balanceCents).toBe(300);
     const r = await db.codeRedemption.findFirstOrThrow({ where: { codeId: gc.id } });
@@ -309,7 +436,7 @@ describe("coupons, gift cards and customers", () => {
     for (let i = 0; i < 2; i++) {
       const up = await cubeUpload();
       const items = [cartItem(up.id)];
-      const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:ok", customer: { ...customer, email }, items, expectedTotalCents: await quoteTotal(items), pickup: await validPickup() }));
+      const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:ok", customer: { ...customer, email }, items, expectedTotalCents: await quoteTotal(items), fulfillment: await validPickup() }));
       const data = await res.json();
       expect(res.status, JSON.stringify(data)).toBe(200);
       const o = await db.order.findUniqueOrThrow({ where: { orderNumber: data.orderNumber } });

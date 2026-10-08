@@ -19,13 +19,13 @@ export default function PrivacyPage() {
       <Section title="What we collect">
         <ul>
           <li>
-            <strong>Order details:</strong> your name, email address, phone number, any notes you add, and what you ordered.
+            <strong>Order details:</strong> your name, email address, phone number, any notes you add, and what you ordered. If you choose shipping, also the address you ship to.
           </li>
           <li>
             <strong>Your files:</strong> the STL files you upload, plus the size and settings you chose.
           </li>
           <li>
-            <strong>Payment details:</strong> handled by Square. We never see or store your full card number. We receive the card brand, the last 4 digits, and a Square receipt link.
+            <strong>Payment details:</strong> handled by Square. We never see or store your full card number. We receive the card brand, the last 4 digits, and a Square receipt link. If you pay by Interac e-Transfer, we receive the deposit notice from Interac: the sender&apos;s name, the amount and your message, which we use to match the payment to your order.
           </li>
           <li>
             <strong>Technical data:</strong> your IP address is used briefly to limit repeated requests and block abuse. It isn&apos;t saved with your order.
@@ -36,7 +36,8 @@ export default function PrivacyPage() {
       <Section title="Why we use it">
         <ul>
           <li>To print your order and check your files.</li>
-          <li>To send your receipt, order updates and the ready-for-pickup email.</li>
+          <li>To send your receipt, order updates and the ready-for-pickup or shipped email.</li>
+          <li>To ship your order, if you chose shipping.</li>
           <li>To contact you if there&apos;s a problem with your order.</li>
           <li>To keep business and tax records.</li>
         </ul>
@@ -48,6 +49,12 @@ export default function PrivacyPage() {
         <ul>
           <li>
             <strong>Square</strong>, to process your payment.
+          </li>
+          <li>
+            <strong>Canada Post</strong>, only if you choose shipping: the recipient name and address on the shipping label.
+          </li>
+          <li>
+            <strong>Photon (komoot, using OpenStreetMap data)</strong>, only while you type a street address at checkout: the text you typed is sent from our server to suggest matching addresses. Nothing else about you is sent.
           </li>
           <li>
             <strong>Our email provider</strong>, to send receipts and order updates.

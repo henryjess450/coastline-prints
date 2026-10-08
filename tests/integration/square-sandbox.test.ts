@@ -24,7 +24,7 @@ describe.skipIf(!configured || !isSandbox)("Square sandbox checkout", () => {
     const items = [cartItem(up.id)];
     const q = await (await quote(jsonRequest("http://test/api/quote", { items }))).json();
 
-    const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:card-nonce-ok", customer, items, expectedTotalCents: q.quote.totalCents, pickup: await validPickup() }));
+    const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:card-nonce-ok", customer, items, expectedTotalCents: q.quote.totalCents, fulfillment: await validPickup() }));
     const data = await res.json();
     expect(res.status, JSON.stringify(data)).toBe(200);
     const order = await db.order.findUniqueOrThrow({ where: { orderNumber: data.orderNumber } });
@@ -40,7 +40,7 @@ describe.skipIf(!configured || !isSandbox)("Square sandbox checkout", () => {
     const items = [cartItem(up.id)];
     const q = await (await quote(jsonRequest("http://test/api/quote", { items }))).json();
     const before = await db.order.count();
-    const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:card-nonce-declined", customer, items, expectedTotalCents: q.quote.totalCents, pickup: await validPickup() }));
+    const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:card-nonce-declined", customer, items, expectedTotalCents: q.quote.totalCents, fulfillment: await validPickup() }));
     expect(res.status).toBe(402);
     expect(await db.order.count()).toBe(before);
   }, 30_000);

@@ -10,7 +10,8 @@ import { money } from "@/lib/format";
 /** Points for an amount spent: 2 per dollar, rounded down ($19.99 → 39). */
 export const pointsFor = (cents: number) => Math.floor((Math.max(0, cents) * POINTS_PER_DOLLAR) / 100);
 /** What an order counts as spent: card payment plus any gift card, after coupons. */
-export const orderSpend = (o: Pick<Order, "totalCents" | "giftCardCents">) => o.totalCents + o.giftCardCents;
+/** What the prints cost: shipping is passed on at cost, so it earns no points. */
+export const orderSpend = (o: Pick<Order, "totalCents" | "giftCardCents" | "shippingCents">) => Math.max(0, o.totalCents + o.giftCardCents - o.shippingCents);
 
 /** Adds an order's points when it's picked up. Runs inside the status change; once per order. */
 export async function earnPoints(tx: Prisma.TransactionClient, order: Order) {
@@ -25,7 +26,7 @@ export async function rewardsSummary(email: string) {
   const [sum, entries, open] = await Promise.all([
     db.pointsEntry.aggregate({ where: { email }, _sum: { points: true } }),
     db.pointsEntry.findMany({ where: { email }, orderBy: { createdAt: "desc" }, take: 25 }),
-    db.order.findMany({ where: { customerEmail: email, status: { not: "PICKED_UP" } }, select: { totalCents: true, giftCardCents: true } }),
+    db.order.findMany({ where: { customerEmail: email, status: { not: "PICKED_UP" } }, select: { totalCents: true, giftCardCents: true, shippingCents: true } }),
   ]);
   const orderNumbers = new Map(
     (await db.order.findMany({ where: { id: { in: entries.map((e) => e.orderId).filter(Boolean) as string[] } }, select: { id: true, orderNumber: true } })).map((o) => [o.id, o.orderNumber]),

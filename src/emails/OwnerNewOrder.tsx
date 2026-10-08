@@ -1,7 +1,7 @@
 import { Section, Text } from "@react-email/components";
 import { money } from "@/lib/format";
 import type { OrderEmailData } from "@/lib/email/data";
-import { colors, EmailLayout, H1, Label, P, PillButton } from "./components/Layout";
+import { colors, EmailLayout, H1, Label, P, PillButton, ShipToBox } from "./components/Layout";
 import { ItemTable } from "./ItemTable";
 
 export function OwnerNewOrder({ d }: { d: OrderEmailData }) {
@@ -27,8 +27,17 @@ export function OwnerNewOrder({ d }: { d: OrderEmailData }) {
         </a>
       </Text>
 
-      <Label>Pickup</Label>
-      <Text style={{ ...line, fontWeight: 700, color: colors.brand }}>{d.pickupWhen ?? "Not booked"}</Text>
+      {d.shipTo ? (
+        <>
+          <Label>Ship by Canada Post</Label>
+          <ShipToBox lines={d.shipTo} label={d.shippingLabel ?? "Ship to"} />
+        </>
+      ) : (
+        <>
+          <Label>Pickup</Label>
+          <Text style={{ ...line, fontWeight: 700, color: colors.brand }}>{d.pickupWhen ?? "Not booked"}</Text>
+        </>
+      )}
 
       {d.notes && (
         <>
