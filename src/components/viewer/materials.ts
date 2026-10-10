@@ -19,3 +19,8 @@ export function makeMaterial(color: ColorConfig, clip?: THREE.Plane) {
       return new THREE.MeshPhysicalMaterial({ ...common, color: color.hex, roughness: 0.45, metalness: 0.02, clearcoat: 0.3, clearcoatRoughness: 0.4 });
   }
 }
+
+/** A multicolour print: the colour comes from each triangle (painted 3MF). */
+export function makePaintMaterial(clip?: THREE.Plane) {
+  return new THREE.MeshStandardMaterial({ clippingPlanes: clip ? [clip] : [], clipShadows: true, side: THREE.DoubleSide, vertexColors: true, roughness: 0.55, metalness: 0.02 });
+}

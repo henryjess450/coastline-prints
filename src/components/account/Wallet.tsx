@@ -13,10 +13,10 @@ import type { WalletItem } from "@/lib/account/wallet";
 export function Wallet({ items }: { items: WalletItem[]; highlight?: string | null }) {
   if (!items.length)
     return (
-      <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="rounded-2xl border-2 border-dashed border-line-strong p-8 text-center">
-        <motion.div className="mx-auto mb-3 h-12 w-20 rounded-lg border-2 border-dashed border-line-strong" animate={{ rotate: [-4, 4, -4] }} transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }} aria-hidden />
-        <p className="text-sm text-muted">Nothing saved yet. Gift cards and coupons you save will show up here.</p>
-      </motion.div>
+      <motion.p initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3 text-muted">
+        <motion.span className="inline-block h-7 w-11 shrink-0 rounded-md border-2 border-dashed border-[var(--sea-wake)]/40" animate={{ rotate: [-5, 5, -5], y: [0, -2, 0] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }} aria-hidden />
+        Nothing saved yet. Gift cards and coupons you add below will show up here.
+      </motion.p>
     );
   return (
     <ul className="grid gap-5 sm:grid-cols-2">

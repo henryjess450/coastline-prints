@@ -28,6 +28,14 @@
   --shadow: 0 12px 32px -14px rgb(0 0 0 / 0.7);
   --btn-glow: 0 8px 22px -8px rgb(61 123 184 / 0.75);
   --viewer-bg: #0d1a27;
+  /* The account page sea, surface to deep (solid bands, no gradients). */
+  --sea-foam: #2a5f8f;
+  --sea-0: #174a77;
+  --sea-1: #133f67;
+  --sea-2: #103558;
+  --sea-3: #0d2b49;
+  --sea-4: #0b223a;
+  --sea-wake: #86bbea;
   color-scheme: dark;
 }
 
@@ -55,6 +63,13 @@
   --shadow: 0 12px 30px -18px rgb(14 68 113 / 0.35);
   --btn-glow: 0 8px 20px -8px rgb(14 68 113 / 0.55);
   --viewer-bg: #e8eef4;
+  --sea-foam: #e3f0fa;
+  --sea-0: #cfe4f6;
+  --sea-1: #bcd8f1;
+  --sea-2: #a8cbeb;
+  --sea-3: #93bde4;
+  --sea-4: #7faedc;
+  --sea-wake: #ffffff;
   color-scheme: light;
 }
 

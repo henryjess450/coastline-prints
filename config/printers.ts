@@ -7,6 +7,8 @@
  * - speedFactor: relative throughput vs. the reference print-time model in
  *   pricing.ts (1.0 = reference, 1.2 = 20% faster).
  * - priority: lower is tried first when several printers can take a job.
+ * - maxColors: how many filaments it can switch between in one print (1 = no
+ *   multicolour unit). Both have a 4-colour unit.
  */
 import type { MaterialId } from "./materials";
 
@@ -18,6 +20,7 @@ export type PrinterConfig = {
   materials: MaterialId[];
   speedFactor: number;
   priority: number;
+  maxColors: number;
 };
 
 export const printers: PrinterConfig[] = [
@@ -29,6 +32,7 @@ export const printers: PrinterConfig[] = [
     materials: ["PLA", "PETG"],
     speedFactor: 1.0,
     priority: 1,
+    maxColors: 4,
   },
   {
     id: "centauri-carbon",
@@ -38,6 +42,7 @@ export const printers: PrinterConfig[] = [
     materials: ["PLA", "PETG", "PLA-CF"],
     speedFactor: 1.2,
     priority: 2,
+    maxColors: 4,
   },
 ];
 

@@ -5,7 +5,7 @@
  */
 import { materials, type MaterialConfig } from "@config/materials";
 import { printers, SAFETY_MARGIN_MM, type PrinterConfig } from "@config/printers";
-import { estimation, infillPresets, pricing, qualityPresets } from "@config/pricing";
+import { estimation, infillPresets, multicolor, pricing, qualityPresets, supports } from "@config/pricing";
 import { shipping, type ShippingConfig } from "@config/shipping";
 
 export type PricingRates = typeof pricing;
@@ -19,6 +19,8 @@ export type AppConfig = {
   infillPresets: { id: string; name: string; infillFraction: number; description: string }[];
   estimation: typeof estimation;
   shipping: ShippingConfig;
+  multicolor: typeof multicolor;
+  supports: typeof supports;
 };
 
 export function defaultConfig(): AppConfig {
@@ -31,5 +33,7 @@ export function defaultConfig(): AppConfig {
     infillPresets: [...infillPresets],
     estimation,
     shipping,
+    multicolor,
+    supports,
   }) as AppConfig;
 }

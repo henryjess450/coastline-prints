@@ -4,6 +4,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { logError } from "@/lib/api";
 import { db } from "@/lib/db";
 import { sendOffHold } from "@/lib/notify/sendoff";
+import { creditInvite } from "@/lib/rewards/invite";
 import type { ItemQuote, OrderQuote } from "@/lib/pricing/quote";
 import type { PricedCart } from "@/lib/pricing/server-quote";
 import type { ShippingOption } from "@/lib/shipping/pack";
@@ -119,6 +120,8 @@ export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts
         await tx.checkout.update({ where: { id: checkoutId }, data: { status: "COMPLETED", squarePaymentId: payment.id } });
         await tx.codeRedemption.updateMany({ where: { checkoutId, status: "RESERVED" }, data: { status: "USED" } });
         await tx.outboxJob.createMany({ data: notificationJobs(order.id, !checkout.squareCustomerId) });
+        // Ordered with a friend's invite code: the friend gets their points now.
+        await creditInvite(tx, order);
         return order;
       });
       return { order, created: true };
@@ -154,6 +157,7 @@ function orderItemData(line: CartSnapshot["lines"][number], q: ItemQuote) {
     material: line.material,
     colorId: line.colorId,
     colorName: line.colorName,
+    colorSlots: line.colorSlots ? JSON.stringify(line.colorSlots) : null,
     quality: line.quality,
     infill: line.infill,
     quantity: line.quantity,

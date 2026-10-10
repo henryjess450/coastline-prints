@@ -85,7 +85,7 @@ function Tracker({ order }: { order: NonNullable<LookupState["order"]> }) {
                     !done && !isCurrent && "border-2 border-line text-faint",
                   )}
                 >
-                  {isCurrent && !reduce && <motion.span className="absolute inset-0 rounded-full border-2 border-accent-line" animate={{ scale: [1, 1.5], opacity: [0.8, 0] }} transition={{ duration: 1.6, repeat: Infinity }} />}
+                  {isCurrent && !reduce && <motion.span className="absolute inset-0 rounded-full border-2 border-accent-line" animate={{ scale: [1, 1.2, 1.5], opacity: [0, 0.7, 0] }} transition={{ duration: 2, times: [0, 0.25, 1], ease: "easeOut", repeat: Infinity }} />}
                   {done ? (
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                       <motion.path d="M5 13l4 4L19 7" initial={reduce ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ delay: reduce ? 0 : 0.25 + i * 0.18, duration: 0.3 }} />

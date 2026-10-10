@@ -119,7 +119,7 @@ function Pulse() {
   const reduce = useReducedMotion();
   return (
     <span className="relative grid h-10 w-10 shrink-0 place-items-center" aria-hidden>
-      {!reduce && <motion.span className="absolute inset-0 rounded-full bg-accent-line" animate={{ scale: [0.6, 1.4], opacity: [0.5, 0] }} transition={{ duration: 1.6, repeat: Infinity }} />}
+      {!reduce && <motion.span className="absolute inset-0 rounded-full bg-accent-line" animate={{ scale: [0.6, 0.85, 1.4], opacity: [0, 0.45, 0] }} transition={{ duration: 2, times: [0, 0.25, 1], ease: "easeOut", repeat: Infinity }} />}
       <span className="relative h-4 w-4 rounded-full bg-accent-line" />
     </span>
   );

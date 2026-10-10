@@ -25,7 +25,7 @@ export function Dropzone({ compact = false }: { compact?: boolean }) {
       <motion.div
         role="button"
         tabIndex={0}
-        aria-label={`Upload STL files, up to ${uploads.maxFileMb} MB each`}
+        aria-label={`Upload STL or 3MF files, up to ${uploads.maxFileMb} MB each`}
         onClick={() => input.current?.click()}
         onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), input.current?.click())}
         onDragEnter={(e) => {
@@ -77,7 +77,7 @@ export function Dropzone({ compact = false }: { compact?: boolean }) {
           </motion.div>
           <div className={compact ? "text-left" : ""}>
             <p className={cn("font-display font-semibold text-fg", compact ? "text-sm" : "text-xl sm:text-2xl")}>
-              {over ? "Drop to upload" : compact ? "Add more files" : "Drag your .stl files here"}
+              {over ? "Drop to upload" : compact ? "Add more files" : "Drag your .stl or .3mf files here"}
             </p>
             <p className={cn("text-muted", compact ? "text-xs" : "mt-1 text-sm")}>
               or <span className="font-medium text-accent-text underline underline-offset-4">choose files</span> · up to {uploads.maxFileMb} MB each
@@ -87,7 +87,7 @@ export function Dropzone({ compact = false }: { compact?: boolean }) {
         <input
           ref={input}
           type="file"
-          accept=".stl,model/stl,application/sla,application/vnd.ms-pki.stl"
+          accept=".stl,.3mf,model/stl,model/3mf,application/sla,application/vnd.ms-pki.stl,application/vnd.ms-package.3dmanufacturing-3dmodel+xml"
           multiple
           className="sr-only"
           tabIndex={-1}

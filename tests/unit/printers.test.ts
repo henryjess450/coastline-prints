@@ -64,7 +64,7 @@ describe("printer assignment", () => {
 });
 
 describe("orientation", () => {
-  const tall: PrinterConfig = { id: "tall", name: "Tall", shortName: "Tall", buildVolume: { x: 105, y: 105, z: 305 }, materials: ["PLA"], speedFactor: 1, priority: 1 };
+  const tall: PrinterConfig = { id: "tall", name: "Tall", shortName: "Tall", buildVolume: { x: 105, y: 105, z: 305 }, materials: ["PLA"], speedFactor: 1, priority: 1, maxColors: 1 };
 
   it("keeps the customer's orientation when it fits", () => {
     const a = assignPrinter(box(50, 60, 70), "PLA", [tall], M);

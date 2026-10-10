@@ -15,10 +15,12 @@ import { addressSchema, customerSchema } from "@/lib/checkout/schema";
 import { cn } from "@/lib/cn";
 import { hours, money } from "@/lib/format";
 import { useOrder, type CartItem } from "@/lib/order/store";
+import { itemColors } from "@/lib/order/derive";
 import { cartPayload, type CartQuote } from "@/lib/order/use-quote";
 import { PaymentMethods, type PaymentMethodsHandle, type SquareConfig } from "./PaymentMethods";
 import { PickupPicker, type PickupChoice } from "./PickupPicker";
 import { CodeBox } from "./CodeBox";
+import { INVITE_KEY } from "@/components/account/SaveInvite";
 import { Field, inputClass } from "./fields";
 import { AddressForm, BoxSummary, emptyAddress, MethodToggle, ShipOptions, type AddressDraft, type AddressErrors, type DeliveryMethod } from "./Delivery";
 import { withParcel, type ShippingMethod, type ShippingOption } from "@/lib/shipping/pack";
@@ -211,7 +213,7 @@ export function CheckoutStep({ items, cartQuote, square, etransfer, onBack }: { 
   function startSendOff() {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !items.length) return;
     const first = items[0];
-    const color = cfg.materials.find((m) => m.id === first.material)?.colors.find((c) => c.id === first.colorId)?.hex ?? "#3d7bb8";
+    const color = itemColors(first, cfg).hexes[0] ?? "#3d7bb8";
     sending.current = true;
     setSendOff({ result: "pending", fileName: first.fileName, model: first.positions ? modelSilhouette(first.positions, color) : null, color });
   }
@@ -322,6 +324,9 @@ export function CheckoutStep({ items, cartQuote, square, etransfer, onBack }: { 
       }
       if (data.code === "CODE_INVALID") {
         if (data.badCode) setCodes((cs) => cs.filter((c) => c.code !== data.badCode));
+        try {
+          if (data.badCode && localStorage.getItem(INVITE_KEY) === data.badCode) localStorage.removeItem(INVITE_KEY);
+        } catch {}
         return fail(`${data.error ?? "One of your codes can't be used."} Your card was not charged.`);
       }
       if (data.code === "SHIPPING_CHANGED") {
@@ -350,6 +355,10 @@ export function CheckoutStep({ items, cartQuote, square, etransfer, onBack }: { 
   }
 
   function done(viewToken: string) {
+    // A friend's invite code is spent on this first order.
+    try {
+      localStorage.removeItem(INVITE_KEY);
+    } catch {}
     if (sending.current) {
       // Let the send-off finish; it opens the confirmation when the Benchy is gone.
       paidToken.current = viewToken;
@@ -563,16 +572,20 @@ export function CheckoutStep({ items, cartQuote, square, etransfer, onBack }: { 
           <ul className="mt-5 space-y-4 text-sm">
             {items.map((item, i) => {
               const q = quote?.items[i];
-              const color = cfg.materials.find((m) => m.id === item.material)?.colors.find((c) => c.id === item.colorId);
+              const color = itemColors(item, cfg);
               return (
                 <motion.li key={item.key} className="flex gap-3" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 + i * 0.06 }}>
-                  <span className="mt-0.5 h-4 w-4 shrink-0 rounded-full border border-line-strong" style={{ background: color?.hex }} aria-hidden />
+                  <span className="mt-0.5 flex shrink-0 -space-x-1.5" aria-hidden>
+                    {color.hexes.map((hex, k) => (
+                      <span key={k} className="h-4 w-4 rounded-full border border-line-strong" style={{ background: hex }} />
+                    ))}
+                  </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">
                       {item.fileName} <span className="text-faint">× {item.quantity}</span>
                     </p>
                     <p className="text-xs text-muted">
-                      {item.material} · {color?.name}
+                      {item.material} · {color.name}
                       {q?.ok && (
                         <>
                           {" "}

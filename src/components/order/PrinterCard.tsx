@@ -4,7 +4,7 @@ import { useConfig } from "@/components/ConfigProvider";
 import { AnimatedNumber } from "@/components/motion/AnimatedNumber";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/lib/cn";
-import { hours } from "@/lib/format";
+import { hours, money } from "@/lib/format";
 import type { ItemQuote } from "@/lib/pricing/quote";
 
 /** Which machine will print this item. Animates when the assignment changes. */
@@ -51,6 +51,18 @@ export function PrinterCard({ quote }: { quote: ItemQuote | null }) {
           <Stat label="Print time" value={<AnimatedNumber value={quote.hoursTotal} format={hours} live={false} />} sub="estimate" />
           <Stat label="Orientation" value={quote.assignment.autoOriented ? "Rotated" : "As uploaded"} sub={quote.assignment.autoOriented ? "to fit" : ""} />
         </dl>
+      )}
+      {quote?.ok && quote.supportGramsEach >= 0.1 && (
+        <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="border-t border-line px-4 py-3 text-xs leading-relaxed text-muted">
+          <span className="font-semibold text-fg">Supports</span>: this model overhangs, so it prints with about {grams(quote.supportGramsEach)} of tree supports per piece. We remove them for you. They&apos;re in the filament and time above.
+        </motion.p>
+      )}
+      {quote?.ok && quote.multicolor && (
+        <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="border-t border-line px-4 py-3 text-xs leading-relaxed text-muted">
+          <span className="font-semibold text-fg">{quote.multicolor.colors} colours</span>: about {quote.multicolor.changes} filament{" "}
+          {quote.multicolor.changes === 1 ? "change" : "changes"} per piece, adding {grams(quote.multicolor.wasteGramsEach)} of flushed plastic and prime tower and{" "}
+          {hours(quote.multicolor.changeHoursEach)} of changing time, plus a {money(quote.multicolor.amsFeeCents)} AMS fee for loading the colours. All in the price.
+        </motion.p>
       )}
     </Card>
   );

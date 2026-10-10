@@ -11,6 +11,8 @@ export const cartItemSchema = z.object({
   scale: z.object({ x: scaleAxis, y: scaleAxis, z: scaleAxis }),
   material: z.enum(MATERIAL_IDS),
   colorId: z.string().min(1).max(40),
+  /** Multicolour 3MF: file filament number → stock colour id. Checked against the stored file. */
+  colorMap: z.record(z.string().regex(/^\d{1,3}$/), z.string().min(1).max(40)).nullable().optional(),
   quality: z.string().min(1).max(20),
   infill: z.string().min(1).max(20),
   quantity: z.number().int().min(1).max(uploads.maxQuantityPerItem),

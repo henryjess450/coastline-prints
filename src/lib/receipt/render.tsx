@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { hours, money, returningLabel } from "@/lib/format";
 import type { AppliedCode } from "@/lib/codes/apply";
 import { pickupParts } from "@/lib/pickup";
+import type { ColorSlot } from "@/lib/model/colors";
 import { shippingAddressLines, shippingBoxesOf } from "@/lib/shipping/address";
 
 /** 72 mm of printable width at 203 dpi on the TSP650II series. */
@@ -53,7 +54,10 @@ export async function loadReceiptData(orderId: string): Promise<ReceiptData | nu
     items: o.items.map((i) => ({
       fileName: i.fileName,
       quantity: i.quantity,
-      detail: `${i.material} ${i.colorName} · ${i.sizeX.toFixed(0)}×${i.sizeY.toFixed(0)}×${i.sizeZ.toFixed(0)} mm · ${i.printerName.replace(/^(Bambu Lab|Elegoo) /, "")} · ${hours(i.hoursEach * i.quantity)}`,
+      detail:
+        `${i.material} ${i.colorName} · ${i.sizeX.toFixed(0)}×${i.sizeY.toFixed(0)}×${i.sizeZ.toFixed(0)} mm · ${i.printerName.replace(/^(Bambu Lab|Elegoo) /, "")} · ${hours(i.hoursEach * i.quantity)}` +
+        // Multicolour: which stock colour each file colour prints in.
+        (i.colorSlots ? ` · Colours: ${(JSON.parse(i.colorSlots) as ColorSlot[]).map((c) => `${c.filament} ${c.colorName}`).join(", ")}` : ""),
       lineCents: i.lineCents,
     })),
     baseFeeCents: o.baseFeeCents,

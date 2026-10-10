@@ -7,7 +7,7 @@ import { useOrder } from "@/lib/order/store";
 import { HeroWater, SAIL_EVENT } from "./HeroWater";
 
 /**
- * The hero section. Dropping an STL anywhere on it adds the file to the cart
+ * The hero section. Dropping an STL or 3MF anywhere on it adds the file to the cart
  * and opens the order page, where the upload is already under way.
  */
 export function HeroDrop({ config, children }: { config: AppConfig; children: React.ReactNode }) {
@@ -76,7 +76,7 @@ export function HeroDrop({ config, children }: { config: AppConfig; children: Re
                 </svg>
               </span>
               <p className="mt-4 font-display text-2xl font-bold">Drop to start your order</p>
-              <p className="mt-1 text-sm text-muted">.stl files only</p>
+              <p className="mt-1 text-sm text-muted">.stl or .3mf files</p>
             </motion.div>
           </motion.div>
         )}

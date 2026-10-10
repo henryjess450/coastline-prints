@@ -18,6 +18,7 @@ export function cartPayload(items: CartItem[]) {
     scale: i.scale,
     material: i.material,
     colorId: i.colorId,
+    colorMap: i.colorMap ?? null,
     quality: i.quality,
     infill: i.infill,
     quantity: i.quantity,

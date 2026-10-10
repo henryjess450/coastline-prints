@@ -5,6 +5,7 @@ import { bounce } from "@/components/ui/Button";
 import { applyCodes, isCardNumber, MAX_CODES, normalizeCode, normalizePin, type ApplyResult, type CodeInfo } from "@/lib/codes/apply";
 import { money } from "@/lib/format";
 import type { WalletItem } from "@/lib/account/wallet";
+import { INVITE_KEY } from "@/components/account/SaveInvite";
 
 /**
  * "Coupons or Gift Cards? Add them here!" with applied codes as removable chips.
@@ -49,9 +50,23 @@ export function CodeBox({
     window.addEventListener("focus", load);
     return () => window.removeEventListener("focus", load);
   }, []);
+  // Came from a friend's invite link: add their code once, by itself. If it
+  // can't be used (their own code, or not a first order), say why and forget it.
+  const invited = useRef(false);
+  useEffect(() => {
+    if (invited.current || disabled) return;
+    invited.current = true;
+    let code: string | null = null;
+    try {
+      code = localStorage.getItem(INVITE_KEY);
+    } catch {}
+    if (code && !codes.some((c) => c.code === code)) void add(code, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [disabled]);
+
   const savedReady = (wallet?.items ?? []).filter((w) => w.usable && !codes.some((c) => c.code === w.code));
 
-  async function add(saved?: string) {
+  async function add(saved?: string, fromInvite = false) {
     const code = saved ?? normalizeCode(value);
     if (!code) return;
     if (codes.some((c) => c.code === code)) return setError("That code is already added.");
@@ -67,7 +82,10 @@ export function CodeBox({
         body: JSON.stringify({ code, pin: cardPin || undefined }),
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) return setError(body.error ?? "That code isn't valid.");
+      if (!res.ok) {
+        if (fromInvite) forgetInvite();
+        return setError(body.error ?? "That code isn't valid.");
+      }
       const next = [...codes, { ...(body.code as CodeInfo), pin: cardPin || undefined }];
       const why = applyCodes(orderTotalCents, next, shippingCents).rejected.find((r) => r.code === code);
       if (why) return setError(why.reason);
@@ -251,4 +269,10 @@ export function CodeBox({
       )}
     </div>
   );
+}
+
+function forgetInvite() {
+  try {
+    localStorage.removeItem(INVITE_KEY);
+  } catch {}
 }

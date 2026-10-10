@@ -19,7 +19,11 @@ model Upload {
   safeName       String
   sizeBytes      Int
   sha256         String
-  format         String // "binary" | "ascii"
+  format         String // "binary" | "ascii" (STL) | "3mf"
+  /// 3MF only, JSON ColorInfo: the project's filaments and which the model uses.
+  colorInfo      String?
+  /// JSON SupportProfile: overhangs needing support, for each way up.
+  supportInfo    String?
   triangleCount  Int
   volumeMm3      Float
   surfaceAreaMm2 Float
@@ -167,6 +171,8 @@ model OrderItem {
   material      String
   colorId       String
   colorName     String
+  /// Multicolour 3MF: JSON ColorSlot[] (which stock colour each file colour prints in).
+  colorSlots    String?
   quality       String
   infill        String
   quantity      Int
@@ -242,10 +248,13 @@ model PromoCode {
   purchase    GiftPurchase?
   /// Saved to (and locked to) a customer account at /redeem. Only that account can spend it.
   ownerId       String?
-  owner         Customer? @relation(fields: [ownerId], references: [id])
+  owner         Customer? @relation("Saved", fields: [ownerId], references: [id])
   savedAt       DateTime?
   /// First-order thank-you coupons: the order they were made for (one per order).
   rewardOrderId String?   @unique
+  /// Invite codes: the account that shares it. Works on a friend's first order only.
+  referrerId    String?   @unique
+  referrer      Customer? @relation("Invites", fields: [referrerId], references: [id])
 
   @@index([ownerId])
 }
@@ -311,7 +320,9 @@ model Customer {
   createdAt  DateTime          @default(now())
   lastSeenAt DateTime?
   sessions   CustomerSession[]
-  codes      PromoCode[]
+  codes      PromoCode[] @relation("Saved")
+  /// Their invite code, made the first time they open the account page.
+  invite     PromoCode? @relation("Invites")
 }
 
 /// A signed-in browser. The cookie holds a random token; only its hash is stored.
@@ -346,9 +357,11 @@ model PointsEntry {
   email     String
   /// Positive when earned, negative when spent on a prize.
   points    Int
-  kind      String // EARN | REDEEM
+  kind      String // EARN | REDEEM | INVITE
   /// EARN: the order that earned them (once per order).
   orderId   String?  @unique
+  /// INVITE: the friend's first order, placed with this person's invite code.
+  inviteOrderId String? @unique
   /// REDEEM: which prize, and the coupon or gift card it made.
   prizeId   String?
   codeId    String?

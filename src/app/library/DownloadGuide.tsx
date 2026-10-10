@@ -9,7 +9,7 @@ const general = [
   { title: "Find a design", body: "Search above, or browse one of the sites directly." },
   { title: "Download the STL", body: "Most sites need a free account before you can download. See your site's steps below." },
   { title: "Unzip if needed", body: "If you get a .zip file, unzip it first. Windows: right-click it and choose Extract All. Mac: double-click it." },
-  { title: "Upload it here", body: `Go to Start an order and drop in the .stl files (up to ${uploads.maxFileMb} MB each). You'll see the price right away.` },
+  { title: "Upload it here", body: `Go to Start an order and drop in the .stl or .3mf files (up to ${uploads.maxFileMb} MB each). You'll see the price right away.` },
 ];
 
 const sites: { name: string; steps: string[]; tip?: string }[] = [

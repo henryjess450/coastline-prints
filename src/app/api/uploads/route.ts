@@ -7,13 +7,13 @@ import { clientIp, rateLimit } from "@/lib/ratelimit";
 import { sanitizeFilename } from "@/lib/sanitize";
 import { getStorage } from "@/lib/storage";
 import { inspectModel } from "@/lib/stl/inspect";
-import { parseStl, StlParseError } from "@/lib/stl/parse";
+import { extensionFor, ModelParseError, parseModel, type ColorInfo } from "@/lib/model/parse";
 import { toUploadDto } from "@/lib/uploads";
 
 export const runtime = "nodejs";
 
 /**
- * Receives one STL as a raw body (Content-Type: application/octet-stream,
+ * Receives one STL or 3MF as a raw body (Content-Type: application/octet-stream,
  * filename in the X-Filename header, URI-encoded). Streams it with a hard
  * size cap, validates by content, computes authoritative stats and stores
  * the original bytes untouched.
@@ -45,19 +45,20 @@ export async function POST(req: Request) {
 
   let parsed;
   try {
-    parsed = parseStl(bytes);
+    parsed = parseModel(bytes);
   } catch (err) {
-    if (err instanceof StlParseError) return apiError(422, err.message);
+    if (err instanceof ModelParseError) return apiError(422, err.message);
     logError("upload:parse", err);
-    return apiError(422, "We couldn't read this STL file.");
+    return apiError(422, "We couldn't read this file.");
   }
 
   try {
-    const analysis = inspectModel(parsed.positions);
+    const analysis = inspectModel(parsed.checkPositions);
+    for (const note of parsed.notes) analysis.warnings.push({ code: "file-note", severity: "info", message: note });
     const sha256 = createHash("sha256").update(bytes).digest("hex");
-    const safeName = sanitizeFilename(originalName);
+    const safeName = sanitizeFilename(originalName, parsed.format === "3mf" ? "model.3mf" : "model.stl");
     const now = new Date();
-    const storageKey = `uploads/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${randomUUID()}.stl`;
+    const storageKey = `uploads/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${randomUUID()}.${extensionFor(parsed.format)}`;
 
     await getStorage().put(storageKey, bytes);
 
@@ -70,6 +71,8 @@ export async function POST(req: Request) {
         sizeBytes: bytes.byteLength,
         sha256,
         format: parsed.format,
+        supportInfo: JSON.stringify(parsed.supports),
+        colorInfo: parsed.colors ? JSON.stringify({ filaments: parsed.colors.filaments, used: parsed.colors.used, notes: parsed.notes, shares: parsed.colors.shares, profile: parsed.colors.profile } satisfies ColorInfo) : null,
         triangleCount: stats.triangleCount,
         volumeMm3: stats.volumeMm3,
         surfaceAreaMm2: stats.surfaceAreaMm2,

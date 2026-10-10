@@ -81,7 +81,8 @@ function StepItem({ step, index, active, onActive }: { step: Step; index: number
 
 /* ---------- Illustrations (solid colours, loop gently) ---------- */
 
-const loop = { repeat: Infinity, repeatDelay: 0.6 } as const;
+// Plays forward, then eases back the same way: never jumps back to the start.
+const loop = { repeat: Infinity, repeatType: "reverse", repeatDelay: 0.6 } as const;
 
 function Illustration({ step }: { step: number }) {
   const reduce = useReducedMotion() ?? false;

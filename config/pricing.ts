@@ -49,3 +49,41 @@ export const estimation = {
 
 export type QualityId = (typeof qualityPresets)[number]["id"];
 export type InfillId = (typeof infillPresets)[number]["id"];
+
+/**
+ * Multicolour printing costs: every colour change flushes plastic and takes
+ * time, and a prime tower is printed beside the model. Starting values,
+ * tune them against what Bambu Studio / ElegooSlicer report for real jobs.
+ */
+export const multicolor = {
+  /** AMS fee: added once to every multicolour item (loading and unloading the spools), not per copy. */
+  amsFeeCents: 250,
+  /** Time for one filament change (cut, unload, load, flush), seconds. */
+  secondsPerChange: 75,
+  /**
+   * Flushed plastic per change, mm³: a base amount, plus more per point of
+   * lightness gained (dark to light is the worst: black to white). Fitted to
+   * Bambu Studio's own flush table (within about 50 mm³ on average).
+   */
+  flush: { baseMm3: 220, perDeltaEMm3: 0.2, perLightnessUpMm3: 4.9, multiplier: 1 },
+  /** Prime tower beside the model, built up to the last layer with a colour change. */
+  primeTower: { widthMm: 35, depthMm: 35, fill: 0.15 },
+};
+
+/**
+ * Tree supports, added automatically wherever the model overhangs (like the
+ * slicer's auto supports). Starting values: tune them against what your
+ * slicer reports for supported prints.
+ */
+export const supports = {
+  enabled: true,
+  /** Surfaces flatter than this (degrees from horizontal) facing down need support. Bambu's default is 30. */
+  thresholdDeg: 30,
+  /** Share of the space under overhangs that tree supports actually fill. */
+  treeFill: 0.06,
+  /** The denser top layers where supports touch the model. */
+  interfaceMm: 0.4,
+  interfaceFill: 0.5,
+  /** Supports print slower than the model (thin branches, more travel): 0.75 = 75% of the speed. */
+  speedFactor: 0.75,
+};

@@ -16,7 +16,7 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { ColorConfig } from "@config/materials";
 import { orientationMatrix, type OrientationIndex } from "@/lib/printers/fit";
 import type { BoundingBox, Vec3 } from "@/lib/stl/analyze";
-import { makeMaterial } from "./materials";
+import { makeMaterial, makePaintMaterial } from "./materials";
 
 export type ViewerProps = {
   modelKey: string;
@@ -35,7 +35,16 @@ export type ViewerProps = {
   showLabels?: boolean;
   /** Gentle turntable spin (landing page / admin thumbnails). */
   autoRotate?: boolean;
+  /**
+   * Multicolour 3MF: filament number per triangle and the colour to show for
+   * each filament. When set, it replaces the single `color`.
+   */
+  paint?: PaintView | null;
+  /** Ghost tree supports, as printed: [x0, y0, z0, x1, y1, z1, r0, r1] per branch (bed frame, mm). */
+  supports?: Float32Array | null;
 };
+
+export type PaintView = { triColors: Uint8Array; palette: Record<number, string> };
 
 const Z_UP_TO_Y_UP = new THREE.Euler(-Math.PI / 2, 0, 0);
 
@@ -102,6 +111,8 @@ function Scene({
   fits,
   showLabels = true,
   autoRotate,
+  paint,
+  supports,
   labelEls,
 }: ViewerProps & { labelEls: LabelRefs }) {
   const frame = buildVolume ?? bedSize;
@@ -151,6 +162,8 @@ function Scene({
           bedSize={bedSize}
           color={color}
           fits={fits}
+          paint={paint}
+          supports={supports}
         />
         {showLabels && <Dimensions size={bedSize} fits={fits} labelEls={labelEls} />}
       </group>
@@ -170,16 +183,25 @@ function Model({
   bedSize,
   color,
   fits,
-}: Pick<ViewerProps, "modelKey" | "positions" | "normals" | "rawBox" | "scale" | "orientation" | "bedSize" | "color" | "fits">) {
+  paint,
+  supports,
+}: Pick<ViewerProps, "modelKey" | "positions" | "normals" | "rawBox" | "scale" | "orientation" | "bedSize" | "color" | "fits" | "paint" | "supports">) {
+  const painted = !!paint && paint.triColors.length * 9 === positions.length;
   const geometry = useMemo(() => {
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     g.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
-    if (color.finish === "gradient") g.setAttribute("color", rainbowColors(positions, rawBox));
+    if (color.finish === "gradient" && !painted) g.setAttribute("color", rainbowColors(positions, rawBox));
     g.computeBoundingSphere();
     return g;
-  }, [positions, normals, rawBox, color.finish]);
+  }, [positions, normals, rawBox, color.finish, painted]);
   useEffect(() => () => geometry.dispose(), [geometry]);
+
+  // Painted colours: refilled when the palette changes (cheap), without rebuilding the mesh.
+  useEffect(() => {
+    if (!painted || !paint) return;
+    geometry.setAttribute("color", paintColors(paint));
+  }, [geometry, painted, paint]);
 
   const quaternion = useMemo(() => {
     const m = orientationMatrix(orientation);
@@ -221,18 +243,18 @@ function Model({
     }
   });
 
-  const material = useMemo(() => makeMaterial(color, clipPlane), [color, clipPlane]);
+  const material = useMemo(() => (painted ? makePaintMaterial(clipPlane) : makeMaterial(color, clipPlane)), [painted, color, clipPlane]);
   useEffect(() => () => material.dispose(), [material]);
 
   // When the part is too big, ghost it so the red build volume shows through.
   useEffect(() => {
     const ghost = !fits;
-    if (color.finish === "translucent") return;
+    if (color.finish === "translucent" && !painted) return;
     material.transparent = ghost;
     material.opacity = ghost ? 0.45 : 1;
     material.depthWrite = !ghost;
     material.needsUpdate = true;
-  }, [fits, material, color.finish]);
+  }, [fits, material, color.finish, painted]);
 
   return (
     <>
@@ -241,6 +263,7 @@ function Model({
           <mesh geometry={geometry} material={material} position={center} />
         </group>
       </group>
+      {supports && supports.length > 0 && <SupportGhost segments={supports} clip={clipPlane} />}
       {!reduceMotion && (
         <mesh ref={sweep} position={[0, 0, 0]}>
           <planeGeometry args={[bedSize.x * 1.08, bedSize.y * 1.08]} />
@@ -249,6 +272,66 @@ function Model({
       )}
     </>
   );
+}
+
+/** Tree supports drawn as see-through branches (one instanced, slightly tapered cylinder each). */
+function SupportGhost({ segments, clip }: { segments: Float32Array; clip: THREE.Plane }) {
+  const count = segments.length / 8;
+  const geometry = useMemo(() => new THREE.CylinderGeometry(0.6, 1, 1, 10, 1, true).translate(0, 0.5, 0), []);
+  const material = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#9cc8f0", transparent: true, opacity: 0.35, depthWrite: false, roughness: 0.6, side: THREE.DoubleSide, clippingPlanes: [clip] }),
+    [clip],
+  );
+  useEffect(
+    () => () => {
+      geometry.dispose();
+      material.dispose();
+    },
+    [geometry, material],
+  );
+  const mesh = useRef<THREE.InstancedMesh>(null);
+  useEffect(() => {
+    const m = mesh.current;
+    if (!m) return;
+    const up = new THREE.Vector3(0, 1, 0);
+    const a = new THREE.Vector3();
+    const b = new THREE.Vector3();
+    const dir = new THREE.Vector3();
+    const q = new THREE.Quaternion();
+    const mat = new THREE.Matrix4();
+    for (let i = 0; i < count; i++) {
+      const o = i * 8;
+      a.set(segments[o], segments[o + 1], segments[o + 2]);
+      b.set(segments[o + 3], segments[o + 4], segments[o + 5]);
+      dir.subVectors(b, a);
+      const len = dir.length() || 0.001;
+      q.setFromUnitVectors(up, dir.normalize());
+      const r = Math.max(segments[o + 6], segments[o + 7]);
+      mat.compose(a, q, new THREE.Vector3(r, len, r));
+      m.setMatrixAt(i, mat);
+    }
+    m.instanceMatrix.needsUpdate = true;
+    m.computeBoundingSphere();
+  }, [segments, count]);
+  return <instancedMesh ref={mesh} args={[geometry, material, count]} key={count} frustumCulled={false} />;
+}
+
+/** One colour per triangle from its filament number. Unknown filaments show grey. */
+function paintColors({ triColors, palette }: PaintView) {
+  const lut = new Map<number, THREE.Color>();
+  for (const [k, hex] of Object.entries(palette)) lut.set(Number(k), new THREE.Color(hex));
+  const grey = new THREE.Color("#8a8f98");
+  const out = new Float32Array(triColors.length * 9);
+  for (let t = 0; t < triColors.length; t++) {
+    const c = lut.get(triColors[t]) ?? grey;
+    for (let v = 0; v < 3; v++) {
+      const i = t * 9 + v * 3;
+      out[i] = c.r;
+      out[i + 1] = c.g;
+      out[i + 2] = c.b;
+    }
+  }
+  return new THREE.BufferAttribute(out, 3);
 }
 
 /** Rainbow along the model's original Z axis, for gradient spools. */

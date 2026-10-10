@@ -102,7 +102,7 @@ export async function POST(req: Request) {
     if (account && account.email === customer.email.trim().toLowerCase()) {
       await rememberOrderDetails(account.id, account.email, customer, fulfillment.method === "ship" ? fulfillment.address : null).catch((e) => logError("checkout:remember", e));
     }
-    const { records, errors } = await lookupCodes(codes, new Date(), account?.id ?? null);
+    const { records, errors } = await lookupCodes(codes, new Date(), account?.id ?? null, customer.email);
     if (errors.length) return apiError(409, `${errors[0].code}: ${errors[0].reason}`, { code: "CODE_INVALID", badCode: errors[0].code });
     const discount = applyCodes(priced.totalCents, records.map(toCodeInfo), shippingCents);
     if (discount.rejected.length) return apiError(409, `${discount.rejected[0].code}: ${discount.rejected[0].reason}`, { code: "CODE_INVALID", badCode: discount.rejected[0].code });

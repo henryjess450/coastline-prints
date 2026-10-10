@@ -9,5 +9,7 @@ export function sanitizeFilename(name: string, fallback = "model.stl") {
     .trim()
     .slice(0, 120);
   if (!cleaned) return fallback;
-  return /\.stl$/i.test(cleaned) ? cleaned : `${cleaned}.stl`;
+  // The extension follows what the file really is (the fallback's), not what it was called.
+  const ext = fallback.match(/\.\w+$/)?.[0] ?? ".stl";
+  return `${cleaned.replace(/\.(stl|3mf)$/i, "") || "model"}${ext}`;
 }

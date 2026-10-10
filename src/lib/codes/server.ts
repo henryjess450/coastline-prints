@@ -2,6 +2,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import type { PromoCode } from "@/generated/prisma/client";
 import { logError } from "@/lib/api";
+import { inviteProblem } from "@/lib/rewards/invite";
 import { db } from "@/lib/db";
 import { timingSafeEqual } from "node:crypto";
 import { MAX_CODES, normalizeCode, normalizePin, type AppliedCode, type CodeInfo, type CodeKind } from "./apply";
@@ -38,9 +39,10 @@ export function pinMatches(expected: string, given: string) {
  * Loads codes and checks each one. Entries are "CODE" or, for gift cards,
  * "NUMBER:PIN". A wrong PIN gives the same message as an unknown code.
  * Codes saved to an account only work for that account (`customerId`), and
- * its owner doesn't need the PIN.
+ * its owner doesn't need the PIN. Invite codes only work on a first order
+ * (checked against `email`, who's ordering, when it's known).
  */
-export async function lookupCodes(raw: string[], now = new Date(), customerId: string | null = null) {
+export async function lookupCodes(raw: string[], now = new Date(), customerId: string | null = null, email: string | null = null) {
   const entries = new Map<string, string>();
   for (const r of raw) {
     const [c, p = ""] = r.split(":");
@@ -61,7 +63,7 @@ export async function lookupCodes(raw: string[], now = new Date(), customerId: s
     const owned = !!row?.ownerId && row.ownerId === customerId;
     const needsPin = !owned && !!row && (!!row.pin || (row.kind === "GIFT_CARD" && /^\d{16}$/.test(row.code)));
     if (row && needsPin && !(row.pin && pinMatches(row.pin, entries.get(code)!))) row = null;
-    const reason = unusableReason(row, now);
+    const reason = unusableReason(row, now) ?? (row ? await inviteProblem(row, customerId, email) : null);
     if (reason) errors.push({ code, reason });
     else records.push(row!);
   }

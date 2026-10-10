@@ -7,7 +7,8 @@ export type MeshWarningCode =
   | "inverted-normals"
   | "too-small"
   | "too-large"
-  | "likely-inches";
+  | "likely-inches"
+  | "file-note";
 
 export type MeshWarning = { code: MeshWarningCode; severity: "info" | "warning" | "error"; message: string };
 

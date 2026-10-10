@@ -37,7 +37,12 @@ export async function rewardsSummary(email: string) {
     history: entries.map((e) => ({
       id: e.id,
       points: e.points,
-      label: e.kind === "EARN" ? `Order ${orderNumbers.get(e.orderId ?? "") ?? ""}`.trim() : (prizes.find((p) => p.id === e.prizeId)?.title ?? "Prize"),
+      label:
+        e.kind === "EARN"
+          ? `Order ${orderNumbers.get(e.orderId ?? "") ?? ""}`.trim()
+          : e.kind === "INVITE"
+            ? "A friend you invited ordered"
+            : (prizes.find((p) => p.id === e.prizeId)?.title ?? "Prize"),
       date: e.createdAt.toISOString(),
     })),
   };

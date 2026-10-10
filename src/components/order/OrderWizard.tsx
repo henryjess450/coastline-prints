@@ -7,6 +7,7 @@ import type { SquareConfig } from "@/components/checkout/PaymentMethods";
 import { HeroWater, type Tow } from "@/components/home/HeroWater";
 import { Card } from "@/components/ui/Card";
 import { ViewerPanel } from "@/components/viewer/ViewerPanel";
+import { useConfig } from "@/components/ConfigProvider";
 import { useDerived } from "@/lib/order/derive";
 import { useOrder } from "@/lib/order/store";
 import { useCartQuote } from "@/lib/order/use-quote";
@@ -38,6 +39,38 @@ export function OrderWizard({ square, etransfer }: { square: SquareConfig | null
   const cartQuote = useCartQuote(items);
   const [stage, setStage] = useState<"customize" | "checkout">("customize");
   const step = items.length === 0 ? 0 : stage === "checkout" ? 2 : 1;
+
+  // "Print it again" from your account: /order?reorder=<order link> fills the cart with that order's files and settings.
+  const cfg = useConfig();
+  const addReorder = useOrder((s) => s.addReorder);
+  const [reorderNote, setReorderNote] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    // ?reorder=<order link> for a whole past order, ?model=<upload id> for one of your models.
+    const token = url.searchParams.get("reorder");
+    const model = url.searchParams.get("model");
+    if (!token && !model) return;
+    url.searchParams.delete("reorder");
+    url.searchParams.delete("model");
+    window.history.replaceState(null, "", url.pathname + url.search);
+    void (async () => {
+      const api = token ? `/api/account/orders/${encodeURIComponent(token)}/reorder` : `/api/account/models/${encodeURIComponent(model!)}`;
+      const res = await fetch(api).catch(() => null);
+      const data = res ? await res.json().catch(() => ({})) : {};
+      if (!res?.ok) {
+        setReorderNote({ ok: false, text: res?.status === 401 ? "Sign in to your account to print this again." : (data.error ?? "Couldn't load that order.") });
+        return;
+      }
+      const n = addReorder(data.items, cfg);
+      const missing: string[] = data.missing ?? [];
+      setReorderNote({
+        ok: true,
+        text: (token ? `Added ${n} ${n === 1 ? "print" : "prints"} from your past order with the same settings.` : "Added with the settings you last ordered it in. Change the colour or size below.") + (missing.length ? ` ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} no longer stored, so ${missing.length === 1 ? "it was" : "they were"} left out.` : ""),
+      });
+    })();
+    // Once, on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function goTo(next: "customize" | "checkout") {
     setStage(next);
@@ -115,12 +148,28 @@ export function OrderWizard({ square, etransfer }: { square: SquareConfig | null
         <div className="mx-auto mb-12 max-w-2xl sm:mb-16">
           <Stepper current={step} />
         </div>
+        <AnimatePresence>
+          {reorderNote && (
+            <motion.p
+              role="status"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className={`mx-auto -mt-6 mb-10 flex max-w-2xl items-start justify-between gap-4 text-sm ${reorderNote.ok ? "text-success" : "text-danger"}`}
+            >
+              <span>{reorderNote.text}</span>
+              <button type="button" onClick={() => setReorderNote(null)} className="shrink-0 text-faint hover:text-fg" aria-label="Dismiss">
+                ✕
+              </button>
+            </motion.p>
+          )}
+        </AnimatePresence>
 
         <AnimatePresence mode="wait">
           {step === 0 ? (
             <motion.section key="upload" {...stepMotion} aria-labelledby="upload-title" className="mx-auto max-w-3xl pb-48 sm:pb-56">
               <h1 id="upload-title" className="mb-4 text-center font-display text-4xl font-bold tracking-tight sm:text-5xl">
-                Upload your STL files
+                Upload your 3D files
               </h1>
               <p className="mb-12 text-center leading-relaxed text-muted">You can add up to 10 files. Next you&apos;ll set the size, material and colour for each one.</p>
               <div ref={towed} className="will-change-transform">

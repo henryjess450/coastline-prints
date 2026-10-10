@@ -14,6 +14,7 @@ import { money, returningLabel } from "@/lib/format";
 import { formatPickup } from "@/lib/pickup";
 import type { AppliedCode } from "@/lib/codes/apply";
 import { statusInfo, trackingUrl } from "@/lib/orders/status";
+import type { ColorSlot } from "@/lib/model/colors";
 import { isTracked, shippingAddressLines, shippingBoxesOf } from "@/lib/shipping/address";
 import { packageName } from "@/lib/shipping/pack";
 
@@ -62,6 +63,7 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
       color,
       buildVolume: printer?.buildVolume ?? null,
       fileDeleted: !!it.upload.fileDeletedAt,
+      colorSlots: it.colorSlots ? (JSON.parse(it.colorSlots) as ColorSlot[]) : null,
     };
   });
 

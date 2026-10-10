@@ -7,6 +7,11 @@ import type { OrderEmailData } from "@/lib/email/data";
 export async function postDiscordNewOrder(d: OrderEmailData) {
   const url = process.env.DISCORD_WEBHOOK_URL;
   if (!url) throw new Error("DISCORD_WEBHOOK_URL is not set");
+  // Like emails and the receipt printer: test orders on a dev machine never post. DISCORD_IN_DEV="true" to post anyway.
+  if (process.env.NODE_ENV !== "production" && process.env.DISCORD_IN_DEV !== "true") {
+    console.log(`[discord] dev: not posting new order ${d.orderNumber}`);
+    return;
+  }
   const items = d.items.map((i) => `• ${i.fileName} × ${i.quantity}: ${i.material} ${i.colorName}, ${i.size} on ${i.printerName}`).join("\n");
   const res = await fetch(url, {
     method: "POST",

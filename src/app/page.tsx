@@ -20,7 +20,7 @@ import { money } from "@/lib/format";
 export const dynamic = "force-dynamic"; // shows live rates from admin settings
 
 const steps = [
-  { title: "Upload", body: `Drag in one or more .stl files, up to ${uploads.maxFileMb} MB each. Each file is checked for holes and unit mistakes.` },
+  { title: "Upload", body: `Drag in one or more .stl or .3mf files, up to ${uploads.maxFileMb} MB each. Each file is checked for holes and unit mistakes.` },
   { title: "Size", body: "Scale the model in the 3D preview and pick PLA, PETG or PLA-CF and a colour. The price updates as you change things." },
   { title: "Pay", body: "Pay by Interac e-Transfer (2% off) or by card, Apple Pay or Google Pay, and choose a pickup time or shipping. The order is only placed once the payment goes through." },
   { title: "Pick up or ship", body: "You get an email when your print is ready, or when it ships. The pickup address comes with your receipt." },
@@ -29,7 +29,7 @@ const steps = [
 const faqs = [
   {
     q: "What files can I upload?",
-    a: `STL files only (binary or ASCII), up to ${uploads.maxFileMb} MB each and ${uploads.maxFilesPerOrder} files per order. If your model is in another format, export it as STL from your modelling program first.`,
+    a: `STL (binary or ASCII) or 3MF files, up to ${uploads.maxFileMb} MB each and ${uploads.maxFilesPerOrder} files per order. 3MF projects from Bambu Studio, Orca Slicer and PrusaSlicer work, including painted colours. If your model is in another format, export it as STL or 3MF first.`,
   },
   {
     q: "My model showed up tiny. Why?",

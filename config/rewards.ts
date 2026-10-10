@@ -25,3 +25,15 @@ export const prizes: Prize[] = [
   { id: "thirty-off", points: 900, kind: "coupon", valueCents: 3000, title: "$30 off", blurb: "Thirty dollars off a bigger print." },
   { id: "sixty-off", points: 1500, kind: "coupon", valueCents: 6000, title: "$60 off", blurb: "Sixty dollars off. Go big." },
 ];
+
+/**
+ * Invite a friend. Every account has one invite code to share. The friend
+ * gets money off their first order; the person who invited them gets points
+ * as soon as that order is paid.
+ */
+export const invite = {
+  /** Off the friend's first order (prints only, like any coupon). */
+  friendCents: 500,
+  /** For the person who shared the code, once their friend orders. */
+  points: 200,
+};

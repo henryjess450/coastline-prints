@@ -40,7 +40,7 @@ export function OrderItems({ items }: { items: AdminItem[] }) {
                   <span className="font-mono text-sm">{money(it.lineCents)}</span>
                   {!it.fileDeleted && (
                     <a href={`/api/admin/uploads/${it.uploadId}/file`} className="rounded-full border border-line px-3 py-1 text-xs font-medium hover:border-accent-line" download>
-                      Download STL
+                      Download {/\.3mf$/i.test(it.fileName) ? "3MF" : "STL"}
                     </a>
                   )}
                 </div>
@@ -55,6 +55,22 @@ export function OrderItems({ items }: { items: AdminItem[] }) {
                 <Spec label="Print time" value={`about ${hours(it.hoursEach * it.quantity)}`} />
                 <Spec label="Orientation" value={it.rotated ? "Rotated to fit" : "As uploaded"} />
               </dl>
+              {it.colorSlots && (
+                <div className="mt-3 rounded-xl bg-accent-soft p-3 text-xs">
+                  <p className="mb-1.5 font-semibold">Multicolour: load these filaments</p>
+                  <ul className="grid gap-1 sm:grid-cols-2">
+                    {it.colorSlots.map((s) => (
+                      <li key={s.filament} className="flex items-center gap-2">
+                        <span className="h-3.5 w-3.5 rounded-full border border-line-strong" style={{ background: s.fileHex ?? "#888" }} aria-hidden />
+                        <span className="text-muted">File colour {s.filament}</span>
+                        <span aria-hidden className="text-faint">→</span>
+                        <span className="h-3.5 w-3.5 rounded-full border border-line-strong" style={{ background: s.hex }} aria-hidden />
+                        <span className="font-medium">{s.colorName}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </li>
         ))}
