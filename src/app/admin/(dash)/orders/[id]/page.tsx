@@ -6,6 +6,7 @@ import { PrintButton } from "@/components/admin/PrintButton";
 import { OrderItems, type AdminItem } from "@/components/admin/OrderItems";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { NextStepButton } from "@/components/admin/NextStepButton";
+import { OrderHousekeeping } from "@/components/admin/OrderHousekeeping";
 import { StatusControl } from "@/components/admin/StatusControl";
 import { nextStep } from "@/lib/orders/next-step";
 import { Card } from "@/components/ui/Card";
@@ -80,6 +81,7 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
           </Link>
           <h1 className="mt-1 flex items-center gap-3 font-display text-3xl font-bold">
             <span className="font-mono">{order.orderNumber}</span> <StatusBadge status={order.status} fulfillment={order.fulfillment} className="text-sm" />
+            {order.archivedAt && <span className="rounded-full bg-surface-strong px-2.5 py-0.5 text-sm font-semibold text-muted">Archived</span>}
           </h1>
           <p className="text-sm text-muted">
             Placed {when(order.createdAt)} · {money(order.totalCents)} paid
@@ -261,6 +263,10 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
           </Card>
         </aside>
       </div>
+      <Card className="p-5">
+        <h2 className="mb-3 font-display text-lg font-semibold">Archive or delete</h2>
+        <OrderHousekeeping orderId={order.id} orderNumber={order.orderNumber} archived={!!order.archivedAt} />
+      </Card>
     </div>
   );
 }

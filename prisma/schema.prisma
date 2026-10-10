@@ -102,6 +102,8 @@ model Order {
   checkoutId      String   @unique
   checkout        Checkout @relation(fields: [checkoutId], references: [id])
   status          String   @default("PAID") // PAID | QUEUED | PRINTING | POST_PROCESSING | READY_FOR_PICKUP | PICKED_UP
+  /// Tucked away by the owner: hidden from the admin's boards and lists (the customer still sees it).
+  archivedAt      DateTime?
   customerName    String
   customerEmail   String
   customerPhone   String

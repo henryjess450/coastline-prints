@@ -36,7 +36,8 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   const status = sp.status ?? "ACTIVE";
   const page = Math.max(1, Number(sp.page) || 1);
 
-  const where: Prisma.OrderWhereInput = {};
+  // Archived orders only show on their own tab.
+  const where: Prisma.OrderWhereInput = { archivedAt: status === "ARCHIVED" ? { not: null } : null };
   if (status === "ACTIVE") where.status = { not: "PICKED_UP" };
   else if (ORDER_STATUSES.some((s) => s.id === status)) where.status = status;
   else if (status === "EMAIL_FAILED") {
@@ -49,15 +50,16 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
     where.OR = [{ orderNumber: { contains: q.toUpperCase() } }, { customerName: { contains: q } }, { customerEmail: { contains: q.toLowerCase() } }];
   }
 
-  const [orders, total, counts] = await Promise.all([
+  const [orders, total, counts, archived] = await Promise.all([
     db.order.findMany({ where, include: { items: { select: { quantity: true, printerName: true, printerId: true } } }, orderBy: { createdAt: "desc" }, take: PAGE, skip: (page - 1) * PAGE }),
     db.order.count({ where }),
-    db.order.groupBy({ by: ["status"], _count: true }),
+    db.order.groupBy({ by: ["status"], where: { archivedAt: null }, _count: true }),
+    db.order.count({ where: { archivedAt: { not: null } } }),
   ]);
   const countOf = (s: string) => counts.find((c) => c.status === s)?._count ?? 0;
   const activeCount = counts.filter((c) => c.status !== "PICKED_UP").reduce((n, c) => n + c._count, 0);
 
-  const tabs = [{ id: "ACTIVE", label: "Active", n: activeCount }, ...ORDER_STATUSES.map((s) => ({ id: s.id, label: TAB_LABELS[s.id] ?? s.label, n: countOf(s.id) })), { id: "ALL", label: "All", n: counts.reduce((n, c) => n + c._count, 0) }];
+  const tabs = [{ id: "ACTIVE", label: "Active", n: activeCount }, ...ORDER_STATUSES.map((s) => ({ id: s.id, label: TAB_LABELS[s.id] ?? s.label, n: countOf(s.id) })), { id: "ALL", label: "All", n: counts.reduce((n, c) => n + c._count, 0) }, { id: "ARCHIVED", label: "Archived", n: archived }];
   const href = (over: Partial<Search>) => {
     const p = new URLSearchParams();
     const merged = { view: "list", status, printer: sp.printer, q: sp.q, ...over };

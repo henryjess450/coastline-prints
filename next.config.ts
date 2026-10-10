@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
   // Load these from node_modules at runtime instead of bundling them: native
   // modules, and the e-Transfer mail libraries (big, and bundling them made
   // the Docker build run out of memory).
-  serverExternalPackages: ["better-sqlite3", "@prisma/adapter-better-sqlite3", "imapflow", "mailparser", "mailauth"],
+  serverExternalPackages: ["better-sqlite3", "@prisma/adapter-better-sqlite3", "imapflow", "mailparser", "mailauth", "bwip-js"],
   experimental: {
     // The persistent dev cache writes large files to .next; off to save disk.
     turbopackFileSystemCacheForDev: false,

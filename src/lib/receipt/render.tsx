@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { ImageResponse } from "next/og";
 import QRCode from "qrcode";
+import bwipjs from "bwip-js/node";
 import { pickup } from "@config/pickup";
 import { site } from "@config/site";
 import { db } from "@/lib/db";
@@ -121,7 +122,8 @@ const Row = ({ left, right, size = 22, bold = false }: { left: string; right: st
 export async function renderReceiptPng(d: ReceiptData, opts: { test?: boolean } = {}): Promise<Buffer> {
   const fonts = loadFonts();
   const noteLines = d.notes ? Math.ceil(d.notes.length / 40) + d.notes.split("\n").length : 0;
-  const height = Math.min(4000, 640 + d.discounts.length * 26 + d.items.length * 70 + noteLines * 26 + (d.minimumAdjCents ? 28 : 0) + (d.ship ? 60 + (d.ship.lines.length + d.ship.boxes.length) * 30 : 0) + (opts.test ? 50 : 0) + (d.invoiceUrl ? 250 : 0));
+  const height = Math.min(4000, 640 + d.discounts.length * 26 + d.items.length * 70 + noteLines * 26 + (d.minimumAdjCents ? 28 : 0) + (d.ship ? 60 + (d.ship.lines.length + d.ship.boxes.length) * 30 : 0) + (opts.test ? 50 : 0) + (d.invoiceUrl ? 250 : 0) + 120);
+  const barcode = await orderBarcode(d.orderNumber);
   // A QR code to the order's invoice, so the customer can scan it for a copy.
   const qr = d.invoiceUrl ? await QRCode.toString(d.invoiceUrl, { type: "svg", margin: 0, errorCorrectionLevel: "M", color: { dark: "#000000", light: "#ffffff" } }) : null;
 
@@ -137,6 +139,11 @@ export async function renderReceiptPng(d: ReceiptData, opts: { test?: boolean } 
           <span style={{ fontSize: 34, fontWeight: 700 }}>{d.orderNumber}</span>
           <span style={{ fontSize: 17 }}>Placed {d.placedAt}</span>
         </div>
+      </div>
+      {/* Scan this at the scan station to move the order on to its next step. */}
+      <div style={{ display: "flex", justifyContent: "center", marginTop: 10 }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={barcode.src} width={barcode.width} height={barcode.height} alt={d.orderNumber} />
       </div>
       <Rule />
 
@@ -219,3 +226,13 @@ export async function renderReceiptPng(d: ReceiptData, opts: { test?: boolean } 
   });
   return Buffer.from(await res.arrayBuffer());
 }
+
+/**
+ * The order number as a Code 128 barcode, for the scan station. Whole pixels
+ * per bar (scale 3) so the thermal printer prints it sharp.
+ */
+export async function orderBarcode(orderNumber: string) {
+  const png = await bwipjs.toBuffer({ bcid: "code128", text: orderNumber, scale: 3, height: 11, includetext: false, paddingwidth: 6, paddingheight: 2 });
+  return { src: `data:image/png;base64,${png.toString("base64")}`, width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
+}
+

@@ -17,6 +17,8 @@ const geistMono = localFont({ src: "./fonts/GeistMono-Variable.woff2", variable:
 const display = localFont({ src: "./fonts/SpaceGrotesk-Variable.woff2", variable: "--font-space-grotesk", weight: "300 700", display: "swap" });
 
 export const metadata: Metadata = {
+  // Shared-link pictures need full addresses.
+  metadataBase: new URL(process.env.APP_URL ?? "http://localhost:3000"),
   title: { default: site.name, template: `%s · ${site.name}` },
   description: "Upload an STL file, set the size, material and colour, and see the price before you pay. PLA, PETG and PLA-CF prints for local pickup or shipping in Canada.",
   // Installed on an iPhone home screen: full screen, with this name under the icon.

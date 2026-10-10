@@ -5,6 +5,7 @@ import { pngToBitmap } from "./bitmap";
 import { renderCodeSlipPng } from "./code-slip";
 import { encodeEscPos, encodeStar } from "./escpos";
 import { loadReceiptData, renderReceiptPng } from "./render";
+import { renderScanStubPng } from "./scan-stub";
 import { sendToPrinter } from "./send";
 
 export function receiptPrinterConfigured() {
@@ -43,4 +44,10 @@ export async function printOrderReceipt(orderId: string, opts: { test?: boolean 
 export async function printCodeSlip(codeId: string) {
   const { png, code } = await renderCodeSlipPng(codeId);
   await printPng(png, code, { dither: true }); // grey "Gift Card" / "Coupon" heading
+}
+
+/** The "updated to…" stub after a scan at the scan station. */
+export async function printScanStub(orderId: string, statusLabel: string) {
+  const { png, orderNumber } = await renderScanStubPng(orderId, statusLabel);
+  await printPng(png, `${orderNumber}-stub`);
 }

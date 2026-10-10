@@ -8,7 +8,7 @@ import { resetSetting, saveMaterials, savePricing } from "@/lib/config/save";
 import { db } from "@/lib/db";
 import { sendNotificationsSoon } from "@/lib/notify/kick";
 import { retryJob } from "@/lib/notify/outbox";
-import { changeOrderStatus, StatusChangeError } from "@/lib/orders/admin";
+import { changeOrderStatus, deleteOrder, setOrderArchived, StatusChangeError } from "@/lib/orders/admin";
 import { confirmByOwner, EtransferConfirmError } from "@/lib/payments/etransfer.server";
 import { rateLimit } from "@/lib/ratelimit";
 import { saveSeason } from "@/lib/season";
@@ -259,4 +259,25 @@ export async function saveSeasonAction(_: ActionState, form: FormData): Promise<
   } catch {
     return { error: "That theme didn't save. Please try again." };
   }
+}
+
+export async function archiveOrderAction(form: FormData) {
+  await requireAdmin();
+  const orderId = String(form.get("orderId") ?? "");
+  await setOrderArchived(orderId, form.get("archive") === "1");
+  revalidateOrders(orderId);
+}
+
+export async function deleteOrderAction(_: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  try {
+    await deleteOrder(String(form.get("orderId") ?? ""), String(form.get("confirm") ?? ""));
+  } catch (err) {
+    if (err instanceof StatusChangeError) return { error: err.message };
+    logError("admin:delete-order", err);
+    return { error: "That didn't delete. Please try again." };
+  }
+  revalidatePath("/admin");
+  revalidatePath("/admin/orders");
+  redirect("/admin/orders?view=list&status=ARCHIVED");
 }

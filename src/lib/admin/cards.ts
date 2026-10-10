@@ -13,7 +13,8 @@ type Row = Prisma.OrderGetPayload<{ include: typeof include }>;
 
 /** Orders as the admin's cards: who, what, when, and the one-tap next step. */
 export async function adminCards(where: Prisma.OrderWhereInput, take = 200): Promise<AdminCard[]> {
-  const rows = await db.order.findMany({ where, include, orderBy: { createdAt: "asc" }, take });
+  // Archived orders are tucked away from the boards.
+  const rows = await db.order.findMany({ where: { AND: [where, { archivedAt: null }] }, include, orderBy: { createdAt: "asc" }, take });
   const today = todayIn(pickup.timeZone);
   return rows.map((o) => toCard(o, today));
 }

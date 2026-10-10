@@ -18,7 +18,7 @@ export default async function QueuesPage() {
   await requireAdmin();
   const cfg = await getEffectiveConfig();
   const items = await db.orderItem.findMany({
-    where: { order: { status: { in: ON_PRINTER } } },
+    where: { order: { status: { in: ON_PRINTER }, archivedAt: null } },
     include: { order: { select: { id: true, orderNumber: true, status: true, pickupDate: true, pickupTime: true, customerName: true, fulfillment: true } } },
   });
   // Soonest pickup first; unbooked last.
