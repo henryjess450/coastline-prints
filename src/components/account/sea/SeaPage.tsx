@@ -1,8 +1,8 @@
 "use client";
 /**
  * The account page is the sea. Sky and sun at the top, the water surface
- * under the greeting, then solid bands of water, each a shade deeper, all
- * the way down the page, slowly moving. Drawn in page pixels in one SVG
+ * under the greeting, then one band of water per section, each a shade
+ * deeper, with a moving wave between every two sections. Drawn in page pixels in one SVG
  * behind the content. Reduced motion: one still frame.
  */
 import { useReducedMotion } from "framer-motion";
@@ -10,7 +10,10 @@ import { useEffect, useRef, useState } from "react";
 import { Gull } from "@/components/brand/Benchy";
 
 const SAND = "#e9c46a";
+/** Water for each section after the first, deeper each time (the deepest repeats if there are more). */
 const BANDS = ["var(--sea-1)", "var(--sea-2)", "var(--sea-3)", "var(--sea-4)"];
+/** How far below a section's top edge its wave sits (inside the section's top padding). */
+const WAVE_INSET = 10;
 
 const waveY = (x: number, base: number, amp: number, period: number, phase: number) => base + amp * Math.sin(((x + phase) / period) * Math.PI * 2);
 
@@ -29,16 +32,24 @@ export function SeaPage({ hero, children }: { hero: React.ReactNode; children: R
   const reduce = useReducedMotion();
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [time, setTime] = useState(0);
+  // Where each section starts, in page pixels, so every section gets its own band.
+  const [tops, setTops] = useState<number[]>([]);
   useEffect(() => {
     const el = ref.current;
     const hero = heroRef.current;
     if (!el || !hero) return;
-    const ro = new ResizeObserver(() => {
+    const sections = () => [...el.querySelectorAll<HTMLElement>("section")].filter((s) => !hero.contains(s) && !s.parentElement?.closest("section"));
+    const measure = () => {
+      const top = el.getBoundingClientRect().top;
       setSize({ w: el.clientWidth, h: el.clientHeight });
       setHeroH(hero.offsetHeight);
-    });
+      setTops(sections().map((s) => Math.round(s.getBoundingClientRect().top - top)));
+    };
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
     ro.observe(hero);
+    // A section changing height moves every section below it.
+    sections().forEach((s) => ro.observe(s));
     return () => ro.disconnect();
   }, []);
 
@@ -69,9 +80,6 @@ export function SeaPage({ hero, children }: { hero: React.ReactNode; children: R
   const surf = { base: surface, amp: 9, period: 260, phase: ph * 0.6 };
   const swell = { base: surface + 22, amp: 11, period: 320, phase: -ph };
 
-  // Deeper bands, evenly down the rest of the page.
-  const depthTop = surface + 120;
-  const step = Math.max(240, (h - depthTop) / BANDS.length);
 
   return (
     <div ref={ref} className="relative isolate">
@@ -89,8 +97,9 @@ export function SeaPage({ hero, children }: { hero: React.ReactNode; children: R
             {/* The surface, then each deeper band */}
             <path d={band(w, h, surf.base, surf.amp, surf.period, surf.phase)} fill="var(--sea-foam)" />
             <path d={band(w, h, swell.base, swell.amp, swell.period, swell.phase)} fill="var(--sea-0)" />
-            {BANDS.map((fill, i) => (
-              <path key={i} d={band(w, h, depthTop + step * i, 12 - i, 300 + i * 40, (i % 2 ? -1 : 1) * ph * (0.4 + i * 0.1))} fill={fill} />
+            {/* The first section sits in the swell; each one after it starts with its own wave. */}
+            {tops.slice(1).map((top, i) => (
+              <path key={i} d={band(w, h, top + WAVE_INSET, 12 - Math.min(i, 4), 300 + (i % 4) * 40, (i % 2 ? -1 : 1) * ph * (0.4 + (i % 4) * 0.1))} fill={BANDS[Math.min(i, BANDS.length - 1)]} />
             ))}
 
             {/* Wavy bottom edge into the page colour */}
