@@ -67,6 +67,19 @@ export async function verifyLoginCode(email: string, code: string, now = new Dat
  * Only with production or sandbox Square keys, so local testing with the
  * live keys never adds test customers to the real Square account.
  */
+/**
+ * The owner sets up an account for someone from the admin panel. Same as
+ * signing up (including the one-time Square sync, which never duplicates).
+ * Null if that email already has an account.
+ */
+export async function createInvitedAccount(rawEmail: string, name: string | null, now = new Date()) {
+  const email = normalizeEmail(rawEmail);
+  if (await db.customer.findUnique({ where: { email }, select: { id: true } })) return null;
+  const customer = await db.customer.create({ data: { email, name: name?.trim() || null, invitedAt: now } });
+  await queueSquareSync(customer.id);
+  return customer;
+}
+
 export function squareSyncEnabled() {
   if (!process.env.SQUARE_ACCESS_TOKEN) return false;
   return process.env.NODE_ENV === "production" || process.env.SQUARE_ENVIRONMENT === "sandbox";

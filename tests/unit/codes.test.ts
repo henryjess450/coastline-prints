@@ -67,3 +67,20 @@ describe("gift card number and PIN", () => {
     expect(maskCode("5268945127053574", "GIFT_CARD")).toBe("•••• 3574");
   });
 });
+
+describe("site-wide sale", () => {
+  it("comes off the prints first, then a coupon takes its share of what's left", () => {
+    const r = applyCodes(2000, [pct(10)], 0, { name: "Boxing Day", percentOff: 25 });
+    expect(r.applied.map((a) => [a.kind, a.amountCents])).toEqual([
+      ["SALE", 500],
+      ["PERCENT", 150],
+    ]);
+    expect(r.totalCents).toBe(1350);
+  });
+
+  it("never touches shipping, and an amount coupon can't go below zero", () => {
+    const r = applyCodes(1000, [amt(5000)], 2099, { name: "Sale", percentOff: 50 });
+    expect(r.totalCents).toBe(2099);
+    expect(r.discountCents).toBe(1000);
+  });
+});

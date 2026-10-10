@@ -4,9 +4,9 @@ import { addressSchema, type AddressInput } from "@/lib/checkout/schema";
 import { consumeCode, createLoginCode, LoginError, normalizeEmail, squareSyncEnabled } from "./auth";
 
 export type Theme = "light" | "dark";
-export type Profile = { email: string; name: string; phone: string; theme: Theme | null; address: AddressInput | null };
+export type Profile = { email: string; name: string; phone: string; theme: Theme | null; address: AddressInput | null; /** Gets news and offers emails. */ news: boolean };
 
-type Account = { id: string; email: string; name: string | null; phone: string | null; theme: string | null; shipAddress: string | null };
+type Account = { id: string; email: string; name: string | null; phone: string | null; theme: string | null; shipAddress: string | null; emailOptOut?: boolean };
 
 /** A saved address, or null if there isn't one (or it no longer validates). */
 function savedAddress(json: string | null): AddressInput | null {
@@ -29,6 +29,7 @@ export async function profileFor(account: Account): Promise<Profile> {
     phone: account.phone ?? last?.customerPhone ?? "",
     theme: account.theme === "light" || account.theme === "dark" ? account.theme : null,
     address: savedAddress(account.shipAddress),
+    news: !account.emailOptOut,
   };
 }
 
@@ -38,12 +39,13 @@ export function firstName(profile: Pick<Profile, "name" | "email">) {
 }
 
 /** Saves name, phone, theme and shipping address (null removes it). Name or phone changes are sent on to their Square customer. */
-export async function updateProfile(account: Account, data: { name?: string; phone?: string; theme?: Theme; address?: AddressInput | null }) {
+export async function updateProfile(account: Account, data: { name?: string; phone?: string; theme?: Theme; address?: AddressInput | null; news?: boolean }) {
   const next = {
     name: data.name !== undefined ? data.name.trim() || null : undefined,
     phone: data.phone !== undefined ? data.phone.trim() || null : undefined,
     theme: data.theme,
     shipAddress: data.address === undefined ? undefined : data.address ? JSON.stringify(data.address) : null,
+    emailOptOut: data.news === undefined ? undefined : !data.news,
   };
   await db.customer.update({ where: { id: account.id }, data: next });
   const changed = (next.name !== undefined && next.name !== account.name) || (next.phone !== undefined && next.phone !== account.phone);

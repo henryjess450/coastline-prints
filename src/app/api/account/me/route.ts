@@ -20,6 +20,8 @@ const body = z.object({
   name: z.string().trim().max(120).refine((v) => v === "" || v.length >= 2, "Please enter your full name.").optional(),
   phone: z.string().trim().max(40).refine((v) => v === "" || v.replace(/\D/g, "").length >= 10, "Please enter a phone number with area code.").optional(),
   theme: z.enum(["light", "dark"]).optional(),
+  /** News and offers emails on or off. */
+  news: z.boolean().optional(),
   /** null removes the saved address. */
   address: addressSchema.nullable().optional(),
 });

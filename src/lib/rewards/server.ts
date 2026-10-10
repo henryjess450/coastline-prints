@@ -42,6 +42,10 @@ export async function rewardsSummary(email: string) {
           ? `Order ${orderNumbers.get(e.orderId ?? "") ?? ""}`.trim()
           : e.kind === "INVITE"
             ? "A friend you invited ordered"
+            : e.kind === "ADJUST"
+              ? e.points > 0
+                ? "A gift from Coastline Prints"
+                : "Adjusted by Coastline Prints"
             : (prizes.find((p) => p.id === e.prizeId)?.title ?? "Prize"),
       date: e.createdAt.toISOString(),
     })),

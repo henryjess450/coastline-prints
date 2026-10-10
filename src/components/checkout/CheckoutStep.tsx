@@ -25,7 +25,7 @@ import { Field, inputClass } from "./fields";
 import { AddressForm, BoxSummary, emptyAddress, MethodToggle, ShipOptions, type AddressDraft, type AddressErrors, type DeliveryMethod } from "./Delivery";
 import { withParcel, type ShippingMethod, type ShippingOption } from "@/lib/shipping/pack";
 import { useAccount } from "@/components/account/use-account";
-import { applyCodes, codeEntry, type CodeInfo } from "@/lib/codes/apply";
+import { applyCodes, codeEntry, type CodeInfo, type SaleInfo } from "@/lib/codes/apply";
 import { etransferDiscount, type EtransferPublic } from "@/lib/payments/etransfer";
 import { EtransferWaiting, type EtransferDetails } from "./EtransferWaiting";
 
@@ -129,7 +129,14 @@ export function CheckoutStep({ items, cartQuote, square, etransfer, onBack }: { 
   // If the cart changes and the chosen option goes away (no longer fits a mailer), use the default.
   const shipOption = shipOptions.find((o) => o.method === shipChoice) ?? shipOptions[0] ?? null;
   const shippingCents = ships && shipOption ? shipOption.totalCents : 0;
-  const discount = applyCodes(orderTotal, codes, shippingCents);
+  // A site-wide sale comes off by itself (the server checks it again when charging).
+  const [sale, setSale] = useState<SaleInfo | null>(null);
+  useEffect(() => {
+    fetch("/api/sale")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setSale(d?.sale ?? null), () => undefined);
+  }, []);
+  const discount = applyCodes(orderTotal, codes, shippingCents, sale);
   // e-Transfer is the preferred way to pay (no card fees), with a small discount for it.
   const [payBy, setPayBy] = useState<"etransfer" | "card">(etransfer ? "etransfer" : "card");
   const byEtransfer = payBy === "etransfer" && !!etransfer;
@@ -483,7 +490,7 @@ export function CheckoutStep({ items, cartQuote, square, etransfer, onBack }: { 
                 <div className="space-y-5">
                   <ShipOptions options={shipOptions} value={shipOption.method} onChange={setShipChoice} parcelHint={parcelHint} />
                   <BoxSummary option={shipOption} />
-                  {account?.signedIn && account.address && <p className="-mb-2 text-sm text-muted">Filled in from your account. Change it here for this order, or in <Link href="/account/settings" target="_blank" className="text-accent-text underline underline-offset-4">settings</Link>.</p>}
+                  {account?.signedIn && account.address && <p className="-mb-2 text-sm text-muted">Filled in from your account. Change it here for this order, or in <Link href="/account#details" target="_blank" className="text-accent-text underline underline-offset-4">settings</Link>.</p>}
                   <AddressForm value={address} onChange={setAddr} errors={addressErrors} flash={addressFlash} />
                   <p className="text-xs text-faint">Prints take about 2 to 5 days, then Canada Post takes a few business days depending on where you are. {shipOption.tracked ? "We email you the tracking number when it ships." : "We email you when it ships."}</p>
                 </div>
@@ -638,7 +645,7 @@ export function CheckoutStep({ items, cartQuote, square, etransfer, onBack }: { 
               )}
             </AnimatePresence>
           </dl>
-          <CodeBox orderTotalCents={orderTotal} shippingCents={shippingCents} codes={codes} result={discount} onChange={setCodes} disabled={!!busy || !quote?.ok} />
+          <CodeBox orderTotalCents={orderTotal} shippingCents={shippingCents} sale={sale} codes={codes} result={discount} onChange={setCodes} disabled={!!busy || !quote?.ok} />
           <div className="mt-4 flex items-end justify-between border-t-2 border-line-strong pt-4">
             <span className="text-sm text-muted">Total (CAD)</span>
             <AnimatedNumber value={total} format={formatTotal} className="font-display text-3xl font-bold tabular-nums" pulse />
@@ -721,7 +728,7 @@ function AccountNote({ account }: { account: ReturnType<typeof useAccount> }) {
           </motion.span>
           <p className="min-w-0 leading-snug">
             Signed in as <strong className="break-all">{account.email}</strong>. We filled in your details.{" "}
-            <Link href="/account/settings" target="_blank" className="whitespace-nowrap text-accent-text underline underline-offset-4">
+            <Link href="/account#details" target="_blank" className="whitespace-nowrap text-accent-text underline underline-offset-4">
               Edit
             </Link>
           </p>

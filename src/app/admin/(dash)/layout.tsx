@@ -8,9 +8,12 @@ export default async function DashLayout({ children }: { children: React.ReactNo
   await requireAdmin();
   const [failedEmails, etransferReview] = await Promise.all([db.outboxJob.count({ where: { status: "FAILED" } }), db.etransferDeposit.count({ where: { status: "REVIEW" } })]);
   return (
-    <div className="mx-auto max-w-7xl px-4 pb-10 pt-6 sm:px-6">
-      <AdminNav failedEmails={failedEmails} etransferReview={etransferReview} />
-      <div className="mt-6">{children}</div>
+    // Clipped sideways so full-width sea pages (Today) don't scroll the window.
+    <div className="overflow-x-clip">
+      <div className="mx-auto max-w-7xl px-4 pb-10 pt-6 sm:px-6">
+        <AdminNav failedEmails={failedEmails} etransferReview={etransferReview} />
+        <div className="mt-6">{children}</div>
+      </div>
     </div>
   );
 }

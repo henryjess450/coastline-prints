@@ -138,11 +138,19 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
           {order.cardLast4 && <Row label="Paid with" value={`${formatBrand(order.cardBrand)} •••• ${order.cardLast4}`} />}
           {order.paymentMethod === "ETRANSFER" && <Row label="Paid with" value="Interac e-Transfer" />}
         </dl>
-        {order.receiptUrl && (
-          <a href={order.receiptUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block text-sm text-accent-text underline underline-offset-4">
-            View your Square receipt
+        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+          <a href={`/orders/${order.viewToken}/invoice`} className="font-medium text-accent-text underline underline-offset-4">
+            View invoice
           </a>
-        )}
+          <a href={`/orders/${order.viewToken}/invoice/pdf`} className="text-accent-text underline underline-offset-4">
+            Download PDF
+          </a>
+          {order.receiptUrl && (
+            <a href={order.receiptUrl} target="_blank" rel="noopener noreferrer" className="text-accent-text underline underline-offset-4">
+              Square receipt
+            </a>
+          )}
+        </div>
       </Card>
 
       <div className="mt-12 flex flex-wrap justify-center gap-4">

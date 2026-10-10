@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { AnimatedCount } from "@/components/motion/AnimatedCount";
 import { bounce, Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
+import { MoreToggle } from "./MoreToggle";
 
 export type PrizeView = { id: string; points: number; title: string; blurb: string; kind: "coupon" | "order-fee" | "gift-card"; value: string };
 export type PointsEntryView = { id: string; points: number; label: string; date: string };
@@ -52,7 +53,7 @@ export function PointsLine({ balance: start, pending, prizes, history }: { balan
         <p className="pb-2 text-xl text-muted">points</p>
         {pending > 0 && (
           <motion.p className="pb-2.5 text-sm font-semibold text-sand" animate={{ y: [0, -4, 0] }} transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}>
-            +{pending} on the way, when your orders are picked up or delivered
+            +{pending} on the way
           </motion.p>
         )}
       </div>
@@ -139,7 +140,11 @@ export function PointsLine({ balance: start, pending, prizes, history }: { balan
         </AnimatePresence>
       </div>
 
-      {history.length > 0 && <History entries={history} />}
+      {history.length > 0 && (
+        <MoreToggle label="Points history" openLabel="Hide history" className="mt-8">
+          <History entries={history} />
+        </MoreToggle>
+      )}
     </div>
   );
 }
@@ -163,9 +168,8 @@ function History({ entries }: { entries: PointsEntryView[] }) {
   const shown = all ? entries : entries.slice(0, 5);
   const fmt = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Vancouver" });
   return (
-    <div className="mt-10 max-w-xl">
-      <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">History</h3>
-      <ul className="mt-3 divide-y divide-[var(--sea-wake)]/15">
+    <div className="max-w-xl">
+      <ul className="divide-y divide-[var(--sea-wake)]/15">
         {shown.map((e) => (
           <li key={e.id} className="flex items-baseline justify-between gap-4 py-2.5 text-sm">
             <span className="min-w-0 truncate">

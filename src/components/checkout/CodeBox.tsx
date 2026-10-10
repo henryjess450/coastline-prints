@@ -2,7 +2,7 @@
 import { AnimatePresence, motion, useAnimationControls } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { bounce } from "@/components/ui/Button";
-import { applyCodes, isCardNumber, MAX_CODES, normalizeCode, normalizePin, type ApplyResult, type CodeInfo } from "@/lib/codes/apply";
+import { applyCodes, isCardNumber, MAX_CODES, normalizeCode, normalizePin, type ApplyResult, type CodeInfo, type SaleInfo } from "@/lib/codes/apply";
 import { money } from "@/lib/format";
 import type { WalletItem } from "@/lib/account/wallet";
 import { INVITE_KEY } from "@/components/account/SaveInvite";
@@ -16,6 +16,7 @@ import { INVITE_KEY } from "@/components/account/SaveInvite";
 export function CodeBox({
   orderTotalCents,
   shippingCents = 0,
+  sale = null,
   codes,
   result,
   onChange,
@@ -23,6 +24,7 @@ export function CodeBox({
 }: {
   orderTotalCents: number;
   shippingCents?: number;
+  sale?: SaleInfo | null;
   codes: CodeInfo[];
   result: ApplyResult;
   onChange: (codes: CodeInfo[]) => void;
@@ -87,7 +89,7 @@ export function CodeBox({
         return setError(body.error ?? "That code isn't valid.");
       }
       const next = [...codes, { ...(body.code as CodeInfo), pin: cardPin || undefined }];
-      const why = applyCodes(orderTotalCents, next, shippingCents).rejected.find((r) => r.code === code);
+      const why = applyCodes(orderTotalCents, next, shippingCents, sale).rejected.find((r) => r.code === code);
       if (why) return setError(why.reason);
       onChange(next);
       bounce(applyBtn.current);
@@ -232,10 +234,11 @@ export function CodeBox({
           </motion.p>
         )}
       </AnimatePresence>
-      {result.applied.length > 0 && (
+      {result.applied.some((a) => a.kind !== "SALE") && (
         <ul className="mt-3 flex flex-wrap gap-2">
           <AnimatePresence initial={false}>
-            {result.applied.map((a) => {
+            {/* The site-wide sale shows in the summary; it isn't a code they can remove. */}
+            {result.applied.filter((a) => a.kind !== "SALE").map((a) => {
               const info = codes.find((c) => c.code === a.code);
               const left = info?.kind === "GIFT_CARD" && info.balanceCents != null ? info.balanceCents - a.amountCents : null;
               return (

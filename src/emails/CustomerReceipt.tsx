@@ -20,13 +20,20 @@ export function CustomerReceipt({ d }: { d: OrderEmailData }) {
 
       <Label>Your order</Label>
       <ItemTable d={d} />
-      {d.links.receipt && (
-        <Text style={{ margin: "10px 0 0", fontSize: 13 }}>
-          <Link href={d.links.receipt} style={{ color: colors.brand }}>
-            View your Square payment receipt
-          </Link>
-        </Text>
-      )}
+      <Text style={{ margin: "10px 0 0", fontSize: 13 }}>
+        Your invoice is attached as a PDF.{" "}
+        <Link href={d.links.invoice} style={{ color: colors.brand }}>
+          See it online
+        </Link>
+        {d.links.receipt && (
+          <>
+            {" · "}
+            <Link href={d.links.receipt} style={{ color: colors.brand }}>
+              Square payment receipt
+            </Link>
+          </>
+        )}
+      </Text>
 
       <Label>What happens next</Label>
       {steps.map((s, i) => (

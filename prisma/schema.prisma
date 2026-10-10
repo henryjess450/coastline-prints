@@ -317,6 +317,10 @@ model Customer {
   shipAddress String?
   /// "light" or "dark"; applied whenever they sign in.
   theme      String?
+  /// Said no to news and promotions (order emails still come).
+  emailOptOut Boolean @default(false)
+  /// When the owner set up this account for them from the admin panel.
+  invitedAt  DateTime?
   createdAt  DateTime          @default(now())
   lastSeenAt DateTime?
   sessions   CustomerSession[]
@@ -392,3 +396,43 @@ model EtransferDeposit {
 
   @@index([status])
 }
+
+/// A bar across the top of every page, between its start and end (if set).
+model Announcement {
+  id        String    @id @default(cuid())
+  message   String
+  linkUrl   String?
+  linkLabel String?
+  startsAt  DateTime?
+  endsAt    DateTime?
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+}
+
+/// An email sent to every customer who hasn't opted out: news, or a coupon campaign.
+model Broadcast {
+  id        String   @id @default(cuid())
+  subject   String
+  heading   String
+  body      String
+  linkUrl   String?
+  linkLabel String?
+  /// Coupon campaigns: the shared code it shows.
+  code      String?
+  sentCount Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+/// A site-wide sale: a percentage off the prints on every order between its dates.
+model Sale {
+  id         String   @id @default(cuid())
+  name       String
+  percentOff Int
+  startsAt   DateTime
+  endsAt     DateTime
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@index([startsAt, endsAt])
+}
+

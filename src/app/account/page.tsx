@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { pickup } from "@config/pickup";
 import { invite, prizes } from "@config/rewards";
 import { AccountHero } from "@/components/account/fun/AccountHero";
@@ -8,11 +9,13 @@ import { WelcomeBurst } from "@/components/account/fun/WelcomeBurst";
 import { RedeemForm } from "@/components/account/RedeemForm";
 import { InviteFriend } from "@/components/account/sea/InviteFriend";
 import { HappeningNow, NowSwitch, NowTitle, type ActiveOrder } from "@/components/account/sea/HappeningNow";
+import { MoreToggle } from "@/components/account/sea/MoreToggle";
 import { OrderLog } from "@/components/account/sea/OrderLog";
 import { getEffectiveConfig } from "@/lib/config/effective";
 import { PointsLine } from "@/components/account/sea/PointsLine";
 import { SeaPage } from "@/components/account/sea/SeaPage";
 import { SeaSection } from "@/components/account/sea/SeaSection";
+import { DetailsInPlace } from "@/components/account/sea/DetailsInPlace";
 import { SignOutButton } from "@/components/account/SignOutButton";
 import { Wallet } from "@/components/account/Wallet";
 import { currentCustomer } from "@/lib/account/auth";
@@ -25,6 +28,7 @@ import { formatPickup } from "@/lib/pickup";
 import { inviteCodeFor, inviteStats } from "@/lib/rewards/invite";
 import { rewardsSummary } from "@/lib/rewards/server";
 import { isTracked } from "@/lib/shipping/address";
+import { THEME_COOKIE } from "@/lib/theme";
 
 export const metadata: Metadata = { title: "Your account", robots: { index: false } };
 export const dynamic = "force-dynamic";
@@ -59,6 +63,7 @@ export default async function AccountPage() {
   const friendOff = invite.friendCents % 100 ? money(invite.friendCents) : `$${invite.friendCents / 100}`;
   // Greet them by their saved (or latest order's) first name, or the start of their email.
   const name = firstName(profile);
+  const theme = (await cookies()).get(THEME_COOKIE)?.value === "light" ? "light" : "dark";
 
   const active: ActiveOrder[] = orders
     .filter((o) => o.status !== "PICKED_UP")
@@ -84,13 +89,12 @@ export default async function AccountPage() {
       hero={
         <AccountHero name={name} email={customer.email}>
           <div className="flex flex-wrap items-center gap-3">
-            <Link href="/account/settings" className="group btn btn-secondary h-10 gap-2 px-4 text-sm">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform duration-500 group-hover:rotate-90" aria-hidden>
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+            <a href="#details" className="group btn btn-secondary h-10 gap-2 px-4 text-sm">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform duration-300 group-hover:-rotate-12" aria-hidden>
+                <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
               </svg>
-              Settings
-            </Link>
+              Your details
+            </a>
             <SignOutButton />
           </div>
         </AccountHero>
@@ -106,7 +110,7 @@ export default async function AccountPage() {
           </NowSwitch>
         )}
 
-        <SeaSection id="points" label="Coastline Rewards" title="Your points" intro="Earn 2 points for every dollar on prints, added when your order is picked up or delivered. Tap a prize to trade for it.">
+        <SeaSection id="points" label="Coastline Rewards" title="Your points" intro="2 points for every dollar. Tap a prize to trade.">
           <PointsLine
             balance={points.balance}
             pending={points.pending}
@@ -119,20 +123,20 @@ export default async function AccountPage() {
           id="invite"
           label="Invite a friend"
           title={`Give ${friendOff}, get ${invite.points} points`}
-          intro={`Share your code. Your friend gets ${friendOff} off their first order, and you get ${invite.points} points as soon as they place it.`}
+          intro={`${friendOff} off their first order, ${invite.points} points for you when they place it.`}
         >
           <InviteFriend code={inviteCode.code} offer={friendOff} friends={invited.friends} points={invited.points} />
         </SeaSection>
 
-        <SeaSection id="wallet" label="Wallet" title="Gift cards and coupons" intro="Locked to your account, so only you can spend them. Tap a gift card to flip it over.">
+        <SeaSection id="wallet" label="Wallet" title="Gift cards and coupons" intro="Only you can spend these. They're ready to tap at checkout.">
           <Wallet items={items} />
-          <div className="mt-12 max-w-2xl">
-            <h3 className="font-display text-lg font-semibold">Add one</h3>
-            <p className="mt-1 text-sm text-muted">Got a gift card or coupon? Save it here and it&apos;s ready at checkout.</p>
-            <div className="mt-4">
-              <RedeemForm />
-            </div>
-          </div>
+          <MoreToggle label="Add a gift card or coupon" className="mt-8 max-w-2xl">
+            <RedeemForm />
+          </MoreToggle>
+        </SeaSection>
+
+        <SeaSection id="details" label="About you" title="Your details" intro="Checkout fills these in for you.">
+          <DetailsInPlace profile={profile} current={theme} />
         </SeaSection>
 
         <SeaSection id="orders" label="Log" title="Your orders">

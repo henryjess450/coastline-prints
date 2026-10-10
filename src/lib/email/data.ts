@@ -54,7 +54,7 @@ export type OrderEmailData = {
   tracked: boolean;
   /** "Friday, October 10, 4 to 5 pm", or null for orders placed before booking existed. */
   pickupWhen: string | null;
-  links: { confirmation: string; status: string; admin: string; receipt: string | null };
+  links: { confirmation: string; status: string; admin: string; invoice: string; receipt: string | null };
 };
 
 export function appUrl() {
@@ -112,6 +112,7 @@ export async function loadOrderEmailData(orderId: string): Promise<OrderEmailDat
       confirmation: `${base}/orders/${order.viewToken}`,
       status: `${base}/status?order=${encodeURIComponent(order.orderNumber)}`,
       admin: `${base}/admin/orders/${order.id}`,
+      invoice: `${base}/orders/${order.viewToken}/invoice`,
       receipt: order.receiptUrl,
     },
   };

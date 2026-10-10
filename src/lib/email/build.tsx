@@ -1,4 +1,6 @@
 import "server-only";
+import { invoiceFileName, loadInvoice } from "@/lib/invoice/data";
+import { renderInvoicePdf } from "@/lib/invoice/pdf";
 import { render, toPlainText } from "@react-email/render";
 import { legal } from "@config/site";
 import { privateSite } from "@config/private.server";
@@ -10,7 +12,7 @@ import { StatusUpdate } from "@/emails/StatusUpdate";
 import { money } from "@/lib/format";
 import { statusInfo } from "@/lib/orders/status";
 import type { OrderEmailData } from "./data";
-import type { OutgoingEmail } from "./transport";
+import type { EmailAttachment, OutgoingEmail } from "./transport";
 
 export const EMAIL_TEMPLATES = ["customer-receipt", "owner-new-order", "ready-for-pickup", "shipped", "status-update"] as const;
 export type EmailTemplate = (typeof EMAIL_TEMPLATES)[number];
@@ -51,5 +53,13 @@ export async function buildEmail(template: EmailTemplate, d: OrderEmailData, opt
   }
 
   const html = await render(node);
-  return { to, replyTo, subject, html, text: toPlainText(html) };
+  // The order confirmation carries the invoice as a PDF.
+  const attachments = template === "customer-receipt" ? await invoiceAttachment(d.orderId) : undefined;
+  return { to, replyTo, subject, html, text: toPlainText(html), attachments };
+}
+
+async function invoiceAttachment(orderId: string): Promise<EmailAttachment[] | undefined> {
+  const invoice = await loadInvoice({ id: orderId });
+  if (!invoice) return undefined;
+  return [{ filename: invoiceFileName(invoice.orderNumber), content: await renderInvoicePdf(invoice), contentType: "application/pdf" }];
 }

@@ -212,3 +212,13 @@ describe("generated coupon numbers", () => {
     expect(normalizeCode(formatCardNumber(c))).toBe(c);
   });
 });
+
+describe("one-tap next step", () => {
+  it("won't move an order that has already moved on (a double tap can't skip a step)", async () => {
+    const order = await createPaidOrder();
+    await changeOrderStatus(order.id, "QUEUED", { from: "PAID" });
+    await expect(changeOrderStatus(order.id, "QUEUED", { from: "PAID" })).rejects.toThrow(/already/);
+    await expect(changeOrderStatus(order.id, "PRINTING", { from: "PAID" })).rejects.toThrow(/already moved on/);
+    expect((await changeOrderStatus(order.id, "PRINTING", { from: "QUEUED" })).to).toBe("PRINTING");
+  });
+});

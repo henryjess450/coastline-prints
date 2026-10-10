@@ -26,6 +26,12 @@ export const legal = {
   lastUpdated: "October 7, 2026",
   province: "British Columbia",
   contactEmail: process.env.NEXT_PUBLIC_CONTACT_EMAIL ?? "coastline.printz@gmail.com",
+  /**
+   * A mailing address for news and promotion emails (Canada's anti-spam law
+   * asks for one). Use a PO box or business address, never a home address.
+   * Left out of the emails until it's set.
+   */
+  mailingAddress: process.env.MAILING_ADDRESS ?? "",
   /** Days a finished order is held after the "ready for pickup" email. */
   pickupWindowDays: 30,
   /** Days after pickup to report a defect. */

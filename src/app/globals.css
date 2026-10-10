@@ -317,3 +317,56 @@ body {
 .flag-strip {
   animation: flag-wave 1.6s ease-in-out infinite;
 }
+
+/* ── Holiday themes (see config/seasons.ts) ─────────────────────────────
+   Pieces start and end off screen, and sway/twinkle start and end the same,
+   so every loop is seamless. Hidden for reduced motion; fewer on phones. */
+:root { --season-ink: #7c4dcc; } /* bats and witch's hats: visible on dark */
+[data-theme="light"] { --season-ink: #1c1917; }
+.season-piece {
+  position: absolute;
+  display: block;
+  will-change: transform;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.season-fall { top: 0; animation-name: season-fall; }
+.season-rise { top: 0; animation-name: season-rise; }
+.season-fly { left: 0; animation-name: season-fly; }
+.season-sway {
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: season-sway ease-in-out infinite;
+}
+@keyframes season-fall {
+  from { transform: translate3d(0, -12vh, 0) rotate(0deg); }
+  to { transform: translate3d(var(--drift), 112vh, 0) rotate(var(--spin)); }
+}
+@keyframes season-rise {
+  from { transform: translate3d(0, 112vh, 0); }
+  to { transform: translate3d(var(--drift), -18vh, 0); }
+}
+@keyframes season-fly {
+  from { transform: translate3d(-14vw, 0, 0); }
+  to { transform: translate3d(114vw, var(--drift), 0); }
+}
+@keyframes season-sway {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(var(--sway)); }
+}
+@keyframes season-twinkle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.season-bulb { animation: season-twinkle 1.6s ease-in-out infinite; }
+@media (max-width: 640px) {
+  .season-piece:nth-child(n + 15) { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .season-layer { display: none; }
+  .season-bulb { animation: none; }
+}
+@media print {
+  .season-layer, .season-trim { display: none !important; }
+}

@@ -1,154 +1,108 @@
 import Link from "next/link";
 import { pickup } from "@config/pickup";
-import { PrintButton } from "@/components/admin/PrintButton";
-import { StatusBadge } from "@/components/admin/StatusBadge";
-import { AnimatedCount } from "@/components/motion/AnimatedCount";
-import { Card } from "@/components/ui/Card";
-import { requireAdmin } from "@/lib/admin/auth";
-import { getEffectiveConfig } from "@/lib/config/effective";
+import { SeaPage } from "@/components/account/sea/SeaPage";
+import { SeaSection } from "@/components/account/sea/SeaSection";
+import { AdminHero } from "@/components/admin/today/AdminHero";
+import { AllCaughtUp } from "@/components/admin/today/AllCaughtUp";
+import { TaskGroup } from "@/components/admin/today/TaskGroup";
+import { adminCards, adminClock } from "@/lib/admin/cards";
 import { db } from "@/lib/db";
 import { money } from "@/lib/format";
-import { formatPickup } from "@/lib/pickup";
-import { printReceiptAction } from "@/app/admin/actions";
-import { ORDER_STATUSES } from "@/lib/orders/status";
-import { cn } from "@/lib/cn";
-import type { Prisma } from "@/generated/prisma/client";
 
-export const metadata = { title: "Orders" };
+export const metadata = { title: "Today" };
 
-const PAGE = 50;
-
-/** These tabs hold both pickup and shipped orders. */
-const TAB_LABELS: Record<string, string> = { READY_FOR_PICKUP: "Ready / shipped", PICKED_UP: "Picked up / delivered" };
-
-type Search = { status?: string; printer?: string; q?: string; page?: string };
-
-export default async function OrdersPage({ searchParams }: { searchParams: Promise<Search> }) {
-  await requireAdmin();
-  const sp = await searchParams;
-  const cfg = await getEffectiveConfig();
-  const status = sp.status ?? "ACTIVE";
-  const page = Math.max(1, Number(sp.page) || 1);
-
-  const where: Prisma.OrderWhereInput = {};
-  if (status === "ACTIVE") where.status = { not: "PICKED_UP" };
-  else if (ORDER_STATUSES.some((s) => s.id === status)) where.status = status;
-  else if (status === "EMAIL_FAILED") {
-    const failed = await db.outboxJob.findMany({ where: { status: "FAILED" }, select: { dedupeKey: true } });
-    where.id = { in: failed.map((j) => j.dedupeKey?.split(":")[0] ?? "").filter(Boolean) };
-  }
-  if (sp.printer) where.items = { some: { printerId: sp.printer } };
-  if (sp.q?.trim()) {
-    const q = sp.q.trim();
-    where.OR = [{ orderNumber: { contains: q.toUpperCase() } }, { customerName: { contains: q } }, { customerEmail: { contains: q.toLowerCase() } }];
-  }
-
-  const [orders, total, counts] = await Promise.all([
-    db.order.findMany({ where, include: { items: { select: { quantity: true, printerName: true, printerId: true } } }, orderBy: { createdAt: "desc" }, take: PAGE, skip: (page - 1) * PAGE }),
-    db.order.count({ where }),
-    db.order.groupBy({ by: ["status"], _count: true }),
+/**
+ * The admin home: what needs doing, in plain words, most urgent first, each
+ * with a one-tap button for the next step. Sits on the sea like the account page.
+ */
+export default async function TodayPage() {
+  const { now, weekAgo } = adminClock();
+  const [cards, etransfers, failedEmails, week] = await Promise.all([
+    adminCards({ status: { not: "PICKED_UP" } }),
+    db.etransferDeposit.count({ where: { status: "REVIEW" } }),
+    db.outboxJob.count({ where: { status: "FAILED" } }),
+    db.order.aggregate({ where: { createdAt: { gte: weekAgo } }, _count: true, _sum: { totalCents: true, giftCardCents: true, shippingCents: true } }),
   ]);
-  const countOf = (s: string) => counts.find((c) => c.status === s)?._count ?? 0;
-  const activeCount = counts.filter((c) => c.status !== "PICKED_UP").reduce((n, c) => n + c._count, 0);
+  const of = (status: string, ship?: boolean) => cards.filter((c) => c.status === status && (ship == null || (c.fulfillment === "SHIP") === ship));
 
-  const tabs = [{ id: "ACTIVE", label: "Active", n: activeCount }, ...ORDER_STATUSES.map((s) => ({ id: s.id, label: TAB_LABELS[s.id] ?? s.label, n: countOf(s.id) })), { id: "ALL", label: "All", n: counts.reduce((n, c) => n + c._count, 0) }];
-  const href = (over: Partial<Search>) => {
-    const p = new URLSearchParams();
-    const merged = { status, printer: sp.printer, q: sp.q, ...over };
-    for (const [k, v] of Object.entries(merged)) if (v) p.set(k, v);
-    return `/admin?${p}`;
-  };
+  const handover = of("READY_FOR_PICKUP", false).filter((c) => c.due === "late" || c.due === "today");
+  const toShip = of("POST_PROCESSING", true);
+  const cleanup = of("POST_PROCESSING", false);
+  const fresh = of("PAID");
+  const queued = of("QUEUED");
+  const printing = of("PRINTING");
+  const todo = handover.length + toShip.length + cleanup.length + fresh.length + queued.length + etransfers + failedEmails;
+
+  const hour = Number(new Intl.DateTimeFormat("en-CA", { hour: "numeric", hourCycle: "h23", timeZone: pickup.timeZone }).format(now));
+  const hello = hour < 12 ? "Good morning!" : hour < 18 ? "Good afternoon!" : "Good evening!";
+  const date = now.toLocaleDateString("en-CA", { weekday: "long", month: "long", day: "numeric", timeZone: pickup.timeZone });
+  // Print sales: what was paid, gift cards included, shipping left out (it's passed on at cost).
+  const sales = (week._sum.totalCents ?? 0) + (week._sum.giftCardCents ?? 0) - (week._sum.shippingCents ?? 0);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <h1 className="font-display text-3xl font-bold">Orders</h1>
-        <form className="flex gap-2" action="/admin">
-          <input type="hidden" name="status" value={status} />
-          {sp.printer && <input type="hidden" name="printer" value={sp.printer} />}
-          <input name="q" defaultValue={sp.q} placeholder="Order #, name or email" aria-label="Search orders" className="h-10 w-56 rounded-full border border-line bg-surface px-4 text-sm outline-none focus:border-accent-line" />
-        </form>
-      </div>
+    // Full width, out of the admin's centred column, so the sea runs edge to edge.
+    <div className="relative left-1/2 w-screen -translate-x-1/2">
+      <SeaPage
+        hero={
+          <AdminHero
+            hello={hello}
+            date={date}
+            todo={todo}
+            stats={[
+              { label: "Orders this week", value: String(week._count) },
+              { label: "Print sales this week", value: money(sales) },
+              { label: "On the go", value: String(cards.length) },
+            ]}
+          />
+        }
+      >
+        <div className="mx-auto max-w-6xl px-4 pb-32 pt-12 sm:px-6">
+          <SeaSection id="todo" label="Needs you" title={todo ? "Your to-do list" : "Nothing to do"} intro={todo ? "Most urgent first. Tap the button on a card to move it along." : undefined}>
+            {(etransfers > 0 || failedEmails > 0) && (
+              <div className="mb-10 flex flex-wrap gap-3">
+                {etransfers > 0 && (
+                  <Link href="/admin/etransfers" className="rounded-full bg-warning/20 px-4 py-2 text-sm font-semibold text-warning hover:bg-warning/30">
+                    {etransfers === 1 ? "1 e-Transfer needs a look" : `${etransfers} e-Transfers need a look`} →
+                  </Link>
+                )}
+                {failedEmails > 0 && (
+                  <Link href="/admin/orders?view=list&status=EMAIL_FAILED" className="rounded-full bg-danger/15 px-4 py-2 text-sm font-semibold text-danger hover:bg-danger/25">
+                    {failedEmails === 1 ? "1 email didn't send" : `${failedEmails} emails didn't send`} →
+                  </Link>
+                )}
+              </div>
+            )}
+            {todo === 0 ? (
+              <AllCaughtUp />
+            ) : (
+              <>
+                <TaskGroup title="Pickups today" hint="Hand these over, then tap Picked up." cards={handover} />
+                <TaskGroup title="Pack and ship" hint="Print the label, pack it up, then mark it shipped. The customer is emailed." cards={toShip} />
+                <TaskGroup title="Clean up" hint="Take off the supports and tidy them up. Ready for pickup emails the customer." cards={cleanup} />
+                <TaskGroup title="New orders" hint="Check the files look printable, then queue them." cards={fresh} showPrint />
+                <TaskGroup title="Ready to print" hint="Start them on the printer shown." cards={queued} showPrint />
+              </>
+            )}
+          </SeaSection>
 
-      <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filter by status">
-        {tabs.map((t) => (
-          <Link key={t.id} href={href({ status: t.id, page: undefined })} role="tab" aria-selected={status === t.id} className={cn("rounded-full border px-3 py-1 text-sm transition-colors", status === t.id ? "border-accent-line bg-accent text-accent-ink" : "border-line text-muted hover:text-fg")}>
-            {t.label} <AnimatedCount value={t.n} className="opacity-70" />
-          </Link>
-        ))}
-        {status === "EMAIL_FAILED" && <span className="rounded-full border border-danger bg-danger/15 px-3 py-1 text-sm text-danger">Orders with failed emails</span>}
-      </div>
-      <div className="flex flex-wrap gap-1.5 text-sm">
-        <span className="py-1 text-faint">Printer:</span>
-        {[{ id: undefined, name: "Any" }, ...cfg.printers.map((p) => ({ id: p.id, name: p.shortName }))].map((p) => (
-          <Link key={p.id ?? "any"} href={href({ printer: p.id, page: undefined })} className={cn("rounded-full border px-3 py-1", sp.printer === p.id ? "border-accent-line bg-accent-soft text-fg" : "border-line text-muted hover:text-fg")}>
-            {p.name}
-          </Link>
-        ))}
-      </div>
+          {printing.length > 0 && (
+            <SeaSection id="printing" label="On the printers" title={printing.length === 1 ? "1 print running" : `${printing.length} prints running`} intro="Tap Done printing when they come off the bed.">
+              <TaskGroup cards={printing} showPrint />
+            </SeaSection>
+          )}
 
-      <Card className="overflow-x-auto p-0">
-        {orders.length === 0 ? (
-          <p className="p-8 text-center text-muted">No orders here yet.</p>
-        ) : (
-          <table className="w-full min-w-[760px] text-sm">
-            <thead className="border-b border-line text-left text-xs uppercase tracking-wide text-faint">
-              <tr>
-                <th className="px-4 py-3 font-medium">Order</th>
-                <th className="px-4 py-3 font-medium">Customer</th>
-                <th className="px-4 py-3 font-medium">Pickup / ship</th>
-                <th className="px-4 py-3 font-medium">Printers</th>
-                <th className="px-4 py-3 text-right font-medium">Total</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {orders.map((o) => {
-                const pieces = o.items.reduce((n, i) => n + i.quantity, 0);
-                const printers = [...new Set(o.items.map((i) => i.printerName.replace(/^(Bambu Lab|Elegoo) /, "")))].join(", ");
-                return (
-                  <tr key={o.id} className="transition-colors hover:bg-surface-strong">
-                    <td className="px-4 py-3">
-                      <Link href={`/admin/orders/${o.id}`} className="font-mono font-semibold text-accent-text hover:underline">
-                        {o.orderNumber}
-                      </Link>
-                      <div className="text-xs text-faint">{o.createdAt.toLocaleDateString("en-CA", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: pickup.timeZone })}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {o.customerName}
-                      {o.customerOrderCount > 1 && <span className="ml-2 rounded-full bg-sand/20 px-2 py-0.5 text-[11px] font-semibold text-sand">★ Returning</span>}
-                      <div className="text-xs text-faint">{pieces} piece{pieces === 1 ? "" : "s"}</div>
-                    </td>
-                    <td className="px-4 py-3 text-muted">{o.fulfillment === "SHIP" ? `Ship to ${o.shipCity}, ${o.shipProvince}` : (formatPickup(o.pickupDate, o.pickupTime, pickup) ?? "Not booked")}</td>
-                    <td className="px-4 py-3 text-muted">{printers}</td>
-                    <td className="px-4 py-3 text-right font-mono">{money(o.totalCents)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <StatusBadge status={o.status} fulfillment={o.fulfillment} />
-                        <PrintButton action={printReceiptAction} name="orderId" value={o.id} label={`Reprint ticket for ${o.orderNumber}`} className="rounded-full border border-line px-2 py-0.5 text-xs text-muted hover:border-accent-line hover:text-fg">
-                          Reprint
-                        </PrintButton>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </Card>
-
-      {total > PAGE && (
-        <div className="flex items-center justify-between text-sm text-muted">
-          <span>
-            {(page - 1) * PAGE + 1} to {Math.min(page * PAGE, total)} of {total}
-          </span>
-          <div className="flex gap-2">
-            {page > 1 && <Link href={href({ page: String(page - 1) })} className="underline">Newer</Link>}
-            {page * PAGE < total && <Link href={href({ page: String(page + 1) })} className="underline">Older</Link>}
-          </div>
+          <SeaSection id="all" label="Everything else" title="All orders">
+            <div className="flex flex-wrap gap-3">
+              <Link href="/admin/orders" className="rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-accent-ink">
+                Open the board
+              </Link>
+              <Link href="/admin/orders?view=list&status=ALL" className="rounded-full border border-[var(--sea-wake)]/30 px-5 py-2.5 text-sm font-semibold hover:border-accent-line">
+                Search past orders
+              </Link>
+            </div>
+          </SeaSection>
         </div>
-      )}
+      </SeaPage>
     </div>
   );
 }

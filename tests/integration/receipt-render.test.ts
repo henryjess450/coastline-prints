@@ -16,7 +16,7 @@ describe("order receipt", () => {
     const bmp = pngToBitmap(png);
     expect(bmp.widthBytes).toBe(72);
     expect(bmp.heightDots).toBeGreaterThan(300);
-    expect(bmp.heightDots).toBeLessThan(700); // compact: well under 9 cm for a one-item order
+    expect(bmp.heightDots).toBeLessThan(950); // compact: about 12 cm for a one-item order, invoice QR code included
     expect(bmp.data.some((b) => b !== 0)).toBe(true);
   }, 30_000);
 

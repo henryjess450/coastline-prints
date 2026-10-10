@@ -5,7 +5,9 @@ import { printReceiptAction, retryJobAction } from "@/app/admin/actions";
 import { PrintButton } from "@/components/admin/PrintButton";
 import { OrderItems, type AdminItem } from "@/components/admin/OrderItems";
 import { StatusBadge } from "@/components/admin/StatusBadge";
+import { NextStepButton } from "@/components/admin/NextStepButton";
 import { StatusControl } from "@/components/admin/StatusControl";
+import { nextStep } from "@/lib/orders/next-step";
 import { Card } from "@/components/ui/Card";
 import { requireAdmin } from "@/lib/admin/auth";
 import { getEffectiveConfig } from "@/lib/config/effective";
@@ -67,12 +69,14 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
     };
   });
 
+  const next = nextStep(order.status, order.fulfillment, isTracked(order));
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <Link href="/admin" className="text-sm text-muted hover:text-fg">
-            ← All orders
+          <Link href="/admin/orders" className="text-sm text-muted hover:text-fg">
+            ← Orders
           </Link>
           <h1 className="mt-1 flex items-center gap-3 font-display text-3xl font-bold">
             <span className="font-mono">{order.orderNumber}</span> <StatusBadge status={order.status} fulfillment={order.fulfillment} className="text-sm" />
@@ -84,8 +88,25 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
       </div>
 
       <Card className="p-5">
-        <h2 className="mb-4 font-display text-lg font-semibold">Status</h2>
-        <StatusControl key={order.status} orderId={order.id} current={order.status} fulfillment={order.fulfillment} trackingNumber={order.trackingNumber} tracked={isTracked(order)} />
+        {next ? (
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.14em] text-faint">Next step</p>
+              <p className="font-display text-xl font-bold">{next.label}</p>
+            </div>
+            <NextStepButton key={order.status} orderId={order.id} from={order.status} step={next} customer={order.customerName.trim().split(/\s+/)[0] || "them"} size="lg" className="sm:w-72" />
+          </div>
+        ) : (
+          <p className="font-display text-xl font-bold">All done. This order has been collected.</p>
+        )}
+        <details className="group mt-5 border-t border-line pt-4">
+          <summary className="cursor-pointer list-none text-sm text-muted hover:text-fg">
+            <span className="inline-block transition-transform group-open:rotate-90">›</span> Jump to any step, add a note or email the customer
+          </summary>
+          <div className="mt-4">
+            <StatusControl key={order.status} orderId={order.id} current={order.status} fulfillment={order.fulfillment} trackingNumber={order.trackingNumber} tracked={isTracked(order)} />
+          </div>
+        </details>
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -98,7 +119,7 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
             <h2 className="mb-3 font-display text-lg font-semibold">Customer</h2>
             <p className="font-medium">{order.customerName}</p>
             {returningLabel(order.customerOrderCount) && (
-              <Link href={`/admin?q=${encodeURIComponent(order.customerEmail)}&status=ALL`} className="mb-1 inline-block rounded-full bg-sand/20 px-2.5 py-0.5 text-xs font-semibold text-sand hover:underline">
+              <Link href={`/admin/orders?view=list&q=${encodeURIComponent(order.customerEmail)}&status=ALL`} className="mb-1 inline-block rounded-full bg-sand/20 px-2.5 py-0.5 text-xs font-semibold text-sand hover:underline">
                 ★ {returningLabel(order.customerOrderCount)}
               </Link>
             )}

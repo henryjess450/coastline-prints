@@ -2,9 +2,11 @@ import "server-only";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { ImageResponse } from "next/og";
+import QRCode from "qrcode";
 import { pickup } from "@config/pickup";
 import { site } from "@config/site";
 import { db } from "@/lib/db";
+import { appUrl } from "@/lib/email/data";
 import { hours, money, returningLabel } from "@/lib/format";
 import type { AppliedCode } from "@/lib/codes/apply";
 import { pickupParts } from "@/lib/pickup";
@@ -34,6 +36,8 @@ export type ReceiptData = {
   totalCents: number;
   card: string | null;
   paymentId: string;
+  /** The order's invoice online; printed as a QR code at the bottom. */
+  invoiceUrl?: string;
 };
 
 export async function loadReceiptData(orderId: string): Promise<ReceiptData | null> {
@@ -69,6 +73,7 @@ export async function loadReceiptData(orderId: string): Promise<ReceiptData | nu
     returning: returningLabel(o.customerOrderCount),
     totalCents: o.totalCents,
     card: o.paymentMethod === "ETRANSFER" ? "Interac e-Transfer" : o.cardLast4 ? `${(o.cardBrand ?? "Card").replace(/_/g, " ")} ending ${o.cardLast4}` : null,
+    invoiceUrl: `${appUrl()}/orders/${o.viewToken}/invoice`,
     paymentId: o.squarePaymentId.startsWith("nopay_") ? "none (gift card)" : o.paymentMethod === "ETRANSFER" ? "e-Transfer" : o.squarePaymentId,
   };
 }
@@ -116,7 +121,9 @@ const Row = ({ left, right, size = 22, bold = false }: { left: string; right: st
 export async function renderReceiptPng(d: ReceiptData, opts: { test?: boolean } = {}): Promise<Buffer> {
   const fonts = loadFonts();
   const noteLines = d.notes ? Math.ceil(d.notes.length / 40) + d.notes.split("\n").length : 0;
-  const height = Math.min(4000, 640 + d.discounts.length * 26 + d.items.length * 70 + noteLines * 26 + (d.minimumAdjCents ? 28 : 0) + (d.ship ? 60 + (d.ship.lines.length + d.ship.boxes.length) * 30 : 0) + (opts.test ? 50 : 0));
+  const height = Math.min(4000, 640 + d.discounts.length * 26 + d.items.length * 70 + noteLines * 26 + (d.minimumAdjCents ? 28 : 0) + (d.ship ? 60 + (d.ship.lines.length + d.ship.boxes.length) * 30 : 0) + (opts.test ? 50 : 0) + (d.invoiceUrl ? 250 : 0));
+  // A QR code to the order's invoice, so the customer can scan it for a copy.
+  const qr = d.invoiceUrl ? await QRCode.toString(d.invoiceUrl, { type: "svg", margin: 0, errorCorrectionLevel: "M", color: { dark: "#000000", light: "#ffffff" } }) : null;
 
   const tree = (
     <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", background: "white", color: "black", fontFamily: fonts.family, padding: "0 4px", fontSize: 22, lineHeight: 1.2 }}>
@@ -187,6 +194,16 @@ export async function renderReceiptPng(d: ReceiptData, opts: { test?: boolean } 
           <Rule />
           <span style={{ fontSize: 16, fontWeight: 700 }}>NOTES</span>
           <span style={{ fontSize: 20, whiteSpace: "pre-wrap" }}>{d.notes}</span>
+        </div>
+      )}
+
+      {qr && (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: 14 }}>
+          <Rule />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={`data:image/svg+xml;base64,${Buffer.from(qr).toString("base64")}`} width={180} height={180} alt="Invoice" style={{ marginTop: 8 }} />
+          <span style={{ fontSize: 18, fontWeight: 700, marginTop: 6 }}>Scan for your invoice</span>
+          <span style={{ fontSize: 15 }}>and to check on your order</span>
         </div>
       )}
     </div>

@@ -1,6 +1,10 @@
 "use client";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { useState } from "react";
+
+/** Orders shown before "Show all". */
+const SHOWN = 3;
 
 export type LoggedOrder = {
   orderNumber: string;
@@ -21,8 +25,12 @@ export type LoggedOrder = {
  * Every order as a stop on one line down the page, newest first, like a
  * ship's log: date on the left, what it was and where it's at on the right.
  */
-export function OrderLog({ orders }: { orders: LoggedOrder[] }) {
+export function OrderLog({ orders: all }: { orders: LoggedOrder[] }) {
+  // The latest few; the rest open with a tap.
+  const [showAll, setShowAll] = useState(false);
+  const orders = showAll ? all : all.slice(0, SHOWN);
   return (
+    <div>
     <ol className="relative">
       <span aria-hidden className="absolute bottom-3 left-[7px] top-3 w-0.5 rounded-full bg-[var(--sea-wake)]/25 sm:left-[127px]" />
       {orders.map((o, i) => (
@@ -52,17 +60,32 @@ export function OrderLog({ orders }: { orders: LoggedOrder[] }) {
               <span className={`text-sm ${o.done ? "text-faint" : "font-semibold text-accent-text"}`}>{o.statusLabel}</span>
             </div>
             <p className="mt-1 truncate text-sm text-muted">{o.summary}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1">
             {o.canReorder && (
-              <Link href={`/order?reorder=${o.viewToken}`} className="group mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-accent-text">
+              <Link href={`/order?reorder=${o.viewToken}`} className="group inline-flex items-center gap-1.5 text-sm font-medium text-accent-text">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform duration-500 group-hover:-rotate-180" aria-hidden>
                   <path d="M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5" />
                 </svg>
                 <span className="underline-offset-4 group-hover:underline">Print it again</span>
               </Link>
             )}
+            <a href={`/orders/${o.viewToken}/invoice/pdf`} className="group inline-flex items-center gap-1.5 text-sm font-medium text-accent-text">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-hover:translate-y-0.5" aria-hidden>
+                <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+              </svg>
+              <span className="underline-offset-4 group-hover:underline">Invoice</span>
+            </a>
+            </div>
           </div>
         </motion.li>
       ))}
     </ol>
+    {all.length > SHOWN && (
+      <button type="button" onClick={() => setShowAll((v) => !v)} className="mt-8 text-sm font-medium text-accent-text underline-offset-4 hover:underline sm:ml-[152px]">
+        {showAll ? "Show fewer" : `Show all ${all.length} orders`}
+      </button>
+    )}
+    </div>
   );
 }
+

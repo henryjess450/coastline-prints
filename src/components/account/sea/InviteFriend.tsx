@@ -32,7 +32,6 @@ export function InviteFriend({ code, offer, friends, points }: { code: string; o
     <div>
       <p className="text-sm text-faint">Your code</p>
       <p className="mt-1 select-all font-mono text-4xl font-bold tracking-[0.12em] text-accent-text sm:text-5xl">{code}</p>
-      <p className="mt-2 break-all text-sm text-muted">{link}</p>
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <Button ref={copyBtn} onClick={() => void copy()}>
@@ -49,7 +48,7 @@ export function InviteFriend({ code, offer, friends, points }: { code: string; o
         )}
       </div>
 
-      <div className="mt-10">
+      <div className="mt-8">
         {friends > 0 ? (
           <>
             <Fleet count={friends} />
@@ -59,7 +58,7 @@ export function InviteFriend({ code, offer, friends, points }: { code: string; o
             </p>
           </>
         ) : (
-          <p className="max-w-xl text-sm text-muted">No one yet. Each friend who orders sails in here as a little boat.</p>
+          <p className="max-w-xl text-sm text-faint">Each friend who orders sails in here as a little boat.</p>
         )}
       </div>
     </div>

@@ -1,7 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { cookies } from "next/headers";
+import { seasonCss } from "@config/seasons";
 import { site } from "@config/site";
+import { getSeason } from "@/lib/season";
+import { liveAnnouncement } from "@/lib/announcements";
+import { AnnouncementBar } from "@/components/layout/AnnouncementBar";
 import { Providers } from "@/components/layout/Providers";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { SiteHeader } from "@/components/layout/SiteHeader";
@@ -31,18 +35,25 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // The theme choice lives in a cookie so the server renders it directly (no flash, no inline script).
   const theme = (await cookies()).get("theme")?.value === "light" ? "light" : "dark";
+  // The holiday theme the owner has switched on (blue unless they've picked one).
+  const season = await getSeason();
+  const seasonStyle = seasonCss(season);
+  const announcement = await liveAnnouncement();
   return (
     <html
       lang="en"
       data-theme={theme}
+      data-season={season.id}
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} ${display.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        {seasonStyle && <style>{seasonStyle}</style>}
         <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 rounded-md bg-sand px-4 py-2 font-semibold text-black">
           Skip to content
         </a>
-        <Providers>
+        <Providers season={season}>
+          {announcement && <AnnouncementBar a={announcement} />}
           <SiteHeader />
           <main id="main" className="flex-1">
             {children}

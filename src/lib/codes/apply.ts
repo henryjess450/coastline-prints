@@ -2,7 +2,8 @@
  * Coupon and gift card rules. Pure, so the checkout preview and the server
  * compute exactly the same total.
  *
- * - At most one coupon (PERCENT or AMOUNT), applied first.
+ * - A site-wide sale (if one is on) comes off the prints first.
+ * - At most one coupon (PERCENT or AMOUNT), applied next, to what's left.
  * - Up to MAX_GIFT_CARDS gift cards, applied after, each up to its balance.
  * - The total never goes below zero.
  * - Coupons come off the prints only; gift cards also cover shipping.
@@ -21,7 +22,12 @@ export type CodeInfo = {
   pin?: string;
 };
 
-export type AppliedCode = { code: string; kind: CodeKind; label: string; amountCents: number };
+/** "SALE" is the site-wide sale, applied by itself (not a code anyone typed). */
+export type AppliedCode = { code: string; kind: CodeKind | "SALE"; label: string; amountCents: number };
+
+/** A site-wide sale that's on right now. */
+export type SaleInfo = { name: string; percentOff: number };
+export const SALE_CODE = "SALE";
 
 export const MAX_GIFT_CARDS = 3;
 export const MAX_CODES = 4;
@@ -72,12 +78,24 @@ export type ApplyResult = {
   rejected: { code: string; reason: string }[];
 };
 
-export function applyCodes(orderTotalCents: number, codes: CodeInfo[], shippingCents = 0): ApplyResult {
+export function applyCodes(orderTotalCents: number, codes: CodeInfo[], shippingCents = 0, sale: SaleInfo | null = null): ApplyResult {
   const applied: AppliedCode[] = [];
   const rejected: ApplyResult["rejected"] = [];
   let remaining = orderTotalCents + shippingCents;
   let discountCents = 0;
   let giftCardCents = 0;
+  // What's left of the prints for a coupon, after any sale.
+  let prints = orderTotalCents;
+
+  if (sale && sale.percentOff > 0) {
+    const off = Math.min(prints, Math.round((orderTotalCents * sale.percentOff) / 100));
+    if (off > 0) {
+      applied.push({ code: SALE_CODE, kind: "SALE", label: `${sale.name} (${sale.percentOff}% off)`, amountCents: off });
+      remaining -= off;
+      discountCents += off;
+      prints -= off;
+    }
+  }
 
   const coupons = codes.filter((c) => c.kind !== "GIFT_CARD");
   const cards = codes.filter((c) => c.kind === "GIFT_CARD");
@@ -89,8 +107,8 @@ export function applyCodes(orderTotalCents: number, codes: CodeInfo[], shippingC
     if (orderTotalCents < coupon.minOrderCents) {
       rejected.push({ code: coupon.code, reason: `This coupon needs an order of at least $${(coupon.minOrderCents / 100).toFixed(2)}.` });
     } else {
-      const off = coupon.kind === "PERCENT" ? Math.round((orderTotalCents * (coupon.percentOff ?? 0)) / 100) : (coupon.amountCents ?? 0);
-      const amount = Math.min(off, orderTotalCents);
+      const off = coupon.kind === "PERCENT" ? Math.round((prints * (coupon.percentOff ?? 0)) / 100) : (coupon.amountCents ?? 0);
+      const amount = Math.min(off, prints);
       if (amount > 0) {
         applied.push({ code: coupon.code, kind: coupon.kind, label: label(coupon), amountCents: amount });
         remaining -= amount;

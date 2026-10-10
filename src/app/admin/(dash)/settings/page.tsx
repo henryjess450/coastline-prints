@@ -1,6 +1,8 @@
 import { resetSettingAction } from "@/app/admin/actions";
 import { MaterialsEditor } from "@/components/admin/MaterialsEditor";
 import { PricingForm } from "@/components/admin/PricingForm";
+import { SeasonPicker } from "@/components/admin/SeasonPicker";
+import { getSeason } from "@/lib/season";
 import { Card } from "@/components/ui/Card";
 import { requireAdmin } from "@/lib/admin/auth";
 import { getEffectiveConfig } from "@/lib/config/effective";
@@ -16,6 +18,12 @@ export default async function SettingsPage() {
   return (
     <div className="space-y-6">
       <h1 className="font-display text-3xl font-bold">Settings</h1>
+
+      <Card className="p-5 sm:p-6">
+        <h2 className="font-display text-lg font-semibold">Site theme</h2>
+        <p className="mb-5 mt-1 text-sm text-muted">Dress the whole site up for a holiday. It stays on until you switch it back to blue.</p>
+        <SeasonPicker current={(await getSeason()).id} />
+      </Card>
 
       <Card className="p-5 sm:p-6">
         <SectionHead title="Pricing" note="Changes apply to new quotes immediately. Paid orders keep the price they were charged." resetKey={overridden.has("pricing") ? "pricing" : null} />

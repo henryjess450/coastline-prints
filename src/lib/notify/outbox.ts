@@ -28,7 +28,7 @@ export function backoffMs(attempts: number) {
   return BACKOFF_MIN[Math.min(attempts - 1, BACKOFF_MIN.length - 1)] * 60_000;
 }
 
-type Payload = { orderId: string; checkoutId?: string; giftId?: string; codeId?: string; customerId?: string; note?: string | null; test?: boolean };
+type Payload = { orderId: string; checkoutId?: string; giftId?: string; codeId?: string; customerId?: string; broadcastId?: string; note?: string | null; test?: boolean };
 
 let running: Promise<ProcessResult> | null = null;
 export type ProcessResult = { sent: number; failed: number; retrying: number };
@@ -122,6 +122,13 @@ async function deliver(kind: string, template: string, payload: Payload, jobId: 
     const gift = await loadGiftData(payload.giftId ?? "");
     if (!gift) throw new UnknownJobError(`Gift purchase ${payload.giftId} not found`);
     return (mailer ?? getMailer()).send(await buildGiftEmail(template as GiftEmailTemplate, gift), jobId);
+  }
+  if (kind === "email" && (template === "broadcast" || template === "account-invite")) {
+    // News, coupon campaigns and account invites (skipped if they've unsubscribed since).
+    const { buildBroadcastEmail, buildInviteEmail } = await import("@/lib/broadcast");
+    const email = template === "broadcast" ? await buildBroadcastEmail(payload.broadcastId ?? "", payload.customerId ?? "") : await buildInviteEmail(payload.customerId ?? "", payload.note);
+    if (email) await (mailer ?? getMailer()).send(email, jobId);
+    return;
   }
   if (kind === "email" && template === "etransfer-instructions") {
     // Skipped (not failed) once the order is paid or cancelled: they don't need it any more.

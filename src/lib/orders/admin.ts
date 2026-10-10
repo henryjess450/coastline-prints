@@ -14,7 +14,7 @@ export class StatusChangeError extends Error {}
  * queued in the same transaction, so it can't be lost. When a customer's
  * first order is picked up, their thank-you coupon is made here too.
  */
-export async function changeOrderStatus(orderId: string, to: string, opts: { notify?: boolean; note?: string | null; trackingNumber?: string | null } = {}) {
+export async function changeOrderStatus(orderId: string, to: string, opts: { notify?: boolean; note?: string | null; trackingNumber?: string | null; from?: string } = {}) {
   if (!ORDER_STATUSES.some((s) => s.id === to)) throw new StatusChangeError(`Unknown status ${to}`);
   const status = to as OrderStatus;
   const note = opts.note?.trim().slice(0, 1000) || null;
@@ -23,6 +23,8 @@ export async function changeOrderStatus(orderId: string, to: string, opts: { not
     const order = await tx.order.findUnique({ where: { id: orderId } });
     if (!order) throw new StatusChangeError("Order not found");
     if (order.status === status) throw new StatusChangeError("The order already has that status.");
+    // One-tap buttons say where the order was; a second tap (or another tab) can't skip a step.
+    if (opts.from && order.status !== opts.from) throw new StatusChangeError("This order was already moved on. Refresh to see where it's at.");
 
     const ready = status === "READY_FOR_PICKUP";
     // Picked up is the end of the line; no need to email about it unless asked.

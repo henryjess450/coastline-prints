@@ -11,6 +11,7 @@ import { retryJob } from "@/lib/notify/outbox";
 import { changeOrderStatus, StatusChangeError } from "@/lib/orders/admin";
 import { confirmByOwner, EtransferConfirmError } from "@/lib/payments/etransfer.server";
 import { rateLimit } from "@/lib/ratelimit";
+import { saveSeason } from "@/lib/season";
 import { generateCode, generatePin } from "@/lib/codes/server";
 import { formatCardNumber, normalizeCode, type CodeKind } from "@/lib/codes/apply";
 import { Prisma } from "@/generated/prisma/client";
@@ -51,15 +52,36 @@ export async function updateStatusAction(_: ActionState, form: FormData): Promis
       trackingNumber: String(form.get("trackingNumber") ?? ""),
     });
     if (r.notified) sendNotificationsSoon("status-change");
-    revalidatePath(`/admin/orders/${orderId}`);
-    revalidatePath("/admin");
-    revalidatePath("/admin/queues");
+    revalidateOrders(orderId);
     return { ok: true, message: r.notified ? "Status updated. The customer is being emailed." : "Status updated." };
   } catch (err) {
     if (err instanceof StatusChangeError) return { error: err.message };
     logError("admin:status", err);
     return { error: "Couldn't update the status." };
   }
+}
+
+/** The one-tap "next step" button on order cards and the order page. */
+export async function nextStepAction(_: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const orderId = String(form.get("orderId") ?? "");
+  try {
+    const r = await changeOrderStatus(orderId, String(form.get("to") ?? ""), { from: String(form.get("from") ?? ""), trackingNumber: String(form.get("trackingNumber") ?? "") });
+    if (r.notified) sendNotificationsSoon("status-change");
+    revalidateOrders(orderId);
+    return { ok: true, message: r.notified ? "Done. The customer is being emailed." : "Done." };
+  } catch (err) {
+    if (err instanceof StatusChangeError) return { error: err.message };
+    logError("admin:next-step", err);
+    return { error: "That didn't save. Please try again." };
+  }
+}
+
+function revalidateOrders(orderId: string) {
+  revalidatePath(`/admin/orders/${orderId}`);
+  revalidatePath("/admin");
+  revalidatePath("/admin/orders");
+  revalidatePath("/admin/queues");
 }
 
 export async function confirmEtransferAction(_: ActionState, form: FormData): Promise<ActionState> {
@@ -225,4 +247,16 @@ export async function printCodeAction(form: FormData) {
   const id = String(form.get("id") ?? "");
   if (await db.promoCode.findUnique({ where: { id }, select: { id: true } })) await queueCodeSlip(id);
   revalidatePath("/admin/codes");
+}
+
+/** Switches the site's holiday theme (or back to blue). Every page picks it up straight away. */
+export async function saveSeasonAction(_: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  try {
+    const season = await saveSeason(String(form.get("season") ?? ""));
+    revalidatePath("/", "layout");
+    return { ok: true, message: season.id === "coastline" ? "Back to Coastline blue." : `${season.name} is on across the site.` };
+  } catch {
+    return { error: "That theme didn't save. Please try again." };
+  }
 }

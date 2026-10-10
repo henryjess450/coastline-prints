@@ -4,6 +4,8 @@ import { usePathname } from "next/navigation";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { site } from "@config/site";
 import { buttonClass, ButtonLink } from "@/components/ui/Button";
+import { Topper, Trim } from "@/components/season/HeaderDecor";
+import { useSeason } from "@/components/season/SeasonContext";
 import { Logo } from "./Logo";
 
 const nav = [
@@ -20,12 +22,14 @@ export function SiteHeader() {
   const pathname = usePathname();
   const { scrollY } = useScroll();
   const backdrop = useTransform(scrollY, [0, 60], [0, 1]);
+  const season = useSeason();
 
   return (
     <header className="sticky top-0 z-40 pt-[env(safe-area-inset-top)]">
       <motion.div style={{ opacity: backdrop }} className="absolute inset-0 border-b border-line bg-bg/85 backdrop-blur-xl" aria-hidden />
       <div className="relative mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
-        <Link href="/" aria-label={`${site.name} home`} className="shrink-0">
+        <Link href="/" aria-label={`${site.name} home`} className="relative shrink-0">
+          {season.topper && <Topper kind={season.topper} />}
           <Logo />
         </Link>
         <nav aria-label="Main" className="hidden items-center gap-1 lg:flex">
@@ -51,6 +55,7 @@ export function SiteHeader() {
           )}
         </div>
       </div>
+      {season.trim && <Trim kind={season.trim} />}
     </header>
   );
 }

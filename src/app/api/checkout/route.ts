@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { liveSale } from "@/lib/sales";
 import { pickup as pickupConfig } from "@config/pickup";
 import { SquareError } from "square";
 import { customerFromRequest } from "@/lib/account/auth";
@@ -104,7 +105,7 @@ export async function POST(req: Request) {
     }
     const { records, errors } = await lookupCodes(codes, new Date(), account?.id ?? null, customer.email);
     if (errors.length) return apiError(409, `${errors[0].code}: ${errors[0].reason}`, { code: "CODE_INVALID", badCode: errors[0].code });
-    const discount = applyCodes(priced.totalCents, records.map(toCodeInfo), shippingCents);
+    const discount = applyCodes(priced.totalCents, records.map(toCodeInfo), shippingCents, await liveSale());
     if (discount.rejected.length) return apiError(409, `${discount.rejected[0].code}: ${discount.rejected[0].reason}`, { code: "CODE_INVALID", badCode: discount.rejected[0].code });
 
     // Paying by e-Transfer: a little off what's sent, since there are no card fees.

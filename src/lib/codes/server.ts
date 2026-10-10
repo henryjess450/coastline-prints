@@ -78,7 +78,8 @@ export async function lookupCodes(raw: string[], now = new Date(), customerId: s
 export async function reserveCodes(checkoutId: string, applied: AppliedCode[], records: PromoCode[]) {
   if (!applied.length) return;
   await db.$transaction(async (tx) => {
-    for (const a of applied) {
+    // The site-wide sale isn't a code: nothing to hold.
+    for (const a of applied.filter((x) => x.kind !== "SALE")) {
       const rec = records.find((r) => r.code === a.code)!;
       const where =
         rec.kind === "GIFT_CARD"
