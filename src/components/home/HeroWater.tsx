@@ -8,7 +8,9 @@
  */
 import { useReducedMotion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
-import { Benchy, Gull } from "@/components/brand/Benchy";
+import { Bat, Benchy, Gull } from "@/components/brand/Benchy";
+import { benchyLook, BenchyDecor } from "@/components/season/BenchyDecor";
+import { useSeason } from "@/components/season/SeasonContext";
 
 const NAVY = "#0e4471";
 const SAND = "#e9c46a";
@@ -82,6 +84,7 @@ export function HeroWater({
   const timeRef = useRef(START_TIME);
   const [sailAt, setSailAt] = useState<number | null>(null);
   const reduce = useReducedMotion();
+  const season = useSeason();
 
   useEffect(() => {
     const el = ref.current;
@@ -188,6 +191,8 @@ export function HeroWater({
               const k = (time / CROSS_S + g.offset) % 1;
               const x = -60 + k * (w + 120);
               const y = h * g.y + 8 * Math.sin((time / CROSS_S) * Math.PI * 4 + i);
+              // Halloween: bats instead of gulls, flapping about twice as fast.
+              if (season.id === "halloween") return <Bat key={i} x={x} y={y} flap={Math.sin(time * Math.PI * 2 * g.beats * 2.2)} size={g.size * scale * 1.3} />;
               const flap = Math.sin(time * Math.PI * 2 * g.beats);
               return <Gull key={i} x={x} y={y} flap={flap} size={g.size * scale} />;
             })}
@@ -197,7 +202,8 @@ export function HeroWater({
             <path d={band(w, h, mid.base, mid.amp, mid.period, mid.phase)} fill={MID} />
           </g>
           <g transform={`translate(${boat.x} ${boat.y}) rotate(${boat.rot * 0.8 + lean}) scale(${boatScale})`}>
-            <Benchy time={time} />
+            <Benchy time={time} {...benchyLook(season.id)} />
+            <BenchyDecor season={season.id} />
           </g>
           <path d={band(w, h, front.base, front.amp, front.period, front.phase)} fill={NAVY} className="opacity-[0.35] light:opacity-[0.2]" />
           {/* Wavy bottom edge, in the page colour, so the water doesn't end in a straight line. */}

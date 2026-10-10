@@ -1,6 +1,8 @@
 "use client";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useState } from "react";
+import { Bat } from "@/components/brand/Benchy";
+import { useSeason } from "@/components/season/SeasonContext";
 
 /** Paper stays paper in both themes. */
 const PAPER = "#f6ecd2";
@@ -170,29 +172,37 @@ function Note({ from, off, instant }: { from: string; off: string; instant: bool
   );
 }
 
-/** A gull gliding across the sky, flapping now and then. Off-screen at both ends, so the loop never jumps. */
+/** A gull gliding across the sky, flapping now and then (a bat at Halloween). Off-screen at both ends, so the loop never jumps. */
 function Gull({ top, duration, delay, size }: { top: string; duration: number; delay: number; size: number }) {
   const reduce = useReducedMotion();
+  const bat = useSeason().id === "halloween";
   return (
     <motion.svg
       aria-hidden
-      viewBox="0 0 24 10"
+      viewBox={bat ? "-24 -14 48 24" : "0 0 24 10"}
       className="absolute left-0 text-muted"
-      style={{ top, width: 26 * size }}
+      style={{ top, width: (bat ? 34 : 26) * size }}
       initial={{ x: "-10vw" }}
       animate={reduce ? { x: "20vw" } : { x: ["-10vw", "110vw"] }}
       transition={{ duration, delay, repeat: Infinity, ease: "linear" }}
     >
-      <motion.path
-        d="M1 7 Q6 1 12 7 Q18 1 23 7"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        style={{ transformOrigin: "center" }}
-        animate={reduce ? undefined : { scaleY: [1, 0.4, 1] }}
-        transition={{ duration: 0.9, repeat: Infinity, repeatDelay: 1.4, ease: "easeInOut" }}
-      />
+      {bat ? (
+        // Wings beat by squashing the bat up and down; starts and ends open, so it never snaps.
+        <motion.g style={{ transformOrigin: "0px 0px" }} animate={reduce ? undefined : { scaleY: [1, 0.3, 1] }} transition={{ duration: 0.38, repeat: Infinity, ease: "easeInOut" }}>
+          <Bat x={0} y={0} flap={1} size={1} />
+        </motion.g>
+      ) : (
+        <motion.path
+          d="M1 7 Q6 1 12 7 Q18 1 23 7"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          style={{ transformOrigin: "center" }}
+          animate={reduce ? undefined : { scaleY: [1, 0.4, 1] }}
+          transition={{ duration: 0.9, repeat: Infinity, repeatDelay: 1.4, ease: "easeInOut" }}
+        />
+      )}
     </motion.svg>
   );
 }

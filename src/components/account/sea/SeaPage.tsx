@@ -7,7 +7,8 @@
  */
 import { useReducedMotion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
-import { Gull } from "@/components/brand/Benchy";
+import { Bat, Gull } from "@/components/brand/Benchy";
+import { useSeason } from "@/components/season/SeasonContext";
 
 const SAND = "#e9c46a";
 /** Water for each section after the first, deeper each time (the deepest repeats if there are more). */
@@ -30,6 +31,7 @@ export function SeaPage({ hero, children }: { hero: React.ReactNode; children: R
   const heroRef = useRef<HTMLDivElement>(null);
   const [heroH, setHeroH] = useState(280);
   const reduce = useReducedMotion();
+  const season = useSeason();
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [time, setTime] = useState(0);
   // Where each section starts, in page pixels, so every section gets its own band.
@@ -91,7 +93,13 @@ export function SeaPage({ hero, children }: { hero: React.ReactNode; children: R
             <circle cx={w * (w >= 640 ? 0.86 : 0.8)} cy={w >= 640 ? surface * 0.36 : surface + 2} r={34 * scale + 6} fill={SAND} />
             {[0, 0.4, 0.7].map((off, i) => {
               const k = (t / 22 + off) % 1;
-              return <Gull key={i} x={-60 + k * (w + 120)} y={surface * (0.18 + i * 0.09) + 6 * Math.sin(t * 0.9 + i)} flap={Math.sin(t * Math.PI * 2 * (1.4 + i * 0.12))} size={(1 - i * 0.12) * scale} />;
+              const at = { x: -60 + k * (w + 120), y: surface * (0.18 + i * 0.09) + 6 * Math.sin(t * 0.9 + i) };
+              // Halloween: bats instead of gulls, flapping about twice as fast.
+              return season.id === "halloween" ? (
+                <Bat key={i} {...at} flap={Math.sin(t * Math.PI * 2 * (1.4 + i * 0.12) * 2.2)} size={(1 - i * 0.12) * scale * 1.3} />
+              ) : (
+                <Gull key={i} {...at} flap={Math.sin(t * Math.PI * 2 * (1.4 + i * 0.12))} size={(1 - i * 0.12) * scale} />
+              );
             })}
 
             {/* The surface, then each deeper band */}

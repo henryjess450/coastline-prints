@@ -2,10 +2,11 @@
 import type { Falling as Kind } from "@config/seasons";
 
 /**
- * Holiday decor drifting across the whole page: snow, leaves, hearts and so
- * on. Pure CSS animation (cheap, and it keeps going smoothly), never in the
- * way of a tap, a few less on phones, and gone for anyone who prefers reduced
- * motion. Each piece starts off screen and ends off screen, so loops never jump.
+ * A light sprinkle of holiday decor near the top of the screen: snow, leaves,
+ * hearts and so on. Only a handful at once, drifting slowly and fading out
+ * before they get halfway down, so the page stays clear. Pure CSS animation,
+ * never in the way of a tap, fewer on phones, and gone for anyone who prefers
+ * reduced motion. Each piece fades in and out, so loops never jump.
  */
 export function Falling({ kind }: { kind: Kind }) {
   const spec = SPECS[kind];
@@ -22,7 +23,7 @@ export function Falling({ kind }: { kind: Kind }) {
       drift: (rand() - 0.5) * 30,
       spin: (rand() - 0.5) * 720,
       sway: 10 + rand() * 30,
-      top: 8 + rand() * 60,
+      top: 6 + rand() * 18,
       variant: Math.floor(rand() * 6),
       opacity: spec.opacity[0] + rand() * (spec.opacity[1] - spec.opacity[0]),
     };
@@ -40,7 +41,6 @@ export function Falling({ kind }: { kind: Kind }) {
               top: spec.motion === "fly" ? `${p.top}%` : undefined,
               width: p.size,
               height: p.size,
-              opacity: p.opacity,
               animationDuration: `${p.duration}s`,
               animationDelay: `${p.delay}s`,
               "--drift": `${p.drift}vw`,
@@ -48,7 +48,7 @@ export function Falling({ kind }: { kind: Kind }) {
             } as React.CSSProperties
           }
         >
-          <span className="season-sway" style={{ "--sway": `${p.sway}px`, animationDuration: `${3 + (p.i % 4)}s` } as React.CSSProperties}>
+          <span className="season-sway" style={{ "--sway": `${p.sway}px`, opacity: p.opacity, animationDuration: `${3 + (p.i % 4)}s` } as React.CSSProperties}>
             {spec.draw(p.variant, p.size)}
           </span>
         </span>
@@ -66,28 +66,28 @@ const svg = (children: React.ReactNode, viewBox = "0 0 24 24") => (
 );
 
 const SPECS: Record<Kind, Spec> = {
-  snow: { count: 34, size: [4, 11], speed: [11, 22], opacity: [0.45, 0.9], motion: "fall", draw: () => svg(<circle cx="12" cy="12" r="12" fill="#ffffff" />) },
+  snow: { count: 14, size: [3, 8], speed: [16, 28], opacity: [0.35, 0.7], motion: "fall", draw: () => svg(<circle cx="12" cy="12" r="12" fill="#ffffff" />) },
   confetti: {
-    count: 30,
-    size: [6, 11],
-    speed: [8, 15],
-    opacity: [0.7, 1],
+    count: 10,
+    size: [5, 9],
+    speed: [14, 22],
+    opacity: [0.5, 0.8],
     motion: "fall",
     draw: (v) => svg(<rect x="4" y="8" width="16" height="8" rx="1.5" fill={["#e9c46a", "#f5e6b8", "#c9a227", "#ffffff", "#e9c46a", "#d4af37"][v]} />),
   },
   hearts: {
-    count: 16,
-    size: [12, 24],
-    speed: [14, 24],
-    opacity: [0.5, 0.85],
+    count: 6,
+    size: [10, 18],
+    speed: [18, 30],
+    opacity: [0.35, 0.6],
     motion: "rise",
     draw: (v) => svg(<path d="M12 21s-8-5.2-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.8-8 11-8 11z" fill={["#ec4899", "#f472b6", "#e11d48", "#fb7185", "#f9a8d4", "#be185d"][v]} />),
   },
   eggs: {
-    count: 14,
-    size: [14, 24],
-    speed: [14, 24],
-    opacity: [0.75, 1],
+    count: 5,
+    size: [12, 18],
+    speed: [18, 30],
+    opacity: [0.5, 0.75],
     motion: "fall",
     draw: (v) => {
       const [a, b] = [["#c4b5fd", "#fde68a"], ["#a7f3d0", "#f9a8d4"], ["#fbcfe8", "#bfdbfe"], ["#fde68a", "#c4b5fd"], ["#bfdbfe", "#a7f3d0"], ["#fecaca", "#fef08a"]][v];
@@ -101,10 +101,10 @@ const SPECS: Record<Kind, Spec> = {
     },
   },
   shamrocks: {
-    count: 16,
-    size: [14, 24],
-    speed: [12, 22],
-    opacity: [0.6, 0.95],
+    count: 6,
+    size: [11, 18],
+    speed: [18, 30],
+    opacity: [0.4, 0.65],
     motion: "fall",
     draw: (v) =>
       svg(
@@ -117,35 +117,36 @@ const SPECS: Record<Kind, Spec> = {
       ),
   },
   maple: {
-    count: 16,
-    size: [14, 26],
-    speed: [12, 22],
-    opacity: [0.65, 0.95],
+    count: 6,
+    size: [12, 20],
+    speed: [18, 30],
+    opacity: [0.45, 0.7],
     motion: "fall",
     draw: (v) => svg(<path d={MAPLE} fill={["#dc2626", "#ef4444", "#b91c1c", "#dc2626", "#f87171", "#c8102e"][v]} />),
   },
   leaves: {
-    count: 18,
-    size: [14, 26],
-    speed: [12, 22],
-    opacity: [0.65, 0.95],
+    count: 7,
+    size: [12, 20],
+    speed: [18, 30],
+    opacity: [0.45, 0.7],
     motion: "fall",
     draw: (v) => svg(<path d={MAPLE} fill={["#c2410c", "#ea580c", "#b45309", "#d97706", "#92400e", "#a16207"][v]} />),
   },
   bats: {
-    count: 6,
-    size: [26, 44],
-    speed: [16, 28],
-    opacity: [0.7, 0.95],
+    count: 2,
+    size: [24, 34],
+    speed: [26, 40],
+    opacity: [0.55, 0.75],
     motion: "fly",
+    // Wings beat (see .season-flap in globals.css).
     draw: () =>
-      svg(<path d="M2 10c2.5-1 4.5 0 5.5 2 .8-1.5 2.2-2.3 3.2-2.3l1.3-2 1.3 2c1 0 2.4.8 3.2 2.3 1-2 3-3 5.5-2-1.5 1.2-2 3-1.8 4.8-1.6-1.2-3.4-1.2-4.6.2-.8-.9-2-1.4-3.6-1.4s-2.8.5-3.6 1.4c-1.2-1.4-3-1.4-4.6-.2C4 13 3.5 11.2 2 10z" fill="var(--season-ink)" />),
+      svg(<path className="season-flap" d="M2 10c2.5-1 4.5 0 5.5 2 .8-1.5 2.2-2.3 3.2-2.3l1.3-2 1.3 2c1 0 2.4.8 3.2 2.3 1-2 3-3 5.5-2-1.5 1.2-2 3-1.8 4.8-1.6-1.2-3.4-1.2-4.6.2-.8-.9-2-1.4-3.6-1.4s-2.8.5-3.6 1.4c-1.2-1.4-3-1.4-4.6-.2C4 13 3.5 11.2 2 10z" fill="var(--season-ink)" />),
   },
   balloons: {
-    count: 10,
-    size: [26, 40],
-    speed: [16, 26],
-    opacity: [0.8, 1],
+    count: 3,
+    size: [22, 32],
+    speed: [22, 34],
+    opacity: [0.6, 0.8],
     motion: "rise",
     draw: (v) =>
       svg(

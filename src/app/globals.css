@@ -319,8 +319,9 @@ body {
 }
 
 /* ── Holiday themes (see config/seasons.ts) ─────────────────────────────
-   Pieces start and end off screen, and sway/twinkle start and end the same,
-   so every loop is seamless. Hidden for reduced motion; fewer on phones. */
+   A few pieces near the top of the screen that fade in and out (and sway and
+   twinkle start and end the same), so every loop is seamless. Hidden for
+   reduced motion; fewer on phones. */
 :root { --season-ink: #7c4dcc; } /* bats and witch's hats: visible on dark */
 [data-theme="light"] { --season-ink: #1c1917; }
 .season-piece {
@@ -340,12 +341,16 @@ body {
   animation: season-sway ease-in-out infinite;
 }
 @keyframes season-fall {
-  from { transform: translate3d(0, -12vh, 0) rotate(0deg); }
-  to { transform: translate3d(var(--drift), 112vh, 0) rotate(var(--spin)); }
+  0% { transform: translate3d(0, -6vh, 0) rotate(0deg); opacity: 0; }
+  15% { opacity: 1; }
+  65% { opacity: 1; }
+  100% { transform: translate3d(var(--drift), 42vh, 0) rotate(var(--spin)); opacity: 0; }
 }
 @keyframes season-rise {
-  from { transform: translate3d(0, 112vh, 0); }
-  to { transform: translate3d(var(--drift), -18vh, 0); }
+  0% { transform: translate3d(0, 42vh, 0); opacity: 0; }
+  25% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translate3d(var(--drift), -12vh, 0); opacity: 0; }
 }
 @keyframes season-fly {
   from { transform: translate3d(-14vw, 0, 0); }
@@ -360,12 +365,18 @@ body {
   50% { opacity: 0.35; }
 }
 .season-bulb { animation: season-twinkle 1.6s ease-in-out infinite; }
+/* Bats beat their wings: squashed up and down about the body; starts and ends open. */
+@keyframes season-flap {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.3); }
+}
+.season-flap { transform-box: fill-box; transform-origin: center; animation: season-flap 0.38s ease-in-out infinite; }
 @media (max-width: 640px) {
-  .season-piece:nth-child(n + 15) { display: none; }
+  .season-piece:nth-child(n + 7) { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .season-layer { display: none; }
-  .season-bulb { animation: none; }
+  .season-bulb, .season-flap { animation: none; }
 }
 @media print {
   .season-layer, .season-trim { display: none !important; }
