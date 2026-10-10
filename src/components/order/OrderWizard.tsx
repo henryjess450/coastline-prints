@@ -77,21 +77,19 @@ export function OrderWizard({ square, etransfer }: { square: SquareConfig | null
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  // The Benchy tows the upload box in on a rope, then lets go.
-  const root = useRef<HTMLDivElement>(null);
+  // The upload box sails in with the Benchy: same distance, same speed, arriving together.
   const towed = useRef<HTMLDivElement>(null);
-  const rope = useRef<SVGPathElement>(null);
   const towing = useRef(false);
   useLayoutEffect(() => {
     const box = towed.current;
     if (!box || items.length || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    // Start off screen to the left; onTow pulls it in.
+    // Start off screen to the left; onTow brings it in.
     towing.current = true;
     box.style.transform = "translateX(-120vw)";
     // If the animation can't run (hidden tab, slow device), don't leave the box stranded.
     const t = window.setTimeout(() => {
+      towing.current = false;
       box.style.transform = "";
-      rope.current?.style.setProperty("opacity", "0");
     }, 8000);
     return () => window.clearTimeout(t);
     // Only on first arrival.
@@ -99,19 +97,9 @@ export function OrderWizard({ square, etransfer }: { square: SquareConfig | null
   }, []);
   const onTow = useCallback((t: Tow) => {
     const box = towed.current;
-    const line = rope.current;
-    const r = root.current?.getBoundingClientRect();
-    if (!box || !line || !r || !towing.current) return;
+    if (!box || !towing.current) return;
+    // Moved by exactly as much as the Benchy still has to go.
     box.style.transform = t.p >= 1 ? "" : `translateX(${t.dx.toFixed(1)}px)`;
-    // Rope from the stern to the box's right edge, sagging less as it tightens.
-    const b = box.getBoundingClientRect();
-    const ax = b.right - r.left - 6;
-    const ay = b.bottom - r.top - 48;
-    const sx = t.sternX - r.left;
-    const sy = t.sternY - r.top;
-    const sag = Math.min(70, Math.hypot(sx - ax, sy - ay) * 0.12) * (1 - t.p * 0.6);
-    line.setAttribute("d", `M${sx.toFixed(1)} ${sy.toFixed(1)} Q${((sx + ax) / 2).toFixed(1)} ${(Math.max(sy, ay) + sag).toFixed(1)} ${ax.toFixed(1)} ${ay.toFixed(1)}`);
-    line.style.opacity = t.p >= 1 ? "0" : "1";
     if (t.p >= 1) towing.current = false;
   }, []);
 
@@ -124,11 +112,7 @@ export function OrderWizard({ square, etransfer }: { square: SquareConfig | null
   }, [items.length]);
 
   return (
-    <div ref={root} className="relative isolate">
-      {/* Tow rope, drawn over the water but under the content */}
-      <svg className="pointer-events-none absolute inset-0 -z-[5] h-full w-full overflow-visible" aria-hidden>
-        <path ref={rope} fill="none" stroke="#c9a26a" strokeWidth="2.5" strokeLinecap="round" style={{ opacity: 0, transition: "opacity 1.2s ease" }} />
-      </svg>
+    <div className="relative isolate">
       {/* Calm water along the bottom of the upload step, like the home page */}
       <AnimatePresence>
         {step === 0 && (
