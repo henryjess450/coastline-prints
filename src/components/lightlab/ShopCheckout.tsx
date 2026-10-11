@@ -5,21 +5,24 @@ import { CheckoutStep } from "@/components/checkout/CheckoutStep";
 import type { SquareConfig } from "@/components/checkout/PaymentMethods";
 import { buttonClass } from "@/components/ui/Button";
 import type { EtransferPublic } from "@/lib/payments/etransfer";
-import { useShopCart, useShopCartHydrated, useShopQuote } from "@/lib/shop/cart";
+import { shopConfig, type ShopId } from "@config/shops";
+import { cartFor, useShopCartHydrated, useShopQuote } from "@/lib/shop/cart";
 import { PartnerBadge } from "./PartnerBadge";
 
-export function ShopCheckout({ square, etransfer }: { square: SquareConfig | null; etransfer: EtransferPublic }) {
+export function ShopCheckout({ square, etransfer, shop = "lightlab" }: { square: SquareConfig | null; etransfer: EtransferPublic; shop?: ShopId }) {
   const router = useRouter();
-  const hydrated = useShopCartHydrated();
-  const lines = useShopCart((s) => s.lines);
-  const setOpen = useShopCart((s) => s.setOpen);
-  const quote = useShopQuote(lines);
+  const useCart = cartFor(shop);
+  const { base } = shopConfig(shop);
+  const hydrated = useShopCartHydrated(shop);
+  const lines = useCart((s) => s.lines);
+  const setOpen = useCart((s) => s.setOpen);
+  const quote = useShopQuote(lines, shop);
 
   return (
     <div className="mx-auto max-w-7xl px-4 pb-16 pt-8 sm:px-6 sm:pt-12">
       <div className="mb-10 flex flex-wrap items-center justify-between gap-4">
         <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">Checkout</h1>
-        <PartnerBadge />
+        {shop === "lightlab" && <PartnerBadge />}
       </div>
       {!hydrated ? (
         <div className="space-y-3" aria-busy>
@@ -29,7 +32,7 @@ export function ShopCheckout({ square, etransfer }: { square: SquareConfig | nul
       ) : !lines.length ? (
         <div className="rounded-3xl border border-line bg-surface px-6 py-16 text-center">
           <p className="font-display text-xl font-semibold">Your cart is empty.</p>
-          <Link href="/lightlab#shop" className={buttonClass("primary", "md", "mt-6")}>
+          <Link href={shop === "lightlab" ? "/lightlab#shop" : base} className={buttonClass("primary", "md", "mt-6")}>
             Back to the shop
           </Link>
         </div>
@@ -43,7 +46,7 @@ export function ShopCheckout({ square, etransfer }: { square: SquareConfig | nul
               </button>
             </p>
           )}
-          <CheckoutStep shop={{ lines }} cartQuote={quote} square={square} etransfer={etransfer} onBack={() => (window.history.length > 1 ? router.back() : router.push("/lightlab"))} />
+          <CheckoutStep shop={{ lines, id: shop }} cartQuote={quote} square={square} etransfer={etransfer} onBack={() => (window.history.length > 1 ? router.back() : router.push(base))} />
         </>
       )}
     </div>

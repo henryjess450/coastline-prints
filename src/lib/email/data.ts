@@ -13,6 +13,8 @@ import { isTracked, shippingAddressLines, shippingSummary } from "@/lib/shipping
 export type OrderEmailData = {
   /** A LightLab shop order: its customer emails carry the LightLab logo. */
   lightlab: boolean;
+  /** Shop products (LightLab or the Coastline shop), not uploaded files. */
+  products: boolean;
   orderId: string;
   orderNumber: string;
   status: string;
@@ -74,6 +76,7 @@ export async function loadOrderEmailData(orderId: string): Promise<OrderEmailDat
   const totalHours = order.items.reduce((h, i) => h + i.hoursEach * i.quantity, 0);
   return {
     lightlab: isLightLabOrder(order.items),
+    products: order.items.some((i) => !!i.productId),
     orderId: order.id,
     orderNumber: order.orderNumber,
     status: order.status,

@@ -9,14 +9,16 @@ import type { ItemQuote, OrderQuote } from "@/lib/pricing/quote";
 import type { PricedCart } from "@/lib/pricing/server-quote";
 import type { ShippingOption } from "@/lib/shipping/pack";
 import type { PricedShopLine } from "@/lib/shop/types";
-import { lightlab } from "@config/lightlab";
+import { shopConfig, type ShopId } from "@config/shops";
 import { newOrderNumber, newViewToken } from "./number";
 
 /** What we stored on the Checkout row before charging: the server-priced cart. */
 export type CartSnapshot = {
   lines: PricedCart["lines"];
-  /** LightLab shop products (an order has prints or products, not both). */
+  /** Shop products (an order has prints or products, not both). */
   shopLines?: PricedShopLine[];
+  /** Which shop the products are from. Missing on older LightLab checkouts. */
+  shop?: ShopId;
   quote: Pick<OrderQuote, "items" | "baseFeeCents" | "subtotalCents" | "minimumAdjCents" | "totalCents"> & { shipping?: ShippingOption | null };
 };
 
@@ -82,7 +84,7 @@ export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts
       const order = await db.$transaction(async (tx) => {
         const order = await tx.order.create({
           data: {
-            orderNumber: newOrderNumber(new Date(), cart.shopLines?.length ? "LL" : "CP"),
+            orderNumber: newOrderNumber(new Date(), cart.shopLines?.length ? shopConfig(cart.shop).orderPrefix : "CP"),
             viewToken: newViewToken(),
             checkoutId,
             status: "PAID",
@@ -117,12 +119,12 @@ export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts
             receiptUrl: payment.receiptUrl,
             cardBrand: payment.cardBrand,
             cardLast4: payment.last4,
-            items: { create: [...cart.lines.map((line, i) => orderItemData(line, cart.quote.items[i])), ...(cart.shopLines ?? []).map(shopItemData)] },
+            items: { create: [...cart.lines.map((line, i) => orderItemData(line, cart.quote.items[i])), ...(cart.shopLines ?? []).map((l) => shopItemData(l, cart.shop))] },
             events: { create: { fromStatus: null, toStatus: "PAID", note: "Payment completed" } },
           },
         });
         await tx.checkout.update({ where: { id: checkoutId }, data: { status: "COMPLETED", squarePaymentId: payment.id } });
-        for (const line of cart.shopLines ?? []) await takeStock(tx, line, order.id);
+        for (const line of cart.shopLines ?? []) await takeStock(tx, line, order.id, cart.shop);
         await tx.codeRedemption.updateMany({ where: { checkoutId, status: "RESERVED" }, data: { status: "USED" } });
         await tx.outboxJob.createMany({ data: notificationJobs(order.id, !checkout.squareCustomerId) });
         // Ordered with a friend's invite code: the friend gets their points now.
@@ -175,12 +177,14 @@ function orderItemData(line: CartSnapshot["lines"][number], q: ItemQuote) {
   };
 }
 
-/** A LightLab product as an order item. Print fields hold the product's packed size and a shop label. */
-function shopItemData(line: PricedShopLine) {
+/** A shop product as an order item. Print fields hold the product's packed size and a shop label. */
+function shopItemData(line: PricedShopLine, shopId?: ShopId) {
+  const shop = shopConfig(shopId);
   return {
     productId: line.productId,
     variantId: line.variantId,
-    fileName: line.name,
+    // A personalised product carries its text in the name, so the admin, receipts and emails all show it.
+    fileName: line.customText ? `${line.name}: "${line.customText}"` : line.name,
     unitFactor: 1,
     scaleX: 1,
     scaleY: 1,
@@ -189,14 +193,14 @@ function shopItemData(line: PricedShopLine) {
     sizeX: line.size.x,
     sizeY: line.size.y,
     sizeZ: line.size.z,
-    material: lightlab.itemMaterial,
+    material: shop.itemMaterial,
     colorId: line.variantId ?? "",
     colorName: line.variantName ?? "",
     quality: "",
     infill: "",
     quantity: line.quantity,
-    printerId: lightlab.id,
-    printerName: lightlab.itemPrinter,
+    printerId: shop.itemPrinterId,
+    printerName: shop.itemPrinter,
     gramsEach: line.grams,
     hoursEach: 0,
     unitCents: line.unitCents,
@@ -205,7 +209,8 @@ function shopItemData(line: PricedShopLine) {
 }
 
 /** Sold: take them off the shelf (the option's count if it has one, else the product's). Never below zero. */
-async function takeStock(tx: Prisma.TransactionClient, line: PricedShopLine, orderId: string) {
+async function takeStock(tx: Prisma.TransactionClient, line: PricedShopLine, orderId: string, shopId?: ShopId) {
+  const { lowStockAt } = shopConfig(shopId);
   const p = await tx.shopProduct.findUnique({ where: { id: line.productId } });
   if (!p) return;
   const variants = JSON.parse(p.variants) as { id: string; stock: number | null }[];
@@ -224,7 +229,7 @@ async function takeStock(tx: Prisma.TransactionClient, line: PricedShopLine, ord
     return; // made to order
   }
   // Running low or sold out: tell the owner (once per crossing).
-  if ((after === 0 && before > 0) || (after <= lightlab.lowStockAt && before > lightlab.lowStockAt)) {
+  if ((after === 0 && before > 0) || (after <= lowStockAt && before > lowStockAt)) {
     const pool = v && v.stock != null ? v.id : "";
     const dedupeKey = `${orderId}:stock:${p.id}:${pool}`;
     const payload = JSON.stringify({ orderId, productId: p.id, variantId: pool, left: after });

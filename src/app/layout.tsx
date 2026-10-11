@@ -5,6 +5,7 @@ import { seasonCss } from "@config/seasons";
 import { site } from "@config/site";
 import { getSeason } from "@/lib/season";
 import { liveAnnouncement } from "@/lib/announcements";
+import { coastlineShopOpen } from "@/lib/shop/open.server";
 import { AnnouncementBar } from "@/components/layout/AnnouncementBar";
 import { Providers } from "@/components/layout/Providers";
 import { LightLabFooter, SiteFooter } from "@/components/layout/SiteFooter";
@@ -44,7 +45,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // The holiday theme the owner has switched on (blue unless they've picked one).
   const season = await getSeason();
   const seasonStyle = seasonCss(season);
-  const announcement = await liveAnnouncement();
+  const [announcement, shopOpen] = await Promise.all([liveAnnouncement(), coastlineShopOpen()]);
   return (
     <html
       lang="en"
@@ -60,7 +61,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </a>
         <Providers season={season}>
           {announcement && <AnnouncementBar a={announcement} />}
-          <SiteHeader />
+          <SiteHeader shopOpen={shopOpen} />
           <main id="main" className="flex-1">
             {children}
           </main>

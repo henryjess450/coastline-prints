@@ -8,7 +8,11 @@ export function CustomerReceipt({ d }: { d: OrderEmailData }) {
   const first = d.customerName.split(/\s+/)[0];
   const accent = accentFor(d.lightlab);
   const steps = [
-    ...(d.lightlab ? ["We take your lamp off the shelf and check it over."] : ["We check your files and queue them on the right printer.", "Your parts are printed and cleaned up."]),
+    ...(d.lightlab
+      ? ["We take your lamp off the shelf and check it over."]
+      : d.products
+        ? ["We print your order (with your personalisation, if it has one).", "It's cleaned up and checked over."]
+        : ["We check your files and queue them on the right printer.", "Your parts are printed and cleaned up."]),
     d.shipTo ? (d.tracked ? "We pack it and send it with Canada Post, then email you the tracking number." : "We pack it in a padded mailer and send it by Canada Post Lettermail (no tracking), then email you.") : "We email you when it's ready, before your pickup time.",
   ];
   return (

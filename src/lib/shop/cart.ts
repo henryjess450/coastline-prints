@@ -2,12 +2,12 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { lightlab } from "@config/lightlab";
+import { shopConfig, type ShopId } from "@config/shops";
 import type { OrderQuote } from "@/lib/pricing/quote";
 import type { ServerQuoteState } from "@/lib/order/use-quote";
 import type { PricedShopLine, ShopLineInput } from "./types";
 
-/** A product in the LightLab cart, with what the cart shows about it. Prices are re-checked by the server. */
+/** A product in a shop cart, with what the cart shows about it. Prices are re-checked by the server. */
 export type ShopCartLine = ShopLineInput & {
   key: string;
   slug: string;
@@ -33,54 +33,67 @@ type ShopCart = {
   sync: (priced: PricedShopLine[]) => void;
 };
 
-const keyOf = (productId: string, variantId: string | null) => `${productId}:${variantId ?? ""}`;
-const clampQty = (q: number, max: number | null) => Math.max(1, Math.min(lightlab.maxQuantityPerLine, max ?? Infinity, Math.round(q)));
+/** One line per product, option and personalisation (two keychains with different names are two lines). */
+// Same keys as before personalisation existed, so carts already saved in browsers still match.
+const keyOf = (productId: string, variantId: string | null, customText?: string | null) => `${productId}:${variantId ?? ""}${customText ? `:${customText}` : ""}`;
 
-export const useShopCart = create<ShopCart>()(
-  persist(
-    (set) => ({
-      lines: [],
-      open: false,
-      setOpen: (open) => set({ open }),
-      add: (line) =>
-        set((s) => {
-          const key = keyOf(line.productId, line.variantId);
-          const have = s.lines.find((l) => l.key === key);
-          if (have) return { open: true, lines: s.lines.map((l) => (l.key === key ? { ...l, ...line, key, quantity: clampQty(l.quantity + line.quantity, line.max) } : l)) };
-          if (s.lines.length >= lightlab.maxLinesPerOrder) return { open: true };
-          return { open: true, lines: [...s.lines, { ...line, key, quantity: clampQty(line.quantity, line.max) }] };
-        }),
-      setQuantity: (key, quantity) => set((s) => ({ lines: s.lines.map((l) => (l.key === key ? { ...l, quantity: clampQty(quantity, l.max) } : l)) })),
-      remove: (key) => set((s) => ({ lines: s.lines.filter((l) => l.key !== key) })),
-      reset: () => set({ lines: [], open: false }),
-      sync: (priced) =>
-        set((s) => {
-          const by = new Map(priced.map((p) => [keyOf(p.productId, p.variantId), p]));
-          let changed = false;
-          const lines = s.lines.map((l) => {
-            const p = by.get(l.key);
-            if (!p || (p.unitCents === l.unitCents && p.name === l.name)) return l;
-            changed = true;
-            return { ...l, unitCents: p.unitCents, name: p.name, variantName: p.variantName };
-          });
-          return changed ? { lines } : {};
-        }),
-    }),
-    {
-      name: "lightlab-cart",
-      storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ lines: s.lines }),
-    },
-  ),
-);
+/** Each shop has its own cart, saved in the browser under its own name. */
+function makeShopCart(shop: ShopId) {
+  const { maxQuantityPerLine, maxLinesPerOrder } = shopConfig(shop);
+  const clampQty = (q: number, max: number | null) => Math.max(1, Math.min(maxQuantityPerLine, max ?? Infinity, Math.round(q)));
+  return create<ShopCart>()(
+    persist(
+      (set) => ({
+        lines: [],
+        open: false,
+        setOpen: (open) => set({ open }),
+        add: (line) =>
+          set((s) => {
+            const key = keyOf(line.productId, line.variantId, line.customText);
+            const have = s.lines.find((l) => l.key === key);
+            if (have) return { open: true, lines: s.lines.map((l) => (l.key === key ? { ...l, ...line, key, quantity: clampQty(l.quantity + line.quantity, line.max) } : l)) };
+            if (s.lines.length >= maxLinesPerOrder) return { open: true };
+            return { open: true, lines: [...s.lines, { ...line, key, quantity: clampQty(line.quantity, line.max) }] };
+          }),
+        setQuantity: (key, quantity) => set((s) => ({ lines: s.lines.map((l) => (l.key === key ? { ...l, quantity: clampQty(quantity, l.max) } : l)) })),
+        remove: (key) => set((s) => ({ lines: s.lines.filter((l) => l.key !== key) })),
+        reset: () => set({ lines: [], open: false }),
+        sync: (priced) =>
+          set((s) => {
+            const by = new Map(priced.map((p) => [keyOf(p.productId, p.variantId, p.customText), p]));
+            let changed = false;
+            const lines = s.lines.map((l) => {
+              const p = by.get(l.key);
+              if (!p || (p.unitCents === l.unitCents && p.name === l.name)) return l;
+              changed = true;
+              return { ...l, unitCents: p.unitCents, name: p.name, variantName: p.variantName };
+            });
+            return changed ? { lines } : {};
+          }),
+      }),
+      {
+        name: `${shop}-cart`,
+        storage: createJSONStorage(() => localStorage),
+        partialize: (s) => ({ lines: s.lines }),
+      },
+    ),
+  );
+}
 
-export const shopPayload = (lines: ShopCartLine[]): ShopLineInput[] => lines.map((l) => ({ productId: l.productId, variantId: l.variantId, quantity: l.quantity }));
+const carts = { lightlab: makeShopCart("lightlab"), coastline: makeShopCart("coastline") };
+/** The cart store for a shop (a zustand hook). */
+export const cartFor = (shop: ShopId = "lightlab") => carts[shop];
+/** The LightLab cart. */
+export const useShopCart = carts.lightlab;
+
+export const shopPayload = (lines: ShopCartLine[]): ShopLineInput[] => lines.map((l) => ({ productId: l.productId, variantId: l.variantId, quantity: l.quantity, customText: l.customText ?? null }));
 
 /** Waits for the saved cart to load from the browser (it isn't there during the server render). */
-export function useShopCartHydrated() {
+export function useShopCartHydrated(shop: ShopId = "lightlab") {
+  const store = carts[shop];
   return useSyncExternalStore(
-    (cb) => useShopCart.persist.onFinishHydration(cb),
-    () => useShopCart.persist.hasHydrated(),
+    (cb) => store.persist.onFinishHydration(cb),
+    () => store.persist.hasHydrated(),
     () => false,
   );
 }
@@ -89,7 +102,7 @@ export function useShopCartHydrated() {
  * Same shape as the print quote (useCartQuote), so checkout takes either:
  * an instant estimate from the cart, replaced by the server's price.
  */
-export function useShopQuote(lines: ShopCartLine[]) {
+export function useShopQuote(lines: ShopCartLine[], shop: ShopId = "lightlab") {
   const local = useMemo<OrderQuote | null>(() => {
     if (!lines.length) return null;
     const subtotalCents = lines.reduce((s, l) => s + l.unitCents * l.quantity, 0);
@@ -111,7 +124,7 @@ export function useShopQuote(lines: ShopCartLine[]) {
           if (!res.ok) setServer({ status: "error", message: body.error ?? "Couldn't confirm the price." });
           else {
             setServer({ status: "ok", quote: body.quote, signature });
-            useShopCart.getState().sync(body.lines ?? []);
+            carts[shop].getState().sync(body.lines ?? []);
           }
           return;
         } catch (err) {
@@ -125,7 +138,7 @@ export function useShopQuote(lines: ShopCartLine[]) {
       clearTimeout(t);
       ctrl.abort();
     };
-  }, [signature]);
+  }, [signature, shop]);
 
   const confirmed = server.status === "ok" && server.signature === signature ? server.quote : null;
   return { quote: confirmed ?? local, confirmed: !!confirmed, server, ready: lines.length > 0 };

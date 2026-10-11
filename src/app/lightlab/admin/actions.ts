@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { lightlab } from "@config/lightlab";
+import { SHOP_IDS, shopConfig } from "@config/shops";
 import { Prisma } from "@/generated/prisma/client";
 import { requireAdmin } from "@/lib/admin/auth";
 import { logError } from "@/lib/api";
@@ -27,6 +28,10 @@ const variantSchema = z.object({
 
 const productSchema = z.object({
   id: z.string().max(40).nullable(),
+  /** Which shop a new product goes in. An existing product stays in its shop. */
+  shop: z.enum(SHOP_IDS).default("lightlab"),
+  /** The question for personalised products ("Name on the keychain"). Empty = not personalised. */
+  personalize: z.string().trim().max(60).nullable().default(null).transform((t) => t || null),
   name: z.string().trim().min(1, "Give the product a name.").max(100),
   slug: z.string().trim().max(60),
   tagline: z.string().trim().max(160),
@@ -47,10 +52,13 @@ const productSchema = z.object({
 
 export type ProductInput = z.infer<typeof productSchema>;
 
-function revalidateShop(slug?: string) {
-  revalidatePath("/lightlab");
-  revalidatePath("/lightlab/admin");
-  if (slug) revalidatePath(`/lightlab/${slug}`);
+/** Refreshes a shop's pages (both shops when it's not known, like after reordering). */
+function revalidateShop(slug?: string, shopId?: string) {
+  for (const s of shopId ? [shopConfig(shopId)] : SHOP_IDS.map(shopConfig)) {
+    revalidatePath(s.base);
+    revalidatePath(s.admin);
+    if (slug) revalidatePath(`${s.base}/${slug}`);
+  }
 }
 
 /** A slug nobody else is using: "tide-lamp", then "tide-lamp-2", ... */
@@ -82,8 +90,10 @@ export async function saveProductAction(input: ProductInput): Promise<ShopAction
     const existing = d.id ? await db.shopProduct.findUnique({ where: { id: d.id } }) : null;
     if (d.id && !existing) return { error: "That product was deleted." };
     const slug = await freeSlug(d.slug || d.name, d.id);
+    const shop = existing?.shop ?? d.shop;
     const data = {
-      shop: lightlab.id,
+      shop,
+      personalize: d.personalize,
       slug,
       name: d.name,
       tagline: d.tagline,
@@ -108,9 +118,9 @@ export async function saveProductAction(input: ProductInput): Promise<ShopAction
     if (existing) {
       const before = JSON.parse(existing.images) as string[];
       await dropImages(before.filter((k) => !d.images.includes(k)));
-      if (existing.slug !== slug) revalidatePath(`/lightlab/${existing.slug}`);
+      if (existing.slug !== slug) revalidatePath(`${shopConfig(shop).base}/${existing.slug}`);
     }
-    revalidateShop(slug);
+    revalidateShop(slug, shop);
     const told = await restocked(saved.id);
     return { ok: true, id: saved.id, message: (existing ? "Saved." : "Product added.") + told };
   } catch (err) {
@@ -148,7 +158,7 @@ export async function deleteProductAction(id: string): Promise<ShopActionState> 
   if (!p) return { ok: true };
   await db.shopProduct.delete({ where: { id } });
   await dropImages(JSON.parse(p.images) as string[]);
-  revalidateShop(p.slug);
+  revalidateShop(p.slug, p.shop);
   return { ok: true, message: `${p.name} deleted.` };
 }
 
@@ -173,7 +183,7 @@ export async function quickUpdateAction(id: string, patch: z.infer<typeof quickS
     } else {
       await db.shopProduct.update({ where: { id }, data: parsed.data });
     }
-    revalidateShop(p.slug);
+    revalidateShop(p.slug, p.shop);
     return { ok: true, message: await restocked(id) };
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") return { error: "That product was deleted." };

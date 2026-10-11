@@ -17,7 +17,7 @@ export async function queueReviewRequest(tx: Prisma.TransactionClient, order: Or
   if (!reviews.googleUrl) return;
   const dedupeKey = `review-request:${order.customerEmail.toLowerCase()}`;
   if (await tx.outboxJob.findUnique({ where: { dedupeKey } })) return;
-  const items = await tx.orderItem.findMany({ where: { orderId: order.id }, select: { productId: true } });
+  const items = await tx.orderItem.findMany({ where: { orderId: order.id }, select: { productId: true, printerId: true } });
   if (isLightLabOrder(items)) return;
   await tx.outboxJob.create({
     data: {

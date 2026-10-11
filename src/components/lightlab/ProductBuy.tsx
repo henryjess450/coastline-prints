@@ -1,36 +1,47 @@
 "use client";
 import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
-import { lightlab } from "@config/lightlab";
+import { shopConfig } from "@config/shops";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 import { money } from "@/lib/format";
-import { useShopCart } from "@/lib/shop/cart";
-import { inStock, unitPrice, variantOf, type ShopProductDto } from "@/lib/shop/types";
-import { LampPlaceholder } from "./ProductGrid";
+import { cartFor } from "@/lib/shop/cart";
+import { CUSTOM_TEXT_MAX, inStock, unitPrice, variantOf, type ShopProductDto } from "@/lib/shop/types";
+import { ProductPlaceholder } from "./ProductGrid";
 import { QuantityStepper } from "./QuantityStepper";
 import { RestockForm } from "./RestockForm";
 
-/** Photos, options, quantity and "Add to cart" for one product. */
+/** Photos, options, personalisation, quantity and "Add to cart" for one product (either shop). */
 export function ProductBuy({ product: p }: { product: ShopProductDto }) {
+  const shop = shopConfig(p.shop);
+  const ll = shop.id === "lightlab";
+  const useCart = cartFor(shop.id);
+  const [customText, setCustomText] = useState("");
+  const [needText, setNeedText] = useState(false);
   // Start on the first option that's in stock.
   const [variantId, setVariantId] = useState<string | null>(() => p.variants.find((v) => inStock(p, v.id) !== 0)?.id ?? p.variants[0]?.id ?? null);
   const [qty, setQty] = useState(1);
   const [photo, setPhoto] = useState(0);
-  const add = useShopCart((s) => s.add);
-  const inCart = useShopCart((s) => s.lines.find((l) => l.productId === p.id && l.variantId === variantId)?.quantity ?? 0);
+  const add = useCart((s) => s.add);
+  const text = customText.trim();
+  const inCart = useCart((s) => s.lines.find((l) => l.productId === p.id && l.variantId === variantId && (l.customText ?? "") === (p.personalize ? text : ""))?.quantity ?? 0);
   const [added, setAdded] = useState(0);
 
   const variant = variantOf(p, variantId);
   const price = unitPrice(p, variantId);
   const left = inStock(p, variantId);
-  const canAdd = left == null ? lightlab.maxQuantityPerLine - inCart : Math.min(left, lightlab.maxQuantityPerLine) - inCart;
+  const canAdd = left == null ? shop.maxQuantityPerLine - inCart : Math.min(left, shop.maxQuantityPerLine) - inCart;
   const soldOut = left === 0;
   const quantity = Math.max(1, Math.min(qty, canAdd));
 
   function addToCart() {
     if (canAdd <= 0) return;
-    add({ productId: p.id, variantId, quantity, slug: p.slug, name: p.name, variantName: variant?.name ?? null, swatch: variant?.hex ?? null, image: p.images[0] ?? null, unitCents: price, max: left });
+    if (p.personalize && !text) {
+      setNeedText(true);
+      document.getElementById("ll-custom-text")?.focus();
+      return;
+    }
+    add({ productId: p.id, variantId, quantity, customText: p.personalize ? text : null, slug: p.slug, name: p.name, variantName: variant?.name ?? null, swatch: variant?.hex ?? null, image: p.images[0] ?? null, unitCents: price, max: left });
     setAdded((n) => n + 1);
     setQty(1);
   }
@@ -43,7 +54,7 @@ export function ProductBuy({ product: p }: { product: ShopProductDto }) {
             {p.images.length ? (
               <motion.img key={photo} src={p.images[photo]} alt={p.name} className="absolute inset-0 h-full w-full object-cover" initial={{ opacity: 0, scale: 1.02 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }} />
             ) : (
-              <LampPlaceholder />
+              <ProductPlaceholder shop={shop.id} />
             )}
           </AnimatePresence>
         </div>
@@ -60,9 +71,9 @@ export function ProductBuy({ product: p }: { product: ShopProductDto }) {
       </div>
 
       <div className="min-w-0 lg:pt-4">
-        {p.category && <p className="ll-accent text-2xl">{p.category}</p>}
+        {p.category && <p className={ll ? "ll-accent text-2xl" : "text-xs font-semibold uppercase tracking-[0.14em] text-accent-text"}>{p.category}</p>}
         <h1 className="mt-2 font-display text-3xl font-bold tracking-tight sm:text-4xl">{p.name}</h1>
-        {p.tagline && <p className="ll-accent mt-2 text-3xl">{p.tagline}</p>}
+        {p.tagline && <p className={ll ? "ll-accent mt-2 text-3xl" : "mt-2 text-lg text-muted"}>{p.tagline}</p>}
         <p className="mt-5 flex items-baseline gap-3">
           <motion.span key={price} initial={{ y: -6, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="font-display text-3xl font-bold tabular-nums">
             {money(price)}
@@ -98,12 +109,31 @@ export function ProductBuy({ product: p }: { product: ShopProductDto }) {
           </fieldset>
         )}
 
+        {p.personalize && (
+          <div className="mt-8 max-w-sm">
+            <label htmlFor="ll-custom-text" className="mb-2 block text-sm font-medium">
+              {p.personalize}
+            </label>
+            <input
+              id="ll-custom-text"
+              value={customText}
+              maxLength={CUSTOM_TEXT_MAX}
+              onChange={(e) => (setCustomText(e.target.value), setNeedText(false))}
+              aria-invalid={needText}
+              className={cn("h-11 w-full rounded-xl border bg-surface px-3.5 text-sm outline-none transition-[border-color,box-shadow] focus:border-accent-line focus:shadow-[0_0_0_4px_var(--accent-soft)]", needText ? "border-danger/60" : "border-line")}
+            />
+            <p className={cn("mt-1.5 text-xs", needText ? "text-danger" : "text-faint")} role={needText ? "alert" : undefined}>
+              {needText ? "Please fill this in first." : `Up to ${CUSTOM_TEXT_MAX} characters. Printed exactly as typed.`}
+            </p>
+          </div>
+        )}
+
         <p className={cn("mt-6 text-sm", soldOut ? "text-danger" : left != null && left <= 3 ? "text-warning" : "text-success")}>
           {soldOut ? "Sold out" : left == null ? "Made to order" : left <= 3 ? `Only ${left} left` : "In stock"}
         </p>
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          {soldOut ? (
+          {soldOut && !ll ? null : soldOut ? (
             // Keyed so switching options starts a fresh form.
             <RestockForm key={variantId ?? ""} productId={p.id} variantId={variantId} label={variant ? `${p.name} (${variant.name})` : p.name} />
           ) : (
@@ -127,7 +157,7 @@ export function ProductBuy({ product: p }: { product: ShopProductDto }) {
 
         <ul className="mt-8 space-y-2 border-t border-line pt-6 text-sm text-muted">
           <li>Free pickup, or Canada Post shipping anywhere in Canada.</li>
-          <li>Pay by Interac e-Transfer or card. Coastline gift cards work too.</li>
+          <li>Pay by Interac e-Transfer or card. {ll ? "Coastline gift cards work too." : "Gift cards work too."}</li>
         </ul>
       </div>
     </div>

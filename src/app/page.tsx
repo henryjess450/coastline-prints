@@ -20,6 +20,7 @@ import { todayIn } from "@/lib/pickup";
 import { faqs } from "@/lib/faq";
 import { money } from "@/lib/format";
 import { JsonLd, localBusiness, place, website } from "@/lib/seo";
+import { coastlineShopOpen } from "@/lib/shop/open.server";
 import { uses } from "@/lib/uses";
 
 export const metadata: Metadata = {
@@ -39,6 +40,7 @@ const steps = [
 export default async function Home() {
   const cfg = await getEffectiveConfig();
   const p = cfg.pricing;
+  const shopOpen = await coastlineShopOpen();
   // October to Christmas: a link to the Christmas gifts page.
   const today = todayIn(pickup.timeZone);
   const seasonal = today.slice(5) >= "10-01" && today.slice(5) <= "12-25";
@@ -117,6 +119,13 @@ export default async function Home() {
               </Link>
             </Reveal>
           ))}
+          {shopOpen && (
+            <Reveal as="li" delay={uses.length * 0.04}>
+              <Link href="/shop" className="inline-block rounded-full border border-line bg-surface px-5 py-3 font-medium transition-[transform,border-color,color] duration-200 hover:-translate-y-0.5 hover:border-accent hover:text-accent-text">
+                Ready-made prints
+              </Link>
+            </Reveal>
+          )}
           {seasonal && (
             <Reveal as="li" delay={uses.length * 0.04}>
               <Link href="/christmas-gifts" className="inline-block rounded-full border border-accent bg-accent px-5 py-3 font-medium text-accent-ink transition-transform duration-200 hover:-translate-y-0.5">

@@ -8,13 +8,15 @@ import { buttonClass } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 import { money } from "@/lib/format";
 import type { ShopProductDto } from "@/lib/shop/types";
-import { LampPlaceholder } from "../ProductGrid";
+import { shopConfig, type ShopId } from "@config/shops";
+import { ProductPlaceholder } from "../ProductGrid";
 import { dollars, parseDollars } from "./money";
 
 type Stats = Record<string, { units: number; cents: number }>;
 
 /** Every product, with the things that change most (price, stock, shown) editable right here. Drag to reorder the shop. */
-export function ProductTable({ products, stats }: { products: ShopProductDto[]; stats: Stats }) {
+export function ProductTable({ products, stats, shop = "lightlab" }: { products: ShopProductDto[]; stats: Stats; shop?: ShopId }) {
+  const { admin } = shopConfig(shop);
   const router = useRouter();
   const [order, setOrder] = useState(products);
   const [flash, setFlash] = useState<{ text: string; bad?: boolean; n: number } | null>(null);
@@ -39,8 +41,8 @@ export function ProductTable({ products, stats }: { products: ShopProductDto[]; 
     return (
       <div className="rounded-3xl border border-line bg-surface px-6 py-16 text-center">
         <p className="font-display text-xl font-semibold">No products yet.</p>
-        <p className="mt-2 text-muted">Add your first lamp and it shows up on the shop straight away.</p>
-        <Link href="/lightlab/admin/products/new" className={buttonClass("primary", "md", "mt-6")}>
+        <p className="mt-2 text-muted">Add your first {shop === "lightlab" ? "lamp" : "product"} and it shows up on the shop straight away.</p>
+        <Link href={`${admin}/products/new`} className={buttonClass("primary", "md", "mt-6")}>
           Add a product
         </Link>
       </div>
@@ -121,16 +123,16 @@ function Row({ product: p, stats, onDrop, onSaved }: { product: ShopProductDto; 
       <button type="button" onPointerDown={(e) => drag.start(e)} className="cursor-grab touch-none px-1 text-lg text-faint active:cursor-grabbing" aria-label={`Drag ${p.name} to reorder`}>
         ⠿
       </button>
-      <Link href={`/lightlab/admin/products/${p.id}`} className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-line bg-elev">
+      <Link href={`${shopConfig(p.shop).admin}/products/${p.id}`} className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-line bg-elev">
         {p.images[0] ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={p.images[0]} alt="" className="h-full w-full object-cover" />
         ) : (
-          <LampPlaceholder />
+          <ProductPlaceholder shop={p.shop} />
         )}
       </Link>
       <div className="min-w-0 flex-1 basis-40">
-        <Link href={`/lightlab/admin/products/${p.id}`} className="block truncate font-semibold hover:underline">
+        <Link href={`${shopConfig(p.shop).admin}/products/${p.id}`} className="block truncate font-semibold hover:underline">
           {p.name}
         </Link>
         <p className="truncate text-xs text-muted">
@@ -153,7 +155,7 @@ function Row({ product: p, stats, onDrop, onSaved }: { product: ShopProductDto; 
       )}
       <Toggle on={p.featured} label="Featured" onChange={(v) => save({ featured: v }, v ? "featured." : "no longer featured.")} />
       <Toggle on={p.active} label="On shop" onChange={(v) => save({ active: v }, v ? "now showing on the shop." : "hidden from the shop.")} />
-      <Link href={`/lightlab/admin/products/${p.id}`} className={buttonClass("secondary", "sm")}>
+      <Link href={`${shopConfig(p.shop).admin}/products/${p.id}`} className={buttonClass("secondary", "sm")}>
         Edit
       </Link>
     </Reorder.Item>

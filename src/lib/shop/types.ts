@@ -14,11 +14,15 @@ export type ShopVariant = {
 
 export type ShopProductDto = {
   id: string;
+  /** "lightlab" or "coastline" (config/shops.ts). */
+  shop: string;
   slug: string;
   name: string;
   tagline: string;
   description: string;
   category: string;
+  /** The question for personalised products, like "Name on the keychain". */
+  personalize: string | null;
   priceCents: number;
   compareAtCents: number | null;
   /** Null = made to order. */
@@ -35,7 +39,10 @@ export type ShopProductDto = {
 };
 
 /** One cart line as the browser sends it. Prices are never taken from the client. */
-export type ShopLineInput = { productId: string; variantId: string | null; quantity: number };
+export type ShopLineInput = { productId: string; variantId: string | null; quantity: number; /** Personalised products: the text, like a name. */ customText?: string | null };
+
+/** Longest personalisation text (a name on a keychain). */
+export const CUSTOM_TEXT_MAX = 24;
 
 /** A priced shop line, stored on the checkout and turned into an order item. */
 export type PricedShopLine = ShopLineInput & {

@@ -19,6 +19,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     page("/faq", 0.7),
     page("/about", 0.6),
     page("/library", 0.6, "weekly"),
+    page("/shop", 0.7, "weekly"),
     page("/gift-cards", 0.6),
     page("/christmas-gifts", 0.7, "weekly"),
     page("/rewards", 0.4),

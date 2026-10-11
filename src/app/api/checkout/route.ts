@@ -125,6 +125,7 @@ export async function POST(req: Request) {
     const snapshot: CartSnapshot = {
       lines: priced.lines,
       shopLines: shop ? (priced as Awaited<ReturnType<typeof priceShopCart>>).shopLines : undefined,
+      shop: shop ? (priced as Awaited<ReturnType<typeof priceShopCart>>).shop : undefined,
       quote: { items: priced.items, baseFeeCents: priced.baseFeeCents, subtotalCents: priced.subtotalCents, minimumAdjCents: priced.minimumAdjCents, totalCents: priced.totalCents, shipping: ship },
     };
     const checkout = await db.checkout.create({

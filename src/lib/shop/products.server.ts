@@ -1,6 +1,6 @@
 import "server-only";
 import type { ShopProduct } from "@/generated/prisma/client";
-import { lightlab } from "@config/lightlab";
+import type { ShopId } from "@config/shops";
 import { db } from "@/lib/db";
 import { heldStock, withHolds } from "./holds.server";
 import { shopImageUrl, type ShopProductDto, type ShopVariant } from "./types";
@@ -17,11 +17,13 @@ export function toProductDto(p: ShopProduct): ShopProductDto {
   const keys = parse<string[]>(p.images, []);
   return {
     id: p.id,
+    shop: p.shop,
     slug: p.slug,
     name: p.name,
     tagline: p.tagline,
     description: p.description,
     category: p.category,
+    personalize: p.personalize,
     priceCents: p.priceCents,
     compareAtCents: p.compareAtCents,
     stock: p.stock,
@@ -38,9 +40,9 @@ export function toProductDto(p: ShopProduct): ShopProductDto {
 
 const order = [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }];
 
-/** What the shop shows: active products only, unless it's the admin asking. */
-export async function listProducts({ all = false } = {}) {
-  const rows = await db.shopProduct.findMany({ where: { shop: lightlab.id, ...(all ? {} : { active: true }) }, orderBy: order });
+/** What a shop shows: active products only, unless it's the admin asking. */
+export async function listProducts({ all = false, shop = "lightlab" }: { all?: boolean; shop?: ShopId } = {}) {
+  const rows = await db.shopProduct.findMany({ where: { shop, ...(all ? {} : { active: true }) }, orderBy: order });
   const products = rows.map(toProductDto);
   // The admin sees real stock; shoppers see what's left after checkouts in progress.
   if (all) return products;
@@ -48,9 +50,9 @@ export async function listProducts({ all = false } = {}) {
   return products.map((p) => withHolds(p, held));
 }
 
-export async function productBySlug(slug: string) {
+export async function productBySlug(slug: string, shop: ShopId = "lightlab") {
   const p = await db.shopProduct.findUnique({ where: { slug } });
-  if (!p || p.shop !== lightlab.id || !p.active) return null;
+  if (!p || p.shop !== shop || !p.active) return null;
   const dto = toProductDto(p);
   return withHolds(dto, await heldStock([dto]));
 }

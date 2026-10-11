@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
 import { cn } from "@/lib/cn";
+import { shopConfig, type ShopId } from "@config/shops";
 import { money } from "@/lib/format";
 import { inStock, type ShopProductDto } from "@/lib/shop/types";
 
@@ -58,13 +59,13 @@ function ProductCard({ product: p }: { product: ShopProductDto }) {
   const soldOut = left === 0;
   const price = fromPrice(p);
   return (
-    <Link href={`/lightlab/${p.slug}`} className="group block">
+    <Link href={`${shopConfig(p.shop).base}/${p.slug}`} className="group block">
       <div className="relative aspect-square overflow-hidden rounded-3xl border border-line bg-surface">
         {p.images[0] ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={p.images[0]} alt={p.name} loading="lazy" className={cn("h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]", soldOut && "opacity-60")} />
         ) : (
-          <LampPlaceholder />
+          <ProductPlaceholder shop={p.shop} />
         )}
         {/* Second photo fades in on hover, like turning the piece around */}
         {p.images[1] && (
@@ -84,7 +85,7 @@ function ProductCard({ product: p }: { product: ShopProductDto }) {
       <div className="mt-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-display font-semibold leading-snug transition-colors group-hover:text-accent-text">{p.name}</p>
-          {p.tagline && <p className="ll-accent mt-1 line-clamp-2 text-xl">{p.tagline}</p>}
+          {p.tagline && <p className={p.shop === "lightlab" ? "ll-accent mt-1 line-clamp-2 text-xl" : "mt-1 line-clamp-2 text-sm text-muted"}>{p.tagline}</p>}
         </div>
         <p className="shrink-0 text-right font-mono text-sm">
           {p.variants.some((v) => v.priceCents != null && v.priceCents !== p.priceCents) && <span className="text-faint">from </span>}
@@ -114,7 +115,19 @@ function Badge({ children, solid }: { children: React.ReactNode; /** Filled (bla
   );
 }
 
-/** Until the owner adds photos: a simple pendant lamp, black and white. */
+/** Until the owner adds photos: a lamp for LightLab, a little printed cube for the Coastline shop. */
+export function ProductPlaceholder({ shop }: { shop: ShopId | string }) {
+  if (shop !== "lightlab")
+    return (
+      <svg viewBox="0 0 100 100" className="h-full w-full text-accent-text" aria-hidden>
+        <path d="M50 30l20 10v22l-20 10-20-10V40z" fill="currentColor" opacity="0.25" />
+        <path d="M50 30l20 10-20 10-20-10z" fill="currentColor" opacity="0.5" />
+      </svg>
+    );
+  return <LampPlaceholder />;
+}
+
+/** A simple pendant lamp, black and white. */
 export function LampPlaceholder() {
   return (
     <svg viewBox="0 0 100 100" className="h-full w-full text-fg" aria-hidden>

@@ -29,7 +29,8 @@ import { applyCodes, codeEntry, type CodeInfo, type SaleInfo } from "@/lib/codes
 import { etransferDiscount, type EtransferPublic } from "@/lib/payments/etransfer";
 import { EtransferWaiting, type EtransferDetails } from "./EtransferWaiting";
 import { lightlab } from "@config/lightlab";
-import { shopPayload, useShopCart, type ShopCartLine } from "@/lib/shop/cart";
+import type { ShopId } from "@config/shops";
+import { cartFor, shopPayload, type ShopCartLine } from "@/lib/shop/cart";
 
 type Contact = {
   name: string;
@@ -60,7 +61,7 @@ export function CheckoutStep({
   onBack,
 }: {
   items?: CartItem[];
-  shop?: { lines: ShopCartLine[] };
+  shop?: { lines: ShopCartLine[]; id?: ShopId };
   cartQuote: CartQuote;
   square: SquareConfig | null;
   etransfer: EtransferPublic;
@@ -69,7 +70,7 @@ export function CheckoutStep({
   const cfg = useConfig();
   const router = useRouter();
   const resetPrints = useOrder((s) => s.reset);
-  const resetShop = useShopCart((s) => s.reset);
+  const resetShop = cartFor(shop?.id)((s) => s.reset);
   const resetCart = shop ? resetShop : resetPrints;
   /** The cart as the server wants it. */
   const cartBody = shop ? { products: shopPayload(shop.lines) } : { items: cartPayload(items) };
@@ -622,7 +623,7 @@ export function CheckoutStep({
                   <p className="truncate font-medium">
                     {l.name} <span className="text-faint">× {l.quantity}</span>
                   </p>
-                  <p className="text-xs text-muted">{[lightlab.name, l.variantName].filter(Boolean).join(" · ")}</p>
+                  <p className="text-xs text-muted">{[shop?.id === "coastline" ? null : lightlab.name, l.variantName, l.customText ? `“${l.customText}”` : null].filter(Boolean).join(" · ")}</p>
                 </div>
                 <span className="shrink-0 font-mono tabular-nums">{money(l.unitCents * l.quantity)}</span>
               </motion.li>

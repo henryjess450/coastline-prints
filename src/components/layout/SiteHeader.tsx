@@ -17,13 +17,15 @@ const nav = [
   { href: "/rewards", label: "Rewards" },
 ];
 
-export function SiteHeader() {
+export function SiteHeader({ shopOpen = false }: { shopOpen?: boolean }) {
   const pathname = usePathname();
   const { scrollY } = useScroll();
   const backdrop = useTransform(scrollY, [0, 60], [0, 1]);
   const season = useSeason();
   // The LightLab shop (not its admin) gets both logos and a cart.
   const lightlab = pathname.startsWith("/lightlab") && !pathname.startsWith("/lightlab/admin");
+  // The Coastline shop gets its own cart.
+  const shop = pathname === "/shop" || pathname.startsWith("/shop/");
 
   return (
     <header className="sticky top-0 z-40 pt-[env(safe-area-inset-top)]">
@@ -40,7 +42,7 @@ export function SiteHeader() {
           </Link>
         )}
         <nav aria-label="Main" className={lightlab ? "hidden" : "hidden items-center gap-1 lg:flex"}>
-          {nav.map((n) => (
+          {(shopOpen ? [...nav.slice(0, 2), { href: "/shop", label: "Shop" }, ...nav.slice(2)] : nav).map((n) => (
             <Link key={n.href} href={n.href} className="whitespace-nowrap rounded-md px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-strong hover:text-fg">
               {n.label}
             </Link>
@@ -56,7 +58,8 @@ export function SiteHeader() {
             </Link>
           )}
           {lightlab && <CartButton />}
-          {!lightlab && !pathname.startsWith("/order") && !pathname.startsWith("/admin") && (
+          {shop && <CartButton shop="coastline" />}
+          {!lightlab && !shop && !pathname.startsWith("/order") && !pathname.startsWith("/admin") && (
             <ButtonLink href="/order" size="sm" className="hidden sm:inline-flex">
               Start an order
             </ButtonLink>

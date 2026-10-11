@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, Reorder } from "framer-motion";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { lightlab } from "@config/lightlab";
+import { shopConfig, type ShopId } from "@config/shops";
 import { deleteProductAction, discardImagesAction, saveProductAction, type ProductInput } from "@/app/lightlab/admin/actions";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
@@ -17,9 +18,11 @@ const input = "h-11 w-full rounded-xl border border-line bg-elev px-3 text-sm ou
 let seq = 0;
 const newKey = () => `v${Date.now()}${seq++}`;
 
-/** Add or edit one LightLab product. */
-export function ProductEditor({ product, categories }: { product: ShopProductDto | null; categories: string[] }) {
+/** Add or edit one product, in LightLab or the Coastline shop. */
+export function ProductEditor({ product, categories, shop: newShop = "lightlab" }: { product: ShopProductDto | null; categories: string[]; /** For a new product. */ shop?: ShopId }) {
   const router = useRouter();
+  const shop = shopConfig(product?.shop ?? newShop);
+  const [personalize, setPersonalize] = useState(product?.personalize ?? "");
   const [name, setName] = useState(product?.name ?? "");
   const [slug, setSlug] = useState(product?.slug ?? "");
   const [slugTouched, setSlugTouched] = useState(!!product);
@@ -87,6 +90,8 @@ export function ProductEditor({ product, categories }: { product: ShopProductDto
     if (dims.some((n) => !(n > 0))) return fail("Fill in the boxed size and weight (used for shipping prices)."), null;
     return {
       id: product?.id ?? null,
+      shop: shop.id,
+      personalize: personalize.trim() || null,
       name,
       slug: slugTouched ? slug : slugify(name),
       tagline,
@@ -116,7 +121,7 @@ export function ProductEditor({ product, categories }: { product: ShopProductDto
       savedImages.current = new Set(images);
       setDirty(false);
       setSaved(r.message ?? "Saved.");
-      if (!product && r.id) router.replace(`/lightlab/admin/products/${r.id}`);
+      if (!product && r.id) router.replace(`${shop.admin}/products/${r.id}`);
       else router.refresh();
     });
   }
@@ -127,7 +132,7 @@ export function ProductEditor({ product, categories }: { product: ShopProductDto
       const r = await deleteProductAction(product.id);
       if (r.error) return fail(r.error);
       setDirty(false);
-      router.push("/lightlab/admin");
+      router.push(shop.admin);
       router.refresh();
     });
   }
@@ -147,14 +152,17 @@ export function ProductEditor({ product, categories }: { product: ShopProductDto
               <input value={tagline} onChange={(e) => touch(setTagline)(e.target.value)} className={input} maxLength={160} placeholder="A glowing moon for your desk" />
             </Field>
             <Field label="Category">
-              <input value={category} onChange={(e) => touch(setCategory)(e.target.value)} className={input} list="ll-categories" maxLength={40} placeholder="Desk lamps" />
+              <input value={category} onChange={(e) => touch(setCategory)(e.target.value)} className={input} list="ll-categories" maxLength={40} placeholder={shop.id === "lightlab" ? "Desk lamps" : "Keychains"} />
               <datalist id="ll-categories">
                 {categories.map((c) => (
                   <option key={c} value={c} />
                 ))}
               </datalist>
             </Field>
-            <Field label="Web address" hint={`/lightlab/${slugTouched ? slug || "…" : slugify(name || "product")}`}>
+            <Field label="Personalisation (optional)" hint={'Asks the shopper to type something, like "Name on the keychain". Leave empty if there\'s nothing to personalise.'} className="sm:col-span-2">
+              <input value={personalize} onChange={(e) => touch(setPersonalize)(e.target.value)} className={input} maxLength={60} placeholder="Name on the keychain" />
+            </Field>
+            <Field label="Web address" hint={`${shop.base}/${slugTouched ? slug || "…" : slugify(name || "product")}`}>
               <input
                 value={slugTouched ? slug : slugify(name)}
                 onChange={(e) => {
@@ -244,7 +252,7 @@ export function ProductEditor({ product, categories }: { product: ShopProductDto
               <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-center text-sm text-success" role="status">
                 {saved}{" "}
                 {product && active && (
-                  <Link href={`/lightlab/${product.slug}`} target="_blank" className="underline underline-offset-4">
+                  <Link href={`${shop.base}/${product.slug}`} target="_blank" className="underline underline-offset-4">
                     View it ↗
                   </Link>
                 )}

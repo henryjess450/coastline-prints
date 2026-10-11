@@ -11,6 +11,7 @@ const links = [
   { href: "/admin/scan", label: "Scan" },
   { href: "/admin/queues", label: "Printers" },
   { href: "/admin/customers", label: "Customers" },
+  { href: "/admin/shop", label: "Shop" },
   { href: "/admin/promote", label: "Promote" },
   { href: "/admin/codes", label: "Codes" },
   { href: "/admin/etransfers", label: "e-Transfers" },

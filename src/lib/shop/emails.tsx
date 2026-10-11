@@ -2,6 +2,7 @@ import "server-only";
 import { Img, Section, Text } from "@react-email/components";
 import { render, toPlainText } from "@react-email/render";
 import { lightlab } from "@config/lightlab";
+import { shopConfig } from "@config/shops";
 import { privateSite } from "@config/private.server";
 import { accentFor, EmailLayout, H1, P, PillButton } from "@/emails/components/Layout";
 import { db } from "@/lib/db";
@@ -23,8 +24,10 @@ export async function buildStockAlertEmail(payload: { productId?: string; varian
   const left = payload.left ?? 0;
   const waiting = left === 0 ? await db.restockRequest.count({ where: { productId: p.id, notifiedAt: null } }) : 0;
   const subject = left === 0 ? `${label} just sold out` : `${label}: only ${left} left`;
+  const shop = shopConfig(p.shop);
+  const ll = shop.id === "lightlab";
   const html = await render(
-    <EmailLayout brand="lightlab" preview={subject} footerNote="LightLab stock alert. Not sent to customers.">
+    <EmailLayout brand={ll ? "lightlab" : "coastline"} preview={subject} footerNote={`${ll ? "LightLab" : "Shop"} stock alert. Not sent to customers.`}>
       <H1>{subject}</H1>
       <P muted>
         {left === 0
@@ -33,7 +36,7 @@ export async function buildStockAlertEmail(payload: { productId?: string; varian
       </P>
       {waiting > 0 && <P>{waiting === 1 ? "1 person is" : `${waiting} people are`} already waiting to hear when it&apos;s back.</P>}
       <Section style={{ margin: "18px 0 4px" }}>
-        <PillButton accent={accent} href={`${appUrl()}/lightlab/admin/products/${p.id}`}>
+        <PillButton accent={ll ? accent : undefined} href={`${appUrl()}${shop.admin}/products/${p.id}`}>
           Update stock
         </PillButton>
       </Section>

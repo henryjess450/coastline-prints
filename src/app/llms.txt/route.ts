@@ -35,6 +35,7 @@ export async function GET() {
 
 ${link("Start an order", "/order", "upload a file and get a price")}
 ${link("Find a model", "/library", "search free and paid 3D models from several sites")}
+${link("Shop", "/shop", "ready-made prints like name keychains and planters, no file needed")}
 ${link("Questions", "/faq", "prices, files, materials, pickup and shipping")}
 ${link("About", "/about")}
 ${link("Gift cards", "/gift-cards")}

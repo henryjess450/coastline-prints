@@ -3,18 +3,19 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect } from "react";
-import { lightlab } from "@config/lightlab";
+import { shopConfig, type ShopId } from "@config/shops";
 import { buttonClass } from "@/components/ui/Button";
 import { money } from "@/lib/format";
-import { useShopCart, useShopCartHydrated } from "@/lib/shop/cart";
+import { cartFor, useShopCartHydrated } from "@/lib/shop/cart";
 import { QuantityStepper } from "./QuantityStepper";
 
-/** The cart in the header on LightLab pages, and the drawer it opens. */
-export function CartButton() {
-  const hydrated = useShopCartHydrated();
-  const lines = useShopCart((s) => s.lines);
-  const open = useShopCart((s) => s.open);
-  const setOpen = useShopCart((s) => s.setOpen);
+/** The cart in the header on a shop's pages (LightLab, or the Coastline shop), and the drawer it opens. */
+export function CartButton({ shop = "lightlab" }: { shop?: ShopId }) {
+  const useCart = cartFor(shop);
+  const hydrated = useShopCartHydrated(shop);
+  const lines = useCart((s) => s.lines);
+  const open = useCart((s) => s.open);
+  const setOpen = useCart((s) => s.setOpen);
   const count = hydrated ? lines.reduce((n, l) => n + l.quantity, 0) : 0;
   const pathname = usePathname();
 
@@ -61,7 +62,7 @@ export function CartButton() {
               exit={{ x: "100%" }}
               transition={{ type: "spring", stiffness: 380, damping: 38 }}
             >
-              <CartContents onClose={() => setOpen(false)} />
+              <CartContents shop={shop} onClose={() => setOpen(false)} />
             </motion.aside>
           </div>
         )}
@@ -70,10 +71,12 @@ export function CartButton() {
   );
 }
 
-function CartContents({ onClose }: { onClose: () => void }) {
-  const lines = useShopCart((s) => s.lines);
-  const setQuantity = useShopCart((s) => s.setQuantity);
-  const remove = useShopCart((s) => s.remove);
+function CartContents({ shop, onClose }: { shop: ShopId; onClose: () => void }) {
+  const useCart = cartFor(shop);
+  const { base, maxQuantityPerLine } = shopConfig(shop);
+  const lines = useCart((s) => s.lines);
+  const setQuantity = useCart((s) => s.setQuantity);
+  const remove = useCart((s) => s.remove);
   const subtotal = lines.reduce((s, l) => s + l.unitCents * l.quantity, 0);
 
   return (
@@ -99,7 +102,7 @@ function CartContents({ onClose }: { onClose: () => void }) {
             <AnimatePresence initial={false}>
               {lines.map((l) => (
                 <motion.li key={l.key} layout initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 24, height: 0 }} className="flex gap-3">
-                  <Link href={`/lightlab/${l.slug}`} onClick={onClose} className="shrink-0">
+                  <Link href={`${base}/${l.slug}`} onClick={onClose} className="shrink-0">
                     {l.image ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={l.image} alt="" className="h-20 w-20 rounded-2xl border border-line object-cover" />
@@ -112,11 +115,12 @@ function CartContents({ onClose }: { onClose: () => void }) {
                       <div className="min-w-0">
                         <p className="truncate font-medium">{l.name}</p>
                         {l.variantName && <p className="text-xs text-muted">{l.variantName}</p>}
+                        {l.customText && <p className="truncate text-xs text-muted">&ldquo;{l.customText}&rdquo;</p>}
                       </div>
                       <span className="shrink-0 font-mono text-sm">{money(l.unitCents * l.quantity)}</span>
                     </div>
                     <div className="mt-2 flex items-center justify-between">
-                      <QuantityStepper value={l.quantity} max={Math.min(lightlab.maxQuantityPerLine, l.max ?? Infinity)} onChange={(q) => setQuantity(l.key, q)} size="sm" />
+                      <QuantityStepper value={l.quantity} max={Math.min(maxQuantityPerLine, l.max ?? Infinity)} onChange={(q) => setQuantity(l.key, q)} size="sm" />
                       <button type="button" onClick={() => remove(l.key)} className="text-xs text-muted underline-offset-4 hover:text-danger hover:underline">
                         Remove
                       </button>
@@ -132,7 +136,7 @@ function CartContents({ onClose }: { onClose: () => void }) {
               <span className="font-display text-2xl font-bold tabular-nums">{money(subtotal)}</span>
             </div>
             <p className="mt-1 text-xs text-faint">Pickup is free. Shipping and codes are added at checkout.</p>
-            <Link href="/lightlab/checkout" className={buttonClass("primary", "lg", "mt-4 w-full")}>
+            <Link href={`${base}/checkout`} className={buttonClass("primary", "lg", "mt-4 w-full")}>
               Checkout
             </Link>
           </div>
