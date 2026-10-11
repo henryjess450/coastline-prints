@@ -13,12 +13,11 @@ export const colors = {
   bg: "#f5f8fb",
 };
 
-/** Accent colours: Coastline navy, or black for LightLab (its shop is black and white). */
+/** Accent colours: Coastline navy, or LightLab blue (from its logo) for LightLab orders. */
 export function accentFor(lightlab: boolean) {
   return lightlab
-    ? // Links are black like the text, so they're underlined to still read as links.
-      { brand: "#0a0a0a", brandSoft: "#f1f1f1", link: { color: "#0a0a0a", textDecoration: "underline" } }
-    : { brand: colors.brand, brandSoft: colors.brandSoft, link: { color: colors.brand } };
+    ? { brand: "#297f9d", brandSoft: "#e8f2f6", label: "#297f9d", link: { color: "#297f9d" } }
+    : { brand: colors.brand, brandSoft: colors.brandSoft, label: colors.faint, link: { color: colors.brand } };
 }
 const Accent = createContext(accentFor(false));
 const base = { muted: "#4a5b6d" };
@@ -88,7 +87,8 @@ export function P({ children, muted }: { children: React.ReactNode; muted?: bool
 }
 
 export function Label({ children }: { children: React.ReactNode }) {
-  return <Text style={{ margin: "18px 0 6px", fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: colors.faint }}>{children}</Text>;
+  const accent = useAccent();
+  return <Text style={{ margin: "18px 0 6px", fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: accent.label }}>{children}</Text>;
 }
 
 /** The customer's own shipping address. */

@@ -153,8 +153,9 @@ describe("LightLab shop", () => {
     expect(mail.html).toContain("/brand/lightlab-logo-dark.png");
     expect(mail.html).not.toContain("/brand/wordmark-white.png");
     expect(mail.html).not.toContain("queue them on the right printer");
-    // Black accents, not Coastline navy.
+    // LightLab blue accents, not Coastline navy.
     expect(mail.html).not.toContain("#0e4471");
+    expect(mail.html).toContain("#297f9d");
 
     // A custom print order is unchanged.
     const print = await createPaidOrder();

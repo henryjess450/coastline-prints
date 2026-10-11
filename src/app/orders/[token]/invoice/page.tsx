@@ -18,6 +18,10 @@ export default async function InvoicePage({ params }: { params: Promise<{ token:
   if (!/^[\w-]{20,64}$/.test(token)) notFound();
   const d = await loadInvoice({ viewToken: token });
   if (!d) notFound();
+  // LightLab invoices: labels, discounts and the PAID stamp in LightLab blue.
+  const ll = d.brand === "lightlab";
+  const label = ll ? "text-ll-blue" : "text-faint";
+  const good = ll ? "text-ll-blue" : "text-success";
   const qr = await QRCode.toString(d.url, { type: "svg", margin: 0, errorCorrectionLevel: "M", color: { dark: "#000000", light: "#ffffff" } });
 
   return (
@@ -41,7 +45,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ token:
             <p className="text-sm text-muted">{d.business.email}</p>
           </div>
           <div className="text-right">
-            <p className="text-xs uppercase tracking-[0.16em] text-faint">Invoice</p>
+            <p className={`text-xs uppercase tracking-[0.16em] ${label}`}>Invoice</p>
             <p className="font-mono text-lg font-semibold">{d.orderNumber}</p>
             <p className="text-sm text-muted">{d.date}</p>
           </div>
@@ -49,12 +53,12 @@ export default async function InvoicePage({ params }: { params: Promise<{ token:
 
         <div className="grid gap-6 border-b border-line py-6 text-sm sm:grid-cols-2">
           <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-faint">Billed to</p>
+            <p className={`text-xs uppercase tracking-[0.16em] ${label}`}>Billed to</p>
             <p className="mt-1 font-medium">{d.customer.name}</p>
             <p className="text-muted">{d.customer.email}</p>
           </div>
           <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-faint">{d.delivery.kind === "ship" ? "Shipped to" : "Pickup"}</p>
+            <p className={`text-xs uppercase tracking-[0.16em] ${label}`}>{d.delivery.kind === "ship" ? "Shipped to" : "Pickup"}</p>
             {d.delivery.kind === "ship" ? d.delivery.lines.map((l) => <p key={l} className="mt-0.5 first:mt-1">{l}</p>) : <p className="mt-1">{d.delivery.when}</p>}
           </div>
         </div>
@@ -75,14 +79,14 @@ export default async function InvoicePage({ params }: { params: Promise<{ token:
             {d.extras.map((e, i) => (
               <tr key={`e${i}`}>
                 <td className="py-3 pr-4">{e.label}</td>
-                <td className={`whitespace-nowrap py-3 text-right font-mono ${e.minus ? "text-success" : ""}`}>{e.minus ? `−${money(e.cents)}` : money(e.cents)}</td>
+                <td className={`whitespace-nowrap py-3 text-right font-mono ${e.minus ? good : ""}`}>{e.minus ? `−${money(e.cents)}` : money(e.cents)}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr className="border-t-2 border-line-strong">
               <td className="pt-4">
-                <span className="mr-3 inline-block -rotate-3 rounded-md border-2 border-success px-2 py-0.5 text-xs font-bold tracking-widest text-success">PAID</span>
+                <span className={`mr-3 inline-block -rotate-3 rounded-md border-2 px-2 py-0.5 text-xs font-bold tracking-widest ${ll ? "border-ll-blue text-ll-blue" : "border-success text-success"}`}>PAID</span>
                 <span className="font-display text-lg font-bold">Total paid</span>
               </td>
               <td className="pt-4 text-right font-mono text-lg font-bold">{money(d.totalCents)}</td>

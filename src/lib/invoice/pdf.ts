@@ -11,6 +11,8 @@ const INK = rgb(0.1, 0.12, 0.15);
 const MUTED = rgb(0.42, 0.46, 0.52);
 const LINE = rgb(0.85, 0.88, 0.91);
 const PAID = rgb(0.07, 0.5, 0.31);
+/** LightLab blue, for the details on LightLab invoices. */
+const LL_BLUE = rgb(41 / 255, 127 / 255, 157 / 255);
 
 /** The built-in PDF fonts only cover Western European letters; anything else becomes "?". */
 export function pdfSafe(s: string) {
@@ -39,6 +41,11 @@ export async function renderInvoicePdf(d: InvoiceData): Promise<Buffer> {
   doc.setTitle(`${d.business.name} invoice ${d.orderNumber}`);
   doc.setAuthor(d.business.name);
   doc.setCreator(d.business.name);
+  // LightLab invoices: labels, the PAID stamp, discounts and the total rule in LightLab blue.
+  const ll = d.brand === "lightlab";
+  const LABEL = ll ? LL_BLUE : MUTED;
+  const STAMP = ll ? LL_BLUE : PAID;
+  const RULE = ll ? LL_BLUE : INK;
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const qr = await doc.embedPng(await QRCode.toBuffer(d.url, { type: "png", margin: 1, width: 300, errorCorrectionLevel: "M" }));
@@ -69,7 +76,7 @@ export async function renderInvoicePdf(d: InvoiceData): Promise<Buffer> {
     text(d.business.name, M, y - 18, { size: 22, font: bold, color: NAVY });
   }
   text(d.business.email, M, y - 36, { color: MUTED });
-  text("INVOICE", W - M, y - 10, { size: 9, font: bold, color: MUTED, right: true });
+  text("INVOICE", W - M, y - 10, { size: 9, font: bold, color: LABEL, right: true });
   text(d.orderNumber, W - M, y - 28, { size: 16, font: bold, right: true });
   text(d.date, W - M, y - 44, { color: MUTED, right: true });
   y -= 64;
@@ -77,8 +84,8 @@ export async function renderInvoicePdf(d: InvoiceData): Promise<Buffer> {
 
   // Billed to, and pickup or shipping.
   y -= 22;
-  text("BILLED TO", M, y, { size: 8, font: bold, color: MUTED });
-  text(d.delivery.kind === "ship" ? "SHIPPED TO" : "PICKUP", W / 2, y, { size: 8, font: bold, color: MUTED });
+  text("BILLED TO", M, y, { size: 8, font: bold, color: LABEL });
+  text(d.delivery.kind === "ship" ? "SHIPPED TO" : "PICKUP", W / 2, y, { size: 8, font: bold, color: LABEL });
   const left = [d.customer.name, d.customer.email];
   const right = d.delivery.kind === "ship" ? d.delivery.lines : [d.delivery.when];
   for (let i = 0; i < Math.max(left.length, right.length); i++) {
@@ -91,9 +98,9 @@ export async function renderInvoicePdf(d: InvoiceData): Promise<Buffer> {
   // Items.
   const qtyX = W - M - 110;
   rule(y + 8);
-  text("ITEM", M, y - 6, { size: 8, font: bold, color: MUTED });
-  text("QTY", qtyX, y - 6, { size: 8, font: bold, color: MUTED, right: true });
-  text("AMOUNT", W - M, y - 6, { size: 8, font: bold, color: MUTED, right: true });
+  text("ITEM", M, y - 6, { size: 8, font: bold, color: LABEL });
+  text("QTY", qtyX, y - 6, { size: 8, font: bold, color: LABEL, right: true });
+  text("AMOUNT", W - M, y - 6, { size: 8, font: bold, color: LABEL, right: true });
   y -= 14;
   rule(y);
   for (const it of d.items) {
@@ -113,21 +120,21 @@ export async function renderInvoicePdf(d: InvoiceData): Promise<Buffer> {
     room(24);
     y -= 18;
     text(fit(e.label, regular, 10, qtyX - M), M, y);
-    text(e.minus ? `-${money(e.cents)}` : money(e.cents), W - M, y, { right: true, color: e.minus ? PAID : INK });
+    text(e.minus ? `-${money(e.cents)}` : money(e.cents), W - M, y, { right: true, color: e.minus ? STAMP : INK });
   }
 
   // Total, marked paid.
   room(90);
   y -= 14;
-  page.drawLine({ start: { x: W / 2, y }, end: { x: W - M, y }, thickness: 1.5, color: INK });
+  page.drawLine({ start: { x: W / 2, y }, end: { x: W - M, y }, thickness: 1.5, color: RULE });
   y -= 22;
   text("Total paid", W / 2, y, { size: 13, font: bold });
   text(money(d.totalCents), W - M, y, { size: 13, font: bold, right: true });
   y -= 16;
   text(`Paid by ${d.paidBy}`, W - M, y, { size: 9.5, color: MUTED, right: true });
   // A "PAID" stamp.
-  page.drawRectangle({ x: M, y: y - 4, width: 62, height: 26, borderColor: PAID, borderWidth: 2, opacity: 0, borderOpacity: 1 });
-  text("PAID", M + 13, y + 4, { size: 14, font: bold, color: PAID });
+  page.drawRectangle({ x: M, y: y - 4, width: 62, height: 26, borderColor: STAMP, borderWidth: 2, opacity: 0, borderOpacity: 1 });
+  text("PAID", M + 13, y + 4, { size: 14, font: bold, color: STAMP });
 
   // QR code to the order online, bottom left; thanks, bottom centre.
   const q = 86;
