@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import QRCode from "qrcode";
 import { loadInvoice } from "@/lib/invoice/data";
+import { LightLabLogo } from "@/components/lightlab/LightLabLogo";
 import { money } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +37,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ token:
       <article className="rounded-3xl border border-line bg-surface p-6 sm:p-10">
         <header className="flex flex-wrap items-start justify-between gap-4 border-b border-line pb-6">
           <div>
-            <p className="font-display text-2xl font-bold">{d.business.name}</p>
+            {d.brand === "lightlab" ? <LightLabLogo className="mb-1 h-12" /> : <p className="font-display text-2xl font-bold">{d.business.name}</p>}
             <p className="text-sm text-muted">{d.business.email}</p>
           </div>
           <div className="text-right">
@@ -97,7 +98,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ token:
         <div className="mt-8 flex items-center gap-4 border-t border-line pt-6">
           {/* The same QR code as on the PDF and the printed receipt: it opens the order online. */}
           <span className="block h-20 w-20 shrink-0 rounded-lg bg-white p-1.5 [&_svg]:h-full [&_svg]:w-full" dangerouslySetInnerHTML={{ __html: qr }} />
-          <p className="text-xs text-faint">Scan to see your order, its status and this invoice online. Thanks for printing with {d.business.name}. Prices in Canadian dollars.</p>
+          <p className="text-xs text-faint">Scan to see your order, its status and this invoice online. Thanks for {d.brand === "lightlab" ? "shopping" : "printing"} with {d.business.name}. Prices in Canadian dollars.</p>
         </div>
       </article>
     </div>

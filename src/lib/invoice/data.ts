@@ -6,6 +6,8 @@ import { db } from "@/lib/db";
 import { appUrl } from "@/lib/email/data";
 import { formatPickup } from "@/lib/pickup";
 import { shippingAddressLines, shippingSummary } from "@/lib/shipping/address";
+import { isLightLabOrder } from "@/lib/shop/brand";
+import { lightlab } from "@config/lightlab";
 
 /**
  * One order's invoice as plain data: the web page, the PDF and the email
@@ -18,6 +20,8 @@ export type InvoiceData = {
   /** "October 9, 2026" */
   date: string;
   business: { name: string; email: string };
+  /** LightLab shop orders carry the LightLab logo and name instead of Coastline's. */
+  brand: "coastline" | "lightlab";
   customer: { name: string; email: string };
   /** Pickup time, or the address it ships to. */
   delivery: { kind: "pickup"; when: string } | { kind: "ship"; lines: string[] };
@@ -32,8 +36,8 @@ export type InvoiceData = {
   url: string;
 };
 
-export function invoiceFileName(orderNumber: string) {
-  return `${site.name.replace(/\s+/g, "-")}-invoice-${orderNumber}.pdf`;
+export function invoiceFileName(orderNumber: string, brand: InvoiceData["brand"] = "coastline") {
+  return `${brand === "lightlab" ? lightlab.shortName : site.name.replace(/\s+/g, "-")}-invoice-${orderNumber}.pdf`;
 }
 
 const titleCase = (s: string) => s.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
@@ -43,16 +47,18 @@ export async function loadInvoice(where: { id: string } | { viewToken: string })
   if (!o) return null;
   const codes = JSON.parse(o.appliedCodes) as AppliedCode[];
   const shipTo = shippingAddressLines(o);
+  const shop = isLightLabOrder(o.items);
   return {
     orderNumber: o.orderNumber,
     viewToken: o.viewToken,
     date: o.createdAt.toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric", timeZone: pickup.timeZone }),
-    business: { name: site.name, email: legal.contactEmail },
+    business: { name: shop ? lightlab.name : site.name, email: legal.contactEmail },
+    brand: shop ? "lightlab" : "coastline",
     customer: { name: o.customerName, email: o.customerEmail },
     delivery: shipTo ? { kind: "ship", lines: shipTo } : { kind: "pickup", when: formatPickup(o.pickupDate, o.pickupTime, pickup) ?? "Local pickup" },
     items: o.items.map((i) => ({
       name: i.fileName,
-      detail: `${i.material} ${i.colorName} · ${i.sizeX.toFixed(0)} × ${i.sizeY.toFixed(0)} × ${i.sizeZ.toFixed(0)} mm`,
+      detail: i.productId ? [lightlab.name, i.colorName].filter(Boolean).join(" · ") : `${i.material} ${i.colorName} · ${i.sizeX.toFixed(0)} × ${i.sizeY.toFixed(0)} × ${i.sizeZ.toFixed(0)} mm`,
       quantity: i.quantity,
       cents: i.lineCents,
     })),

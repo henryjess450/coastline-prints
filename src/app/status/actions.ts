@@ -1,6 +1,7 @@
 "use server";
 import { headers } from "next/headers";
 import { findOrderForCustomer, type CustomerOrderView } from "@/lib/orders/lookup";
+import { ORDER_NUMBER_RE } from "@/lib/orders/number";
 import { rateLimit } from "@/lib/ratelimit";
 
 export type LookupState = { order?: CustomerOrderView; error?: string };
@@ -13,8 +14,8 @@ export async function lookupOrderAction(_: LookupState, form: FormData): Promise
 
   const orderNumber = String(form.get("orderNumber") ?? "").trim();
   const email = String(form.get("email") ?? "").trim();
-  if (!/^CP-\d{4}-[A-Z0-9]{4}$/i.test(orderNumber) || !email.includes("@")) {
-    return { error: "Enter your order number (like CP-2610-AB2C) and the email you ordered with." };
+  if (!ORDER_NUMBER_RE.test(orderNumber) || !email.includes("@")) {
+    return { error: "Enter your order number (like CP-2610-AB2C or LL-2610-AB2C) and the email you ordered with." };
   }
   const order = await findOrderForCustomer(orderNumber, email);
   // Same message either way, so this can't be used to check which emails have ordered.

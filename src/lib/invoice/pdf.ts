@@ -1,4 +1,6 @@
 import "server-only";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
 import QRCode from "qrcode";
 import { money } from "@/lib/format";
@@ -59,8 +61,13 @@ export async function renderInvoicePdf(d: InvoiceData): Promise<Buffer> {
     y = H - M;
   };
 
-  // Header: business on the left, invoice number and date on the right.
-  text(d.business.name, M, y - 18, { size: 22, font: bold, color: NAVY });
+  // Header: business on the left (LightLab orders show its logo), invoice number and date on the right.
+  if (d.brand === "lightlab") {
+    const logo = await doc.embedPng(readFileSync(path.resolve(/* turbopackIgnore: true */ process.cwd(), "public/brand/lightlab-logo.png")));
+    page.drawImage(logo, { x: M, y: y - 23, width: 104, height: 104 * (logo.height / logo.width) });
+  } else {
+    text(d.business.name, M, y - 18, { size: 22, font: bold, color: NAVY });
+  }
   text(d.business.email, M, y - 36, { color: MUTED });
   text("INVOICE", W - M, y - 10, { size: 9, font: bold, color: MUTED, right: true });
   text(d.orderNumber, W - M, y - 28, { size: 16, font: bold, right: true });
@@ -127,7 +134,7 @@ export async function renderInvoicePdf(d: InvoiceData): Promise<Buffer> {
   page.drawImage(qr, { x: M, y: M + 6, width: q, height: q });
   text("Scan to see your order,", M + q + 12, M + 58, { size: 9.5 });
   text("its status and this invoice online.", M + q + 12, M + 45, { size: 9.5 });
-  text(`Thanks for printing with ${d.business.name}. Prices in Canadian dollars.`, W - M, M + 10, { size: 8.5, color: MUTED, right: true });
+  text(`Thanks for ${d.brand === "lightlab" ? "shopping" : "printing"} with ${d.business.name}. Prices in Canadian dollars.`, W - M, M + 10, { size: 8.5, color: MUTED, right: true });
 
   return Buffer.from(await doc.save());
 }

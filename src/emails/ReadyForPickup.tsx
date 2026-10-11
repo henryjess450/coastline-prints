@@ -5,10 +5,10 @@ import { AddressBox, colors, EmailLayout, H1, Label, P, PillButton } from "./com
 export function ReadyForPickup({ d, pickupWindowDays }: { d: OrderEmailData; pickupWindowDays: number }) {
   const first = d.customerName.split(/\s+/)[0];
   return (
-    <EmailLayout preview={`Order ${d.orderNumber} is ready for pickup`}>
+    <EmailLayout preview={`Order ${d.orderNumber} is ready for pickup`} brand={d.lightlab ? "lightlab" : "coastline"}>
       <H1>Good news, {first}. Your order is ready!</H1>
       <P muted>
-        Order <strong style={{ color: colors.text }}>{d.orderNumber}</strong> is printed, cleaned up and waiting for you.
+        Order <strong style={{ color: colors.text }}>{d.orderNumber}</strong> {d.lightlab ? "is packed" : "is printed, cleaned up"} and waiting for you.
       </P>
       <Label>Pickup details</Label>
       <AddressBox address={d.pickupAddress ?? ""} when={d.pickupWhen} />

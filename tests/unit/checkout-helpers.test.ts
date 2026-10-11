@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { customerSchema } from "@/lib/checkout/schema";
-import { newOrderNumber, newViewToken } from "@/lib/orders/number";
+import { newOrderNumber, newViewToken, ORDER_NUMBER_RE } from "@/lib/orders/number";
 import { friendlyPaymentError, GENERIC_PAYMENT_ERROR } from "@/lib/square/errors";
 
 describe("order numbers", () => {
   it("formats as CP-YYMM-XXXX without confusable characters", () => {
     const n = newOrderNumber(new Date(2026, 9, 4));
     expect(n).toMatch(/^CP-2610-[2-9A-HJ-KMNP-Z]{4}$/);
+  });
+  it("uses LL- for LightLab orders, and either prefix is recognized", () => {
+    expect(newOrderNumber(new Date(2026, 9, 4), "LL")).toMatch(/^LL-2610-[2-9A-HJ-KMNP-Z]{4}$/);
+    expect(ORDER_NUMBER_RE.test("ll-2610-ab2c")).toBe(true);
+    expect(ORDER_NUMBER_RE.test("CP-2610-AB2C")).toBe(true);
+    expect(ORDER_NUMBER_RE.test("XX-2610-AB2C")).toBe(false);
   });
   it("view tokens are long and URL-safe", () => {
     expect(newViewToken()).toMatch(/^[\w-]{32}$/);

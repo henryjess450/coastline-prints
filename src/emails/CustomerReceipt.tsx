@@ -1,18 +1,18 @@
 import { Link, Section, Text } from "@react-email/components";
 import { money } from "@/lib/format";
 import type { OrderEmailData } from "@/lib/email/data";
-import { AddressBox, colors, EmailLayout, H1, Label, P, PillButton, ShipToBox } from "./components/Layout";
+import { accentFor, AddressBox, colors, EmailLayout, H1, Label, P, PillButton, ShipToBox } from "./components/Layout";
 import { ItemTable } from "./ItemTable";
 
 export function CustomerReceipt({ d }: { d: OrderEmailData }) {
   const first = d.customerName.split(/\s+/)[0];
+  const accent = accentFor(d.lightlab);
   const steps = [
-    "We check your files and queue them on the right printer.",
-    "Your parts are printed and cleaned up.",
+    ...(d.lightlab ? ["We take your lamp off the shelf and check it over."] : ["We check your files and queue them on the right printer.", "Your parts are printed and cleaned up."]),
     d.shipTo ? (d.tracked ? "We pack it and send it with Canada Post, then email you the tracking number." : "We pack it in a padded mailer and send it by Canada Post Lettermail (no tracking), then email you.") : "We email you when it's ready, before your pickup time.",
   ];
   return (
-    <EmailLayout preview={`Order ${d.orderNumber} confirmed · ${money(d.totalCents)} paid`}>
+    <EmailLayout preview={`Order ${d.orderNumber} confirmed · ${money(d.totalCents)} paid`} brand={d.lightlab ? "lightlab" : "coastline"}>
       <H1>Thanks, {first}. Your order is confirmed.</H1>
       <P muted>
         Order <strong style={{ color: colors.text }}>{d.orderNumber}</strong> · {money(d.totalCents)} CAD paid
@@ -22,13 +22,13 @@ export function CustomerReceipt({ d }: { d: OrderEmailData }) {
       <ItemTable d={d} />
       <Text style={{ margin: "10px 0 0", fontSize: 13 }}>
         Your invoice is attached as a PDF.{" "}
-        <Link href={d.links.invoice} style={{ color: colors.brand }}>
+        <Link href={d.links.invoice} style={accent.link}>
           See it online
         </Link>
         {d.links.receipt && (
           <>
             {" · "}
-            <Link href={d.links.receipt} style={{ color: colors.brand }}>
+            <Link href={d.links.receipt} style={accent.link}>
               Square payment receipt
             </Link>
           </>
@@ -38,7 +38,7 @@ export function CustomerReceipt({ d }: { d: OrderEmailData }) {
       <Label>What happens next</Label>
       {steps.map((s, i) => (
         <Text key={i} style={{ margin: "0 0 6px", fontSize: 15, lineHeight: "22px" }}>
-          <span style={{ display: "inline-block", width: 22, height: 22, lineHeight: "22px", borderRadius: 999, backgroundColor: colors.brand, color: "#fff", textAlign: "center", fontSize: 12, fontWeight: 700, marginRight: 8 }}>{i + 1}</span>
+          <span style={{ display: "inline-block", width: 22, height: 22, lineHeight: "22px", borderRadius: 999, backgroundColor: accent.brand, color: "#fff", textAlign: "center", fontSize: 12, fontWeight: 700, marginRight: 8 }}>{i + 1}</span>
           {s}
         </Text>
       ))}
@@ -46,7 +46,7 @@ export function CustomerReceipt({ d }: { d: OrderEmailData }) {
       {d.shipTo ? (
         <>
           <Label>Shipping</Label>
-          <P muted>Prints usually take 2 to 5 days, then Canada Post delivery takes a few more. If anything in this address is wrong, reply to this email before it ships.</P>
+          <P muted>{d.lightlab ? "We pack it in a few days" : "Prints usually take 2 to 5 days"}, then Canada Post delivery takes a few more. If anything in this address is wrong, reply to this email before it ships.</P>
           <ShipToBox lines={d.shipTo} />
         </>
       ) : (
@@ -67,7 +67,7 @@ export function CustomerReceipt({ d }: { d: OrderEmailData }) {
       </Section>
       <P muted>
         Questions? Just reply to this email. Your order details are also at{" "}
-        <Link href={d.links.confirmation} style={{ color: colors.brand }}>
+        <Link href={d.links.confirmation} style={accent.link}>
           your order page
         </Link>
         .

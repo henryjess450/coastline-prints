@@ -4,7 +4,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { customer, jsonRequest, validPickup } from "../helpers/fixtures";
+import { createPaidOrder, customer, jsonRequest, validPickup } from "../helpers/fixtures";
 
 const square = {
   payments: { create: vi.fn(), get: vi.fn() },
@@ -24,6 +24,12 @@ vi.mock("@/lib/square/client", () => ({
 const { POST: checkout } = await import("@/app/api/checkout/route");
 const { POST: shopQuote } = await import("@/app/api/shop/quote/route");
 const { db } = await import("@/lib/db");
+const { loadReceiptData, renderReceiptPng } = await import("@/lib/receipt/render");
+const { invoiceFileName, loadInvoice } = await import("@/lib/invoice/data");
+const { renderInvoicePdf } = await import("@/lib/invoice/pdf");
+const { loadOrderEmailData } = await import("@/lib/email/data");
+const { buildEmail } = await import("@/lib/email/build");
+const { findScannedOrder } = await import("@/lib/orders/scan");
 
 async function lamp(over: Record<string, unknown> = {}) {
   return db.shopProduct.create({
@@ -97,6 +103,9 @@ describe("LightLab shop", () => {
     expect(data.status).toBe("paid");
 
     const order = await db.order.findUniqueOrThrow({ where: { orderNumber: data.orderNumber }, include: { items: true } });
+    // LightLab orders are numbered LL-, and the scan station finds them like any other.
+    expect(order.orderNumber).toMatch(/^LL-\d{4}-[2-9A-Z]{4}$/);
+    expect((await findScannedOrder(order.orderNumber.toLowerCase().replace(/-/g, "")))?.id).toBe(order.id);
     expect(order.totalCents).toBe(14000);
     expect(order.baseFeeCents).toBe(0);
     expect(order.items).toHaveLength(2);
@@ -123,5 +132,38 @@ describe("LightLab shop", () => {
   it("refuses an empty cart", async () => {
     const body = { attemptId: randomUUID(), sourceId: "x", customer, items: [], products: [], expectedTotalCents: 0, fulfillment: await validPickup() };
     expect((await checkout(jsonRequest("http://test/api/checkout", body))).status).toBe(400);
+  });
+
+  it("brands a shop order's receipt, invoice and emails as LightLab, and leaves print orders as Coastline", async () => {
+    const p = await lamp({ variants: "[]", stock: null });
+    const { data } = await pay([{ productId: p.id, variantId: null, quantity: 1 }], 4500);
+    const order = await db.order.findUniqueOrThrow({ where: { orderNumber: data.orderNumber } });
+
+    const receipt = (await loadReceiptData(order.id))!;
+    expect(receipt.brand).toBe("lightlab");
+    expect((await renderReceiptPng(receipt)).length).toBeGreaterThan(1000);
+
+    const invoice = (await loadInvoice({ id: order.id }))!;
+    expect(invoice).toMatchObject({ brand: "lightlab", business: { name: "LightLab | Victoria" } });
+    expect(invoiceFileName(invoice.orderNumber, invoice.brand)).toBe(`LightLab-invoice-${order.orderNumber}.pdf`);
+    expect((await renderInvoicePdf(invoice)).subarray(0, 4).toString()).toBe("%PDF");
+
+    const mail = await buildEmail("customer-receipt", (await loadOrderEmailData(order.id))!);
+    expect(mail.subject).toBe(`Your LightLab order ${order.orderNumber} is confirmed`);
+    expect(mail.html).toContain("/brand/lightlab-logo-dark.png");
+    expect(mail.html).not.toContain("/brand/wordmark-white.png");
+    expect(mail.html).not.toContain("queue them on the right printer");
+    // Black accents, not Coastline navy.
+    expect(mail.html).not.toContain("#0e4471");
+
+    // A custom print order is unchanged.
+    const print = await createPaidOrder();
+    expect((await loadReceiptData(print.id))!.brand).toBe("coastline");
+    expect((await loadInvoice({ id: print.id }))!.brand).toBe("coastline");
+    const printMail = await buildEmail("customer-receipt", (await loadOrderEmailData(print.id))!);
+    expect(printMail.html).toContain("/brand/wordmark-white.png");
+    expect(printMail.subject).toContain("Coastline Prints");
+    expect(printMail.html).toContain("#0e4471");
+    expect(print.orderNumber).toMatch(/^CP-/);
   });
 });

@@ -1,5 +1,7 @@
+import { createContext, useContext } from "react";
 import { Body, Container, Head, Hr, Html, Img, Link, Preview, Section, Text } from "@react-email/components";
 import { site } from "@config/site";
+import { lightlab } from "@config/lightlab";
 
 export const colors = {
   brand: "#0e4471",
@@ -11,24 +13,44 @@ export const colors = {
   bg: "#f5f8fb",
 };
 
+/** Accent colours: Coastline navy, or black for LightLab (its shop is black and white). */
+export function accentFor(lightlab: boolean) {
+  return lightlab
+    ? // Links are black like the text, so they're underlined to still read as links.
+      { brand: "#0a0a0a", brandSoft: "#f1f1f1", link: { color: "#0a0a0a", textDecoration: "underline" } }
+    : { brand: colors.brand, brandSoft: colors.brandSoft, link: { color: colors.brand } };
+}
+const Accent = createContext(accentFor(false));
+const base = { muted: "#4a5b6d" };
+/** The accent of the email this is in (set by EmailLayout's brand). */
+export const useAccent = () => useContext(Accent);
+
 export const font = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
 /** Shared branded frame for every email: navy header, white card, small footer. */
-export function EmailLayout({ preview, children, footerNote }: { preview: string; children: React.ReactNode; footerNote?: string }) {
+export function EmailLayout({ preview, children, footerNote, brand = "coastline" }: { preview: string; children: React.ReactNode; footerNote?: string; /** LightLab shop orders: black header with the LightLab logo. */ brand?: "coastline" | "lightlab" }) {
+  const base = (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  const ll = brand === "lightlab";
   return (
     <Html lang="en">
       <Head />
       <Preview>{preview}</Preview>
       <Body style={{ backgroundColor: colors.bg, margin: 0, padding: "24px 0", fontFamily: font, color: colors.text }}>
         <Container style={{ maxWidth: 600, margin: "0 auto", backgroundColor: "#ffffff", borderRadius: 16, overflow: "hidden", border: `1px solid ${colors.line}` }}>
-          <Section style={{ backgroundColor: colors.brand, padding: "20px 28px" }}>
-            <Img src={`${(process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "")}/brand/wordmark-white.png`} alt={site.name} height={56} style={{ display: "block", height: 56, width: "auto", color: "#ffffff", fontSize: 20, fontWeight: 700 }} />
+          <Section style={{ backgroundColor: ll ? "#0a0a0a" : colors.brand, padding: "20px 28px" }}>
+            {ll ? (
+              <Img src={`${base}/brand/lightlab-logo-dark.png`} alt={lightlab.name} height={60} style={{ display: "block", height: 60, width: "auto", color: "#ffffff", fontSize: 20, fontWeight: 700 }} />
+            ) : (
+              <Img src={`${base}/brand/wordmark-white.png`} alt={site.name} height={56} style={{ display: "block", height: 56, width: "auto", color: "#ffffff", fontSize: 20, fontWeight: 700 }} />
+            )}
           </Section>
-          <Section style={{ padding: "28px" }}>{children}</Section>
+          <Section style={{ padding: "28px" }}>
+            <Accent.Provider value={accentFor(ll)}>{children}</Accent.Provider>
+          </Section>
           <Hr style={{ borderColor: colors.line, margin: 0 }} />
           <Section style={{ padding: "16px 28px 24px" }}>
             <Text style={{ margin: 0, fontSize: 12, lineHeight: "18px", color: colors.faint }}>
-              {footerNote ?? `${site.name} · Custom 3D printing · ${site.fulfillmentLabel} only.`}
+              {footerNote ?? (ll ? `${lightlab.name} · Novelty lamps · ${lightlab.partnerLine}.` : `${site.name} · Custom 3D printing · ${site.fulfillmentLabel} only.`)}
               <br />
               <Link href={`${process.env.APP_URL ?? "http://localhost:3000"}/terms`} style={{ color: colors.faint, textDecoration: "underline" }}>
                 Terms
@@ -46,10 +68,11 @@ export function EmailLayout({ preview, children, footerNote }: { preview: string
 }
 
 export function PillButton({ href, children }: { href: string; children: React.ReactNode }) {
+  const accent = useAccent();
   return (
     <Link
       href={href}
-      style={{ display: "inline-block", backgroundColor: colors.brand, color: "#ffffff", padding: "12px 22px", borderRadius: 999, fontWeight: 600, fontSize: 15, textDecoration: "none" }}
+      style={{ display: "inline-block", backgroundColor: accent.brand, color: "#ffffff", padding: "12px 22px", borderRadius: 999, fontWeight: 600, fontSize: 15, textDecoration: "none" }}
     >
       {children}
     </Link>
@@ -70,6 +93,7 @@ export function Label({ children }: { children: React.ReactNode }) {
 
 /** The customer's own shipping address. */
 export function ShipToBox({ lines, label = "Shipping to" }: { lines: string[]; label?: string }) {
+  const colors = { ...base, ...useAccent() };
   return (
     <Section style={{ backgroundColor: colors.brandSoft, borderRadius: 12, padding: "14px 16px", margin: "4px 0 6px" }}>
       <Text style={{ margin: 0, fontSize: 12, color: colors.muted }}>{label}</Text>
@@ -84,6 +108,7 @@ export function ShipToBox({ lines, label = "Shipping to" }: { lines: string[]; l
 
 /** Highlighted pickup box (receipt and ready emails only). */
 export function AddressBox({ address, when }: { address: string; when?: string | null }) {
+  const colors = { ...base, ...useAccent() };
   return (
     <Section style={{ backgroundColor: colors.brandSoft, borderRadius: 12, padding: "14px 16px", margin: "4px 0 6px" }}>
       {when && (

@@ -6,6 +6,8 @@ import QRCode from "qrcode";
 import bwipjs from "bwip-js/node";
 import { pickup } from "@config/pickup";
 import { site } from "@config/site";
+import { lightlab } from "@config/lightlab";
+import { isLightLabOrder } from "@/lib/shop/brand";
 import { db } from "@/lib/db";
 import { appUrl } from "@/lib/email/data";
 import { hours, money, returningLabel } from "@/lib/format";
@@ -39,6 +41,8 @@ export type ReceiptData = {
   paymentId: string;
   /** The order's invoice online; printed as a QR code at the bottom. */
   invoiceUrl?: string;
+  /** LightLab shop orders print the LightLab logo instead of Coastline's. */
+  brand?: "coastline" | "lightlab";
 };
 
 export async function loadReceiptData(orderId: string): Promise<ReceiptData | null> {
@@ -46,6 +50,7 @@ export async function loadReceiptData(orderId: string): Promise<ReceiptData | nu
   if (!o) return null;
   const parts = pickupParts(o.pickupDate, o.pickupTime, pickup);
   return {
+    brand: isLightLabOrder(o.items) ? "lightlab" : "coastline",
     orderNumber: o.orderNumber,
     placedAt: new Intl.DateTimeFormat("en-US", { timeZone: pickup.timeZone, weekday: "short", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(o.createdAt),
     customerName: o.customerName,
@@ -109,6 +114,16 @@ export function wordmark() {
   return wordmarkCache;
 }
 
+/** The black LightLab logo as a data URI, for LightLab shop orders. */
+let lightlabCache: string | null = null;
+function lightlabLogo() {
+  if (!lightlabCache) {
+    const file = path.resolve(/* turbopackIgnore: true */ process.cwd(), "public/brand/lightlab-logo.png");
+    lightlabCache = `data:image/png;base64,${readFileSync(file).toString("base64")}`;
+  }
+  return lightlabCache;
+}
+
 // Compact layout: every pixel of height is paper.
 const Rule = () => <div style={{ display: "flex", height: 2, background: "black", margin: "8px 0" }} />;
 
@@ -134,7 +149,7 @@ export async function renderReceiptPng(d: ReceiptData, opts: { test?: boolean } 
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={wordmark()} width={150} height={88} alt={site.name} />
+        {d.brand === "lightlab" ? <img src={lightlabLogo()} width={190} height={75} alt={lightlab.name} /> : <img src={wordmark()} width={150} height={88} alt={site.name} />}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
           <span style={{ fontSize: 18 }}>Official Receipt</span>
           <span style={{ fontSize: 34, fontWeight: 700 }}>{d.orderNumber}</span>

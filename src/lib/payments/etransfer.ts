@@ -13,7 +13,7 @@ export function etransferDiscount(amountCents: number, percent: number) {
 /** No 0/O, 1/I/L: easy to read out and type into a banking app. */
 const ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 
-/** "PAY-7K4QX". Different from order numbers (CP-...) so the two can't be confused. */
+/** "PAY-7K4QX". Different from order numbers (CP-... and LL-...) so the two can't be confused. */
 export function paymentCode(random: (n: number) => number) {
   let s = "";
   for (let i = 0; i < 5; i++) s += ALPHABET[random(ALPHABET.length)];

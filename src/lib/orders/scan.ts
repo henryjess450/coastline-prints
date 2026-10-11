@@ -17,15 +17,15 @@ export type ScanResult =
   | { ok: true; orderId: string; orderNumber: string; customer: string; from: string; fromLabel: string; to: string; toLabel: string; emailed: boolean }
   | { ok: false; reason: string; needsTracking?: { orderId: string; orderNumber: string; customer: string } };
 
-/** "cp-2610-bdfp", "CP2610BDFP", or an /orders/<token> link → the order. */
+/** "cp-2610-bdfp", "LL2610BDFP", or an /orders/<token> link → the order. */
 export async function findScannedOrder(raw: string) {
   const text = raw.trim();
   const link = text.match(/\/orders\/([\w-]{20,64})/);
   if (link) return db.order.findUnique({ where: { viewToken: link[1] } });
   const compact = text.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const m = compact.match(/^CP(\d{4})([A-Z0-9]{4})$/);
+  const m = compact.match(/^(CP|LL)(\d{4})([A-Z0-9]{4})$/);
   if (!m) return null;
-  return db.order.findUnique({ where: { orderNumber: `CP-${m[1]}-${m[2]}` } });
+  return db.order.findUnique({ where: { orderNumber: `${m[1]}-${m[2]}-${m[3]}` } });
 }
 
 /** Last scan per order, so a double scan (or the scanner bouncing) doesn't skip a step. */

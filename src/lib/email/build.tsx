@@ -29,7 +29,7 @@ export async function buildEmail(template: EmailTemplate, d: OrderEmailData, opt
 
   switch (template) {
     case "customer-receipt":
-      subject = `Your Coastline Prints order ${d.orderNumber} is confirmed`;
+      subject = `Your ${d.lightlab ? "LightLab" : "Coastline Prints"} order ${d.orderNumber} is confirmed`;
       node = <CustomerReceipt d={d} />;
       break;
     case "owner-new-order":
@@ -61,5 +61,5 @@ export async function buildEmail(template: EmailTemplate, d: OrderEmailData, opt
 async function invoiceAttachment(orderId: string): Promise<EmailAttachment[] | undefined> {
   const invoice = await loadInvoice({ id: orderId });
   if (!invoice) return undefined;
-  return [{ filename: invoiceFileName(invoice.orderNumber), content: await renderInvoicePdf(invoice), contentType: "application/pdf" }];
+  return [{ filename: invoiceFileName(invoice.orderNumber, invoice.brand), content: await renderInvoicePdf(invoice), contentType: "application/pdf" }];
 }

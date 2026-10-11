@@ -1,11 +1,12 @@
 import { Link, Section, Text } from "@react-email/components";
 import type { OrderEmailData } from "@/lib/email/data";
-import { colors, EmailLayout, H1, Label, P, PillButton, ShipToBox } from "./components/Layout";
+import { accentFor, colors, EmailLayout, H1, Label, P, PillButton, ShipToBox } from "./components/Layout";
 
 export function Shipped({ d, note }: { d: OrderEmailData; note?: string | null }) {
   const first = d.customerName.split(/\s+/)[0];
+  const accent = accentFor(d.lightlab);
   return (
-    <EmailLayout preview={`Order ${d.orderNumber} is on its way`}>
+    <EmailLayout preview={`Order ${d.orderNumber} is on its way`} brand={d.lightlab ? "lightlab" : "coastline"}>
       <H1>Good news, {first}. Your order has shipped!</H1>
       <P muted>
         Order <strong style={{ color: colors.text }}>{d.orderNumber}</strong> is packed and on its way with Canada Post.
@@ -15,8 +16,8 @@ export function Shipped({ d, note }: { d: OrderEmailData; note?: string | null }
       {d.tracking && (
         <>
           <Label>Tracking number</Label>
-          <Text style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: colors.brand }}>
-            <Link href={d.tracking.url} style={{ color: colors.brand }}>
+          <Text style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: accent.brand }}>
+            <Link href={d.tracking.url} style={accent.link}>
               {d.tracking.number}
             </Link>
           </Text>

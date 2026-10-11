@@ -14,7 +14,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   return new Response(new Uint8Array(pdf), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${invoiceFileName(invoice.orderNumber)}"`,
+      "Content-Disposition": `attachment; filename="${invoiceFileName(invoice.orderNumber, invoice.brand)}"`,
       "Cache-Control": "private, no-store",
       "X-Robots-Tag": "noindex",
     },

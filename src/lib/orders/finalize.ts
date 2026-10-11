@@ -82,7 +82,7 @@ export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts
       const order = await db.$transaction(async (tx) => {
         const order = await tx.order.create({
           data: {
-            orderNumber: newOrderNumber(),
+            orderNumber: newOrderNumber(new Date(), cart.shopLines?.length ? "LL" : "CP"),
             viewToken: newViewToken(),
             checkoutId,
             status: "PAID",

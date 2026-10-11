@@ -6,10 +6,13 @@ import { hours, returningLabel } from "@/lib/format";
 import type { AppliedCode } from "@/lib/codes/apply";
 import { formatPickup } from "@/lib/pickup";
 import { trackingUrl } from "@/lib/orders/status";
+import { isLightLabOrder } from "@/lib/shop/brand";
 import { isTracked, shippingAddressLines, shippingSummary } from "@/lib/shipping/address";
 
 /** Everything an order email needs, as plain data (easy to render and to test). */
 export type OrderEmailData = {
+  /** A LightLab shop order: its customer emails carry the LightLab logo. */
+  lightlab: boolean;
   orderId: string;
   orderNumber: string;
   status: string;
@@ -70,6 +73,7 @@ export async function loadOrderEmailData(orderId: string): Promise<OrderEmailDat
   const ship = order.fulfillment === "SHIP";
   const totalHours = order.items.reduce((h, i) => h + i.hoursEach * i.quantity, 0);
   return {
+    lightlab: isLightLabOrder(order.items),
     orderId: order.id,
     orderNumber: order.orderNumber,
     status: order.status,
