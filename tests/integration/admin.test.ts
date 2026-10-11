@@ -127,22 +127,22 @@ describe("file retention cleanup", () => {
 
     const done = await createPaidOrder();
     const doneItem = await db.orderItem.findFirstOrThrow({ where: { orderId: done.id } });
-    await db.upload.update({ where: { id: doneItem.uploadId }, data: { createdAt: old } });
+    await db.upload.update({ where: { id: doneItem.uploadId! }, data: { createdAt: old } });
     await changeOrderStatus(done.id, "PICKED_UP");
     await db.orderStatusEvent.updateMany({ where: { orderId: done.id, toStatus: "PICKED_UP" }, data: { createdAt: new Date(now.getTime() - 100 * 86_400_000) } });
 
     const active = await createPaidOrder();
     const activeItem = await db.orderItem.findFirstOrThrow({ where: { orderId: active.id } });
-    await db.upload.update({ where: { id: activeItem.uploadId }, data: { createdAt: old } });
+    await db.upload.update({ where: { id: activeItem.uploadId! }, data: { createdAt: old } });
 
     const r = await cleanupFiles(now);
     expect(r.abandoned).toBeGreaterThanOrEqual(1);
     expect(r.expired).toBeGreaterThanOrEqual(1);
     expect(await db.upload.findUnique({ where: { id: abandoned.id } })).toBeNull();
     expect(await db.upload.findUnique({ where: { id: fresh.id } })).not.toBeNull();
-    expect((await db.upload.findUniqueOrThrow({ where: { id: doneItem.uploadId } })).fileDeletedAt).not.toBeNull();
+    expect((await db.upload.findUniqueOrThrow({ where: { id: doneItem.uploadId! } })).fileDeletedAt).not.toBeNull();
     expect(await db.order.findUnique({ where: { id: done.id } })).not.toBeNull(); // record kept
-    expect((await db.upload.findUniqueOrThrow({ where: { id: activeItem.uploadId } })).fileDeletedAt).toBeNull();
+    expect((await db.upload.findUniqueOrThrow({ where: { id: activeItem.uploadId! } })).fileDeletedAt).toBeNull();
   });
 });
 

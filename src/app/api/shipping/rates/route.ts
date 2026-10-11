@@ -2,14 +2,18 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError, logError } from "@/lib/api";
 import { normalizePostal } from "@/lib/checkout/schema";
-import { cartSchema } from "@/lib/pricing/cart-schema";
+import { cartItemSchema } from "@/lib/pricing/cart-schema";
+import { shopLineSchema } from "@/lib/shop/schema";
+import { priceShopCart } from "@/lib/shop/price.server";
 import { CartError, priceCart } from "@/lib/pricing/server-quote";
 import { clientIp, rateLimit } from "@/lib/ratelimit";
 import { liveParcelOption } from "@/lib/shipping/canada-post";
 
 export const runtime = "nodejs";
 
-const bodySchema = cartSchema.extend({
+const bodySchema = z.object({
+  items: z.array(cartItemSchema).max(20).default([]),
+  products: z.array(shopLineSchema).max(20).default([]),
   postal: z.string().transform(normalizePostal).pipe(z.string().regex(/^[A-Z]\d[A-Z] \d[A-Z]\d$/)),
 });
 
@@ -31,7 +35,9 @@ export async function POST(req: Request) {
   if (!parsed.success) return apiError(400, "Invalid cart or postal code.");
 
   try {
-    const priced = await priceCart(parsed.data.items);
+    const { items, products } = parsed.data;
+    if (!items.length && !products.length) return apiError(400, "Your cart is empty.");
+    const priced = products.length ? await priceShopCart(products) : await priceCart(items);
     const parcel = priced.ok && priced.shipping?.ok ? priced.shipping.parcel : null;
     return NextResponse.json({ option: await liveParcelOption(parcel, parsed.data.postal) });
   } catch (err) {

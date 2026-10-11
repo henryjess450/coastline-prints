@@ -15,6 +15,7 @@ const links = [
   { href: "/admin/codes", label: "Codes" },
   { href: "/admin/etransfers", label: "e-Transfers" },
   { href: "/admin/settings", label: "Settings" },
+  { href: "/lightlab/admin", label: "LightLab" },
 ];
 
 export function AdminNav({ failedEmails, etransferReview = 0 }: { failedEmails: number; etransferReview?: number }) {

@@ -12,7 +12,7 @@ export async function postDiscordNewOrder(d: OrderEmailData) {
     console.log(`[discord] dev: not posting new order ${d.orderNumber}`);
     return;
   }
-  const items = d.items.map((i) => `• ${i.fileName} × ${i.quantity}: ${i.material} ${i.colorName}, ${i.size} on ${i.printerName}`).join("\n");
+  const items = d.items.map((i) => (i.product ? `• ${i.fileName} × ${i.quantity}: LightLab${i.colorName ? ` ${i.colorName}` : ""}, from stock` : `• ${i.fileName} × ${i.quantity}: ${i.material} ${i.colorName}, ${i.size} on ${i.printerName}`)).join("\n");
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

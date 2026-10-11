@@ -19,7 +19,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     include: { upload: true },
   });
   if (!last) return apiError(404, "Model not found.");
-  if (last.upload.fileDeletedAt) return apiError(410, "This file has been removed (we keep files for 90 days after pickup).");
+  if (!last.upload || last.upload.fileDeletedAt) return apiError(410, "This file has been removed (we keep files for 90 days after pickup).");
   const item: ReorderItem = {
     upload: toUploadDto(last.upload),
     unitFactor: last.unitFactor,

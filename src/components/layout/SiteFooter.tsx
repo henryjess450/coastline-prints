@@ -11,6 +11,7 @@ const links = [
   { href: "/rewards", label: "Rewards" },
   { href: "/status", label: "Order status" },
   { href: "/app", label: "Get the app" },
+  { href: "/lightlab", label: "LightLab | Victoria" },
   { href: "/#faq", label: "FAQ" },
   { href: "/terms", label: "Terms & Conditions" },
   { href: "/privacy", label: "Privacy Policy" },
@@ -57,6 +58,17 @@ export function SiteFooter() {
         </p>
       </div>
       {/* Flagpole sits flush with the very bottom of the page */}
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <ProudlyCanadian />
+      </div>
+    </footer>
+  );
+}
+
+/** LightLab pages: only "Proudly Canadian", flush with the bottom. */
+export function LightLabFooter() {
+  return (
+    <footer className="mt-32 pb-[env(safe-area-inset-bottom)]">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <ProudlyCanadian />
       </div>

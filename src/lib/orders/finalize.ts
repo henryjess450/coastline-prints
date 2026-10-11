@@ -8,11 +8,15 @@ import { creditInvite } from "@/lib/rewards/invite";
 import type { ItemQuote, OrderQuote } from "@/lib/pricing/quote";
 import type { PricedCart } from "@/lib/pricing/server-quote";
 import type { ShippingOption } from "@/lib/shipping/pack";
+import type { PricedShopLine } from "@/lib/shop/types";
+import { lightlab } from "@config/lightlab";
 import { newOrderNumber, newViewToken } from "./number";
 
 /** What we stored on the Checkout row before charging: the server-priced cart. */
 export type CartSnapshot = {
   lines: PricedCart["lines"];
+  /** LightLab shop products (an order has prints or products, not both). */
+  shopLines?: PricedShopLine[];
   quote: Pick<OrderQuote, "items" | "baseFeeCents" | "subtotalCents" | "minimumAdjCents" | "totalCents"> & { shipping?: ShippingOption | null };
 };
 
@@ -113,11 +117,12 @@ export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts
             receiptUrl: payment.receiptUrl,
             cardBrand: payment.cardBrand,
             cardLast4: payment.last4,
-            items: { create: cart.lines.map((line, i) => orderItemData(line, cart.quote.items[i])) },
+            items: { create: [...cart.lines.map((line, i) => orderItemData(line, cart.quote.items[i])), ...(cart.shopLines ?? []).map(shopItemData)] },
             events: { create: { fromStatus: null, toStatus: "PAID", note: "Payment completed" } },
           },
         });
         await tx.checkout.update({ where: { id: checkoutId }, data: { status: "COMPLETED", squarePaymentId: payment.id } });
+        for (const line of cart.shopLines ?? []) await takeStock(tx, line);
         await tx.codeRedemption.updateMany({ where: { checkoutId, status: "RESERVED" }, data: { status: "USED" } });
         await tx.outboxJob.createMany({ data: notificationJobs(order.id, !checkout.squareCustomerId) });
         // Ordered with a friend's invite code: the friend gets their points now.
@@ -168,6 +173,49 @@ function orderItemData(line: CartSnapshot["lines"][number], q: ItemQuote) {
     unitCents: q.unitCents,
     lineCents: q.lineCents,
   };
+}
+
+/** A LightLab product as an order item. Print fields hold the product's packed size and a shop label. */
+function shopItemData(line: PricedShopLine) {
+  return {
+    productId: line.productId,
+    variantId: line.variantId,
+    fileName: line.name,
+    unitFactor: 1,
+    scaleX: 1,
+    scaleY: 1,
+    scaleZ: 1,
+    orientation: 0,
+    sizeX: line.size.x,
+    sizeY: line.size.y,
+    sizeZ: line.size.z,
+    material: lightlab.itemMaterial,
+    colorId: line.variantId ?? "",
+    colorName: line.variantName ?? "",
+    quality: "",
+    infill: "",
+    quantity: line.quantity,
+    printerId: lightlab.id,
+    printerName: lightlab.itemPrinter,
+    gramsEach: line.grams,
+    hoursEach: 0,
+    unitCents: line.unitCents,
+    lineCents: line.lineCents,
+  };
+}
+
+/** Sold: take them off the shelf (the option's count if it has one, else the product's). Never below zero. */
+async function takeStock(tx: Prisma.TransactionClient, line: PricedShopLine) {
+  const p = await tx.shopProduct.findUnique({ where: { id: line.productId } });
+  if (!p) return;
+  const variants = JSON.parse(p.variants) as { id: string; stock: number | null }[];
+  const v = line.variantId ? variants.find((x) => x.id === line.variantId) : null;
+  if (v && v.stock != null) {
+    v.stock = Math.max(0, v.stock - line.quantity);
+    await tx.shopProduct.update({ where: { id: p.id }, data: { variants: JSON.stringify(variants) } });
+  } else if (p.stock != null) {
+    await tx.shopProduct.update({ where: { id: p.id }, data: { stock: Math.max(0, p.stock - line.quantity) } });
+  }
 }
 
 /** Queued in the same transaction as the order, so a mail outage can't lose them (sent in Phase 4). */

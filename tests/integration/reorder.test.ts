@@ -23,7 +23,7 @@ describe("print it again", () => {
   it("gives the owner their order's files and settings", async () => {
     const order = await createPaidOrder();
     const item = await db.orderItem.findFirstOrThrow({ where: { orderId: order.id }, include: { upload: true } });
-    await getStorage().put(item.upload.storageKey, new Uint8Array([1, 2, 3]));
+    await getStorage().put(item.upload!.storageKey, new Uint8Array([1, 2, 3]));
     const req = await asAccount(order.customerEmail);
 
     const res = await reorder(req("http://test/x"), params({ token: order.viewToken }));
@@ -32,7 +32,7 @@ describe("print it again", () => {
     expect(body.items[0]).toMatchObject({ material: item.material, colorId: item.colorId, quantity: item.quantity, quality: item.quality, infill: item.infill, colorMap: null });
     expect(body.items[0].upload.id).toBe(item.uploadId);
 
-    const f = await file(req("http://test/x"), params({ id: item.uploadId }));
+    const f = await file(req("http://test/x"), params({ id: item.uploadId! }));
     expect(f.status).toBe(200);
     expect(new Uint8Array(await f.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
   });
@@ -42,24 +42,24 @@ describe("print it again", () => {
     const item = await db.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
     const stranger = await asAccount(`someone-${randomUUID().slice(0, 6)}@example.com`);
     expect((await reorder(stranger("http://test/x"), params({ token: order.viewToken }))).status).toBe(404);
-    expect((await file(stranger("http://test/x"), params({ id: item.uploadId }))).status).toBe(404);
+    expect((await file(stranger("http://test/x"), params({ id: item.uploadId! }))).status).toBe(404);
     expect((await reorder(new Request("http://test/x"), params({ token: order.viewToken }))).status).toBe(401);
   });
 
   it("puts one of your models back with how you last ordered it, and only yours", async () => {
     const order = await createPaidOrder();
     const item = await db.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
-    const res = await model((await asAccount(order.customerEmail))("http://test/x"), params({ id: item.uploadId }));
+    const res = await model((await asAccount(order.customerEmail))("http://test/x"), params({ id: item.uploadId! }));
     expect(res.status).toBe(200);
     expect((await res.json()).items[0]).toMatchObject({ material: item.material, colorId: item.colorId, quantity: 1 });
     const stranger = await asAccount(`someone-${randomUUID().slice(0, 6)}@example.com`);
-    expect((await model(stranger("http://test/x"), params({ id: item.uploadId }))).status).toBe(404);
+    expect((await model(stranger("http://test/x"), params({ id: item.uploadId! }))).status).toBe(404);
   });
 
   it("says so when the files have been removed", async () => {
     const order = await createPaidOrder();
     const item = await db.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
-    await db.upload.update({ where: { id: item.uploadId }, data: { fileDeletedAt: new Date() } });
+    await db.upload.update({ where: { id: item.uploadId! }, data: { fileDeletedAt: new Date() } });
     const req = await asAccount(order.customerEmail);
     const res = await reorder(req("http://test/x"), params({ token: order.viewToken }));
     expect(res.status).toBe(410);

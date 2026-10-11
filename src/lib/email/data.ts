@@ -30,6 +30,8 @@ export type OrderEmailData = {
     grams: number;
     hoursLabel: string;
     lineCents: number;
+    /** A LightLab product bought ready-made (no print settings to show). */
+    product: boolean;
   }[];
   baseFeeCents: number;
   minimumAdjCents: number;
@@ -88,6 +90,7 @@ export async function loadOrderEmailData(orderId: string): Promise<OrderEmailDat
       grams: i.gramsEach * i.quantity,
       hoursLabel: hours(i.hoursEach * i.quantity),
       lineCents: i.lineCents,
+      product: !!i.productId,
     })),
     baseFeeCents: order.baseFeeCents,
     minimumAdjCents: order.minimumAdjCents,

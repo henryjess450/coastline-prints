@@ -4,7 +4,10 @@ import { cn } from "@/lib/cn";
 import { hours, money } from "@/lib/format";
 import { ItemPreview, type PreviewItem } from "./ItemPreview";
 
-export type AdminItem = PreviewItem & {
+export type AdminItem = Omit<PreviewItem, "uploadId"> & {
+  /** Null for LightLab products. */
+  uploadId: string | null;
+  product: { image: string | null; slug: string | null; option: string | null } | null;
   id: string;
   fileName: string;
   quantity: number;
@@ -24,7 +27,11 @@ export function OrderItems({ items }: { items: AdminItem[] }) {
   const current = items.find((i) => i.id === selected) ?? items[0];
   return (
     <div className="space-y-3">
-      {current && <ItemPreview item={current} />}
+      {current?.uploadId ? (
+        <ItemPreview item={{ ...current, uploadId: current.uploadId }} />
+      ) : current?.product ? (
+        <ProductPreview item={current} />
+      ) : null}
       <ul className="space-y-2">
         {items.map((it) => (
           <li key={it.id}>
@@ -34,17 +41,20 @@ export function OrderItems({ items }: { items: AdminItem[] }) {
                   <p className="truncate font-semibold">
                     {it.fileName} <span className="font-normal text-faint">× {it.quantity}</span>
                   </p>
-                  <p className="text-xs text-muted">Click to preview</p>
+                  <p className="text-xs text-muted">{it.product ? `LightLab product${it.product.option ? ` · ${it.product.option}` : ""}` : "Click to preview"}</p>
                 </button>
                 <div className="flex items-center gap-3">
                   <span className="font-mono text-sm">{money(it.lineCents)}</span>
-                  {!it.fileDeleted && (
+                  {it.uploadId && !it.fileDeleted && (
                     <a href={`/api/admin/uploads/${it.uploadId}/file`} className="rounded-full border border-line px-3 py-1 text-xs font-medium hover:border-accent-line" download>
                       Download {/\.3mf$/i.test(it.fileName) ? "3MF" : "STL"}
                     </a>
                   )}
                 </div>
               </div>
+              {it.product ? (
+                <p className="mt-3 text-xs text-muted">Ready-made, from stock. Pull it from the LightLab shelf{it.product.option ? ` in ${it.product.option}` : ""}.</p>
+              ) : (
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
                 <Spec label="Size" value={`${it.size.x.toFixed(1)} × ${it.size.y.toFixed(1)} × ${it.size.z.toFixed(1)} mm`} />
                 <Spec label="Scale" value={it.scale.x === it.scale.y && it.scale.y === it.scale.z ? `${(it.scale.x * 100).toFixed(1)}%` : "Custom"} />
@@ -55,6 +65,7 @@ export function OrderItems({ items }: { items: AdminItem[] }) {
                 <Spec label="Print time" value={`about ${hours(it.hoursEach * it.quantity)}`} />
                 <Spec label="Orientation" value={it.rotated ? "Rotated to fit" : "As uploaded"} />
               </dl>
+              )}
               {it.colorSlots && (
                 <div className="mt-3 rounded-xl bg-accent-soft p-3 text-xs">
                   <p className="mb-1.5 font-semibold">Multicolour: load these filaments</p>
@@ -84,6 +95,19 @@ function Spec({ label, value }: { label: string; value: string }) {
     <div>
       <dt className="text-faint">{label}</dt>
       <dd className="font-medium">{value}</dd>
+    </div>
+  );
+}
+
+function ProductPreview({ item }: { item: AdminItem }) {
+  return (
+    <div className="grid aspect-[4/3] place-items-center overflow-hidden rounded-3xl border border-line bg-surface">
+      {item.product?.image ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={item.product.image} alt={item.fileName} className="h-full w-full object-cover" />
+      ) : (
+        <p className="text-sm text-muted">{item.fileName}</p>
+      )}
     </div>
   );
 }

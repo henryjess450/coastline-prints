@@ -2,7 +2,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { checkCredentials, clearSessionCookie, requireAdmin, setSessionCookie } from "@/lib/admin/auth";
+import { checkCredentials, clearSessionCookie, requireAdmin, safeNext, setSessionCookie } from "@/lib/admin/auth";
 import { logError } from "@/lib/api";
 import { resetSetting, saveMaterials, savePricing } from "@/lib/config/save";
 import { db } from "@/lib/db";
@@ -33,7 +33,7 @@ export async function loginAction(_: ActionState, form: FormData): Promise<Actio
     return { error: "That username and password don't match." };
   }
   await setSessionCookie();
-  redirect("/admin");
+  redirect(safeNext(form.get("next")));
 }
 
 export async function logoutAction() {

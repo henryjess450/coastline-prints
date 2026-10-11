@@ -152,7 +152,7 @@ export default async function AccountPage() {
                   statusLabel: info.label,
                   done: o.status === "PICKED_UP",
                   summary: o.items.map((i) => (i.quantity > 1 ? `${i.fileName} × ${i.quantity}` : i.fileName)).join(", "),
-                  canReorder: o.items.some((i) => !i.upload.fileDeletedAt),
+                  canReorder: o.items.some((i) => i.upload && !i.upload.fileDeletedAt),
                 };
               })}
             />

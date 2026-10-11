@@ -77,8 +77,13 @@ export async function isAdmin() {
 }
 
 /** For pages and server actions: sends anyone not logged in to the login page. */
-export async function requireAdmin() {
-  if (!(await isAdmin())) redirect("/admin/login");
+export async function requireAdmin(next?: string) {
+  if (!(await isAdmin())) redirect(next ? `/admin/login?next=${encodeURIComponent(next)}` : "/admin/login");
+}
+
+/** Where to go after logging in: only paths on this site. */
+export function safeNext(next: unknown) {
+  return typeof next === "string" && /^\/(?!\/)[\w\-/]*$/.test(next) ? next : "/admin";
 }
 
 /** For API route handlers: true if the request carries a valid admin session. */

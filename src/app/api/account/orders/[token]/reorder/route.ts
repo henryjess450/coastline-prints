@@ -30,13 +30,16 @@ export async function GET(req: Request, ctx: { params: Promise<{ token: string }
   const { token } = await ctx.params;
   const order = await db.order.findUnique({ where: { viewToken: token }, include: { items: { include: { upload: true } } } });
   if (!order || order.customerEmail.toLowerCase() !== account.email.toLowerCase()) return apiError(404, "Order not found.");
-  const gone = order.items.filter((i) => i.upload.fileDeletedAt);
-  if (gone.length === order.items.length) return apiError(410, "The files for this order have been removed (we keep them for 90 days after pickup).");
+  // Shop products aren't files to print again; they're bought from the shop.
+  const files = order.items.filter((i) => i.upload);
+  const gone = files.filter((i) => i.upload!.fileDeletedAt);
+  if (!files.length) return apiError(404, "This order has no files to print again.");
+  if (gone.length === files.length) return apiError(410, "The files for this order have been removed (we keep them for 90 days after pickup).");
 
-  const items: ReorderItem[] = order.items
-    .filter((i) => !i.upload.fileDeletedAt)
+  const items: ReorderItem[] = files
+    .filter((i) => !i.upload!.fileDeletedAt)
     .map((i) => ({
-      upload: toUploadDto(i.upload),
+      upload: toUploadDto(i.upload!),
       unitFactor: i.unitFactor,
       scale: { x: i.scaleX, y: i.scaleY, z: i.scaleZ },
       material: i.material,

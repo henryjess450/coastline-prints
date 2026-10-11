@@ -159,8 +159,14 @@ model OrderItem {
   id            String @id @default(cuid())
   orderId       String
   order         Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  uploadId      String
-  upload        Upload @relation(fields: [uploadId], references: [id])
+  /// The customer's uploaded file. Null for shop products (LightLab).
+  uploadId      String?
+  upload        Upload? @relation(fields: [uploadId], references: [id])
+  /// Shop product bought as-is (LightLab | Victoria). Null for custom prints.
+  productId     String?
+  product       ShopProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  /// The product option chosen (e.g. a shade colour), if it has options.
+  variantId     String?
   fileName      String
   unitFactor    Float  @default(1) // 25.4 when "modelled in inches" was applied
   scaleX        Float
@@ -186,6 +192,7 @@ model OrderItem {
   lineCents     Int
 
   @@index([printerId])
+  @@index([productId])
 }
 
 model OrderStatusEvent {
@@ -438,3 +445,39 @@ model Sale {
   @@index([startsAt, endsAt])
 }
 
+
+/// A ready-made product in a partner shop (LightLab | Victoria at /lightlab), edited at /lightlab/admin.
+model ShopProduct {
+  id             String   @id @default(cuid())
+  /// Which shop it belongs to. Only "lightlab" for now.
+  shop           String   @default("lightlab")
+  slug           String   @unique
+  name           String
+  /// One line under the name on the shop grid.
+  tagline        String   @default("")
+  description    String   @default("")
+  category       String   @default("")
+  priceCents     Int
+  /// Shown struck through next to the price when set (a markdown).
+  compareAtCents Int?
+  /// How many are on hand. Null = made to order (never runs out).
+  stock          Int?
+  /// JSON ShopVariant[]: options like shade colour, each with its own price and stock if set.
+  variants       String   @default("[]")
+  /// JSON string[] of storage keys under shop/, first one is the cover.
+  images         String   @default("[]")
+  /// Packed size and weight, for shipping quotes.
+  sizeXMm        Float    @default(150)
+  sizeYMm        Float    @default(150)
+  sizeZMm        Float    @default(150)
+  grams          Float    @default(300)
+  active         Boolean  @default(true)
+  featured       Boolean  @default(false)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  orderItems OrderItem[]
+
+  @@index([shop, active, sortOrder])
+}

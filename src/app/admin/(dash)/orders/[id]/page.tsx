@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { shopImageUrl } from "@/lib/shop/types";
 import { notFound } from "next/navigation";
 import { pickup } from "@config/pickup";
 import { printReceiptAction, retryJobAction } from "@/app/admin/actions";
@@ -38,7 +39,7 @@ const jobLabel: Record<string, string> = {
 export default async function AdminOrderPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdmin();
   const { id } = await params;
-  const order = await db.order.findUnique({ where: { id }, include: { items: { include: { upload: { select: { fileDeletedAt: true } } } }, events: { orderBy: { createdAt: "desc" } } } });
+  const order = await db.order.findUnique({ where: { id }, include: { items: { include: { upload: { select: { fileDeletedAt: true } }, product: { select: { images: true, slug: true } } } }, events: { orderBy: { createdAt: "desc" } } } });
   if (!order) notFound();
   const [cfg, jobs] = await Promise.all([getEffectiveConfig(), db.outboxJob.findMany({ where: { dedupeKey: { startsWith: `${order.id}:` } }, orderBy: { createdAt: "asc" } })]);
 
@@ -65,7 +66,8 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
       size: { x: it.sizeX, y: it.sizeY, z: it.sizeZ },
       color,
       buildVolume: printer?.buildVolume ?? null,
-      fileDeleted: !!it.upload.fileDeletedAt,
+      fileDeleted: !it.upload || !!it.upload.fileDeletedAt,
+      product: it.productId ? { image: firstImage(it.product?.images), slug: it.product?.slug ?? null, option: it.colorName || null } : null,
       colorSlots: it.colorSlots ? (JSON.parse(it.colorSlots) as ColorSlot[]) : null,
     };
   });
@@ -278,4 +280,14 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
       <dd className="font-mono">{value}</dd>
     </div>
   );
+}
+
+/** A LightLab product's cover photo, for the order page. */
+function firstImage(images: string | undefined) {
+  try {
+    const key = (JSON.parse(images ?? "[]") as string[])[0];
+    return key ? shopImageUrl(key) : null;
+  } catch {
+    return null;
+  }
 }

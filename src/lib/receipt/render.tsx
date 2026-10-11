@@ -59,8 +59,9 @@ export async function loadReceiptData(orderId: string): Promise<ReceiptData | nu
     items: o.items.map((i) => ({
       fileName: i.fileName,
       quantity: i.quantity,
-      detail:
-        `${i.material} ${i.colorName} · ${i.sizeX.toFixed(0)}×${i.sizeY.toFixed(0)}×${i.sizeZ.toFixed(0)} mm · ${i.printerName.replace(/^(Bambu Lab|Elegoo) /, "")} · ${hours(i.hoursEach * i.quantity)}` +
+      detail: i.productId
+        ? ["LightLab | Victoria", i.colorName, "from stock"].filter(Boolean).join(" · ")
+        : `${i.material} ${i.colorName} · ${i.sizeX.toFixed(0)}×${i.sizeY.toFixed(0)}×${i.sizeZ.toFixed(0)} mm · ${i.printerName.replace(/^(Bambu Lab|Elegoo) /, "")} · ${hours(i.hoursEach * i.quantity)}` +
         // Multicolour: which stock colour each file colour prints in.
         (i.colorSlots ? ` · Colours: ${(JSON.parse(i.colorSlots) as ColorSlot[]).map((c) => `${c.filament} ${c.colorName}`).join(", ")}` : ""),
       lineCents: i.lineCents,
@@ -185,7 +186,7 @@ export async function renderReceiptPng(d: ReceiptData, opts: { test?: boolean } 
           <span style={{ fontSize: 17 }}>{it.detail}</span>
         </div>
       ))}
-      <Row left="Order fee" right={money(d.baseFeeCents)} size={20} />
+      {d.baseFeeCents > 0 && <Row left="Order fee" right={money(d.baseFeeCents)} size={20} />}
       {d.minimumAdjCents > 0 && <Row left="Minimum order top-up" right={money(d.minimumAdjCents)} size={20} />}
       {d.ship && <Row left="Shipping" right={money(d.shippingCents)} size={20} />}
       {d.discounts.map((x) => (

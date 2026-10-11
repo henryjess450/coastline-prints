@@ -7,7 +7,8 @@ import { getSeason } from "@/lib/season";
 import { liveAnnouncement } from "@/lib/announcements";
 import { AnnouncementBar } from "@/components/layout/AnnouncementBar";
 import { Providers } from "@/components/layout/Providers";
-import { SiteFooter } from "@/components/layout/SiteFooter";
+import { LightLabFooter, SiteFooter } from "@/components/layout/SiteFooter";
+import { FooterSwitch } from "@/components/layout/FooterSwitch";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import "./globals.css";
 
@@ -15,6 +16,9 @@ import "./globals.css";
 const geistSans = localFont({ src: "./fonts/Geist-Variable.woff2", variable: "--font-geist-sans", weight: "100 900", display: "swap" });
 const geistMono = localFont({ src: "./fonts/GeistMono-Variable.woff2", variable: "--font-geist-mono", weight: "100 900", display: "swap" });
 const display = localFont({ src: "./fonts/SpaceGrotesk-Variable.woff2", variable: "--font-space-grotesk", weight: "300 700", display: "swap" });
+// LightLab | Victoria pages, matched to their logo: Gabarito (the "lab." lettering) and Instrument Serif italic ("light", "victoria, b.c.").
+const lightlabSans = localFont({ src: "./fonts/Gabarito-Variable.woff2", variable: "--font-ll-sans", weight: "400 900", display: "swap" });
+const lightlabSerif = localFont({ src: "./fonts/InstrumentSerif-Italic.woff2", variable: "--font-ll-serif", weight: "400", style: "italic", display: "swap" });
 
 export const metadata: Metadata = {
   // Shared-link pictures need full addresses.
@@ -47,7 +51,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       data-theme={theme}
       data-season={season.id}
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} ${display.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${display.variable} ${lightlabSans.variable} ${lightlabSerif.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         {seasonStyle && <style>{seasonStyle}</style>}
@@ -60,7 +64,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <main id="main" className="flex-1">
             {children}
           </main>
-          <SiteFooter />
+          <FooterSwitch full={<SiteFooter />} lightlab={<LightLabFooter />} />
         </Providers>
       </body>
     </html>

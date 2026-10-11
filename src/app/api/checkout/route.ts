@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import { finalizeCheckout, paymentFacts, type CartSnapshot } from "@/lib/orders/finalize";
 import { sendNotificationsSoon } from "@/lib/notify/kick";
 import { CartError, priceCart } from "@/lib/pricing/server-quote";
+import { priceShopCart } from "@/lib/shop/price.server";
 import { liveParcelOption } from "@/lib/shipping/canada-post";
 import { etransfer as etransferCfg } from "@config/payments";
 import { etransferDiscount } from "@/lib/payments/etransfer";
@@ -50,7 +51,8 @@ export async function POST(req: Request) {
     const first = parsed.error.issues[0];
     return apiError(400, first?.path[0] === "customer" ? first.message : "Some order details are missing or invalid.");
   }
-  const { attemptId, sourceId, customer, items, expectedTotalCents, fulfillment, codes, payment } = parsed.data;
+  const { attemptId, sourceId, customer, items, products, expectedTotalCents, fulfillment, codes, payment } = parsed.data;
+  const shop = products.length > 0;
   const etransfer = payment === "etransfer" ? etransferSettings() : null;
   if (payment === "etransfer" && !etransfer) return apiError(503, "e-Transfer isn't available right now. Please pay by card.");
   if (payment === "card" && !squarePublicConfig()) return apiError(503, "Online payments aren't set up yet. Please try again later.");
@@ -75,7 +77,7 @@ export async function POST(req: Request) {
   if (!previous) {
     let priced;
     try {
-      priced = await priceCart(items);
+      priced = shop ? await priceShopCart(products) : await priceCart(items);
     } catch (err) {
       if (err instanceof CartError) return apiError(422, err.message);
       logError("checkout:price", err);
@@ -105,7 +107,8 @@ export async function POST(req: Request) {
     }
     const { records, errors } = await lookupCodes(codes, new Date(), account?.id ?? null, customer.email);
     if (errors.length) return apiError(409, `${errors[0].code}: ${errors[0].reason}`, { code: "CODE_INVALID", badCode: errors[0].code });
-    const discount = applyCodes(priced.totalCents, records.map(toCodeInfo), shippingCents, await liveSale());
+    // Site sales are for Coastline prints, not LightLab products.
+    const discount = applyCodes(priced.totalCents, records.map(toCodeInfo), shippingCents, shop ? null : await liveSale());
     if (discount.rejected.length) return apiError(409, `${discount.rejected[0].code}: ${discount.rejected[0].reason}`, { code: "CODE_INVALID", badCode: discount.rejected[0].code });
 
     // Paying by e-Transfer: a little off what's sent, since there are no card fees.
@@ -121,6 +124,7 @@ export async function POST(req: Request) {
 
     const snapshot: CartSnapshot = {
       lines: priced.lines,
+      shopLines: shop ? (priced as Awaited<ReturnType<typeof priceShopCart>>).shopLines : undefined,
       quote: { items: priced.items, baseFeeCents: priced.baseFeeCents, subtotalCents: priced.subtotalCents, minimumAdjCents: priced.minimumAdjCents, totalCents: priced.totalCents, shipping: ship },
     };
     const checkout = await db.checkout.create({

@@ -39,6 +39,33 @@
   color-scheme: dark;
 }
 
+/*
+ * LightLab | Victoria pages are black and white. Any page with a
+ * .lightlab-theme element swaps the whole palette (header and footer too).
+ */
+:root:has(.lightlab-theme) {
+  /* LightLab's own type: Gabarito everywhere the site would use Geist or Space Grotesk. */
+  --font-geist-sans: var(--font-ll-sans);
+  --font-space-grotesk: var(--font-ll-sans);
+  --bg: #0a0a0a;
+  --bg-elev: #141414;
+  --surface: rgb(255 255 255 / 0.04);
+  --surface-strong: rgb(255 255 255 / 0.09);
+  --border: #262626;
+  --border-strong: #3d3d3d;
+  --text: #f5f5f5;
+  --muted: #a3a3a3;
+  --faint: #737373;
+  --accent: #ffffff;
+  --accent-ink: #0a0a0a;
+  --accent-text: #ffffff;
+  --accent-line: #d4d4d4;
+  --accent-soft: rgb(255 255 255 / 0.1);
+  --ring: #ffffff;
+  --btn-glow: 0 8px 22px -8px rgb(255 255 255 / 0.35);
+  --viewer-bg: #111111;
+}
+
 [data-theme="light"] {
   --bg: #f5f8fb;
   --bg-elev: #ffffff;
@@ -73,6 +100,27 @@
   color-scheme: light;
 }
 
+[data-theme="light"]:has(.lightlab-theme) {
+  --bg: #ffffff;
+  --bg-elev: #ffffff;
+  --surface: rgb(0 0 0 / 0.02);
+  --surface-strong: #f0f0f0;
+  --border: #e5e5e5;
+  --border-strong: #cccccc;
+  --text: #0a0a0a;
+  --muted: #525252;
+  --faint: #8a8a8a;
+  --accent: #0a0a0a;
+  --accent-ink: #ffffff;
+  --accent-text: #0a0a0a;
+  --accent-line: #0a0a0a;
+  --accent-soft: rgb(0 0 0 / 0.06);
+  --ring: #0a0a0a;
+  --shadow: 0 12px 30px -18px rgb(0 0 0 / 0.35);
+  --btn-glow: 0 8px 20px -8px rgb(0 0 0 / 0.4);
+  --viewer-bg: #f2f2f2;
+}
+
 @theme inline {
   --color-bg: var(--bg);
   --color-elev: var(--bg-elev);
@@ -96,6 +144,9 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-display: var(--font-space-grotesk);
+  /* LightLab's logo italic, for accents on its pages, in the logo's blue. */
+  --font-accent: var(--font-ll-serif);
+  --color-ll-blue: #297f9d;
 }
 
 html {
@@ -380,4 +431,20 @@ body {
 }
 @media print {
   .season-layer, .season-trim { display: none !important; }
+}
+
+/* LightLab accent lines: the logo's italic, in the logo's blue, set tight like the logo. */
+.ll-accent {
+  font-family: var(--font-ll-serif), Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  color: #297f9d;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+/* LightLab headings: heavy and tight, like "lab." in the logo. */
+.lightlab-theme .font-display {
+  font-weight: 800;
+  letter-spacing: -0.03em;
 }

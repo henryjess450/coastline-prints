@@ -119,7 +119,9 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
                   {it.fileName} <span className="text-faint">× {it.quantity}</span>
                 </p>
                 <p className="text-xs text-muted">
-                  {it.material} · {it.colorName} · {it.sizeX.toFixed(0)}×{it.sizeY.toFixed(0)}×{it.sizeZ.toFixed(0)} mm · {it.printerName} · about {hours(it.hoursEach * it.quantity)}
+                  {it.productId
+                    ? ["LightLab | Victoria", it.colorName].filter(Boolean).join(" · ")
+                    : `${it.material} · ${it.colorName} · ${it.sizeX.toFixed(0)}×${it.sizeY.toFixed(0)}×${it.sizeZ.toFixed(0)} mm · ${it.printerName} · about ${hours(it.hoursEach * it.quantity)}`}
                 </p>
               </div>
               <span className="shrink-0 font-mono">{money(it.lineCents)}</span>
@@ -127,7 +129,7 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
           ))}
         </ul>
         <dl className="mt-2 space-y-1 border-t border-line pt-3 text-sm">
-          <Row label="Order fee" value={money(order.baseFeeCents)} />
+          {order.baseFeeCents > 0 && <Row label="Order fee" value={money(order.baseFeeCents)} />}
           {order.minimumAdjCents > 0 && <Row label="Minimum order top-up" value={money(order.minimumAdjCents)} />}
           {shipTo && <Row label="Shipping" value={money(order.shippingCents)} />}
           {(JSON.parse(order.appliedCodes) as AppliedCode[]).map((a) => (

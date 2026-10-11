@@ -15,9 +15,9 @@ export function ItemTable({ d, detail = false }: { d: OrderEmailData; detail?: b
               {it.fileName} × {it.quantity}
             </Text>
             <Text style={{ ...cell, fontSize: 13, color: colors.muted }}>
-              {it.material} · {it.colorName} · {it.size}
+              {it.product ? ["LightLab | Victoria", it.colorName].filter(Boolean).join(" · ") : `${it.material} · ${it.colorName} · ${it.size}`}
             </Text>
-            {detail && (
+            {detail && !it.product && (
               <Text style={{ ...cell, fontSize: 13, color: colors.muted }}>
                 {it.printerName} · {it.quality} quality · {it.infill} infill · {it.grams.toFixed(1)} g · about {it.hoursLabel}
               </Text>
@@ -28,7 +28,7 @@ export function ItemTable({ d, detail = false }: { d: OrderEmailData; detail?: b
           </Column>
         </Row>
       ))}
-      <TotalRow label="Order fee" value={money(d.baseFeeCents)} />
+      {d.baseFeeCents > 0 && <TotalRow label="Order fee" value={money(d.baseFeeCents)} />}
       {d.minimumAdjCents > 0 && <TotalRow label="Minimum order top-up" value={money(d.minimumAdjCents)} />}
       {d.fulfillment === "SHIP" && <TotalRow label={d.shippingLabel ?? "Shipping"} value={money(d.shippingCents)} />}
       {d.discounts.map((x) => (

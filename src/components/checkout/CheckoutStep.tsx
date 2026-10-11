@@ -28,6 +28,8 @@ import { useAccount } from "@/components/account/use-account";
 import { applyCodes, codeEntry, type CodeInfo, type SaleInfo } from "@/lib/codes/apply";
 import { etransferDiscount, type EtransferPublic } from "@/lib/payments/etransfer";
 import { EtransferWaiting, type EtransferDetails } from "./EtransferWaiting";
+import { lightlab } from "@config/lightlab";
+import { shopPayload, useShopCart, type ShopCartLine } from "@/lib/shop/cart";
 
 type Contact = {
   name: string;
@@ -45,10 +47,32 @@ const releaseSendOff = (viewToken: string) =>
   fetch("/api/sendoff", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order: viewToken }), keepalive: true }).catch(() => undefined);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export function CheckoutStep({ items, cartQuote, square, etransfer, onBack }: { items: CartItem[]; cartQuote: CartQuote; square: SquareConfig | null; etransfer: EtransferPublic; onBack: () => void }) {
+/**
+ * The checkout for both carts: custom prints (`items`) or LightLab shop
+ * products (`shop`). Same details, pickup or shipping, codes and payment.
+ */
+export function CheckoutStep({
+  items = [],
+  shop,
+  cartQuote,
+  square,
+  etransfer,
+  onBack,
+}: {
+  items?: CartItem[];
+  shop?: { lines: ShopCartLine[] };
+  cartQuote: CartQuote;
+  square: SquareConfig | null;
+  etransfer: EtransferPublic;
+  onBack: () => void;
+}) {
   const cfg = useConfig();
   const router = useRouter();
-  const resetCart = useOrder((s) => s.reset);
+  const resetPrints = useOrder((s) => s.reset);
+  const resetShop = useShopCart((s) => s.reset);
+  const resetCart = shop ? resetShop : resetPrints;
+  /** The cart as the server wants it. */
+  const cartBody = shop ? { products: shopPayload(shop.lines) } : { items: cartPayload(items) };
   const payRef = useRef<PaymentMethodsHandle>(null);
   const [contact, setContact] = useState<Contact>({
     name: "",
@@ -107,14 +131,14 @@ export function CheckoutStep({ items, cartQuote, square, etransfer, onBack }: { 
   // The tracked-mailer price depends on the destination, so it's fetched once the postal code is in.
   const parcel = shippingQuote?.ok ? shippingQuote.parcel : null;
   const postalKey = /^[A-Z]\d[A-Z]\s?\d[A-Z]\d$/i.test(address.postal.trim()) ? address.postal.toUpperCase().replace(/\s/g, "") : "";
-  const rateKey = method === "ship" && parcel && postalKey && cartQuote.ready ? `${JSON.stringify(cartPayload(items))}|${postalKey}` : "";
+  const rateKey = method === "ship" && parcel && postalKey && cartQuote.ready ? `${JSON.stringify(cartBody)}|${postalKey}` : "";
   const [parcelRate, setParcelRate] = useState<{ key: string; option: ShippingOption | null } | null>(null);
   useEffect(() => {
     if (!rateKey) return;
     const ctrl = new AbortController();
     const t = setTimeout(async () => {
       const [cart, postal] = rateKey.split("|");
-      const res = await fetch("/api/shipping/rates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: JSON.parse(cart), postal }), signal: ctrl.signal }).catch(() => null);
+      const res = await fetch("/api/shipping/rates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...JSON.parse(cart), postal }), signal: ctrl.signal }).catch(() => null);
       const data = res?.ok ? await res.json().catch(() => null) : null;
       if (!ctrl.signal.aborted) setParcelRate({ key: rateKey, option: data?.option ?? null });
     }, 350);
@@ -132,10 +156,12 @@ export function CheckoutStep({ items, cartQuote, square, etransfer, onBack }: { 
   // A site-wide sale comes off by itself (the server checks it again when charging).
   const [sale, setSale] = useState<SaleInfo | null>(null);
   useEffect(() => {
+    // Coastline sales don't apply to LightLab products.
+    if (shop) return;
     fetch("/api/sale")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setSale(d?.sale ?? null), () => undefined);
-  }, []);
+  }, [shop]);
   const discount = applyCodes(orderTotal, codes, shippingCents, sale);
   // e-Transfer is the preferred way to pay (no card fees), with a small discount for it.
   const [payBy, setPayBy] = useState<"etransfer" | "card">(etransfer ? "etransfer" : "card");
@@ -218,7 +244,14 @@ export function CheckoutStep({ items, cartQuote, square, etransfer, onBack }: { 
   const paidToken = useRef<string | null>(null);
 
   function startSendOff() {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !items.length) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (shop) {
+      if (!shop.lines.length) return;
+      sending.current = true;
+      setSendOff({ result: "pending", fileName: shop.lines[0].name, model: null, color: shop.lines[0].swatch ?? "#1a1a1a" });
+      return;
+    }
+    if (!items.length) return;
     const first = items[0];
     const color = itemColors(first, cfg).hexes[0] ?? "#3d7bb8";
     sending.current = true;
@@ -291,7 +324,7 @@ export function CheckoutStep({ items, cartQuote, square, etransfer, onBack }: { 
       sourceId,
       customer,
       fulfillment,
-      items: cartPayload(items),
+      ...cartBody,
       expectedTotalCents: total,
       codes: codes.map(codeEntry),
     });
@@ -444,7 +477,7 @@ export function CheckoutStep({ items, cartQuote, square, etransfer, onBack }: { 
                 id="co-notes"
                 rows={3}
                 maxLength={1000}
-                placeholder="Anything we should know about your print?"
+                placeholder={shop ? "Anything we should know about your order?" : "Anything we should know about your print?"}
                 value={contact.notes}
                 onChange={(e) => set("notes", e.target.value)}
                 className={cn(inputClass(), "h-auto py-2.5")}
@@ -492,7 +525,7 @@ export function CheckoutStep({ items, cartQuote, square, etransfer, onBack }: { 
                   <BoxSummary option={shipOption} />
                   {account?.signedIn && account.address && <p className="-mb-2 text-sm text-muted">Filled in from your account. Change it here for this order, or in <Link href="/account#details" target="_blank" className="text-accent-text underline underline-offset-4">settings</Link>.</p>}
                   <AddressForm value={address} onChange={setAddr} errors={addressErrors} flash={addressFlash} />
-                  <p className="text-xs text-faint">Prints take about 2 to 5 days, then Canada Post takes a few business days depending on where you are. {shipOption.tracked ? "We email you the tracking number when it ships." : "We email you when it ships."}</p>
+                  <p className="text-xs text-faint">{shop ? "We pack your order in a few days" : "Prints take about 2 to 5 days"}, then Canada Post takes a few business days depending on where you are. {shipOption.tracked ? "We email you the tracking number when it ships." : "We email you when it ships."}</p>
                 </div>
               ) : (
                 <PickupPicker
@@ -577,6 +610,23 @@ export function CheckoutStep({ items, cartQuote, square, etransfer, onBack }: { 
             </button>
           </div>
           <ul className="mt-5 space-y-4 text-sm">
+            {shop?.lines.map((l, i) => (
+              <motion.li key={l.key} className="flex gap-3" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 + i * 0.06 }}>
+                {l.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={l.image} alt="" className="h-10 w-10 shrink-0 rounded-xl border border-line object-cover" />
+                ) : (
+                  <span className="h-10 w-10 shrink-0 rounded-xl border border-line bg-surface-strong" style={l.swatch ? { background: l.swatch } : undefined} aria-hidden />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">
+                    {l.name} <span className="text-faint">× {l.quantity}</span>
+                  </p>
+                  <p className="text-xs text-muted">{[lightlab.name, l.variantName].filter(Boolean).join(" · ")}</p>
+                </div>
+                <span className="shrink-0 font-mono tabular-nums">{money(l.unitCents * l.quantity)}</span>
+              </motion.li>
+            ))}
             {items.map((item, i) => {
               const q = quote?.items[i];
               const color = itemColors(item, cfg);
@@ -608,10 +658,12 @@ export function CheckoutStep({ items, cartQuote, square, etransfer, onBack }: { 
             })}
           </ul>
           <dl className="mt-5 space-y-1.5 border-t border-line pt-4 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-muted">Order fee</dt>
-              <dd className="font-mono">{quote ? money(quote.baseFeeCents) : "…"}</dd>
-            </div>
+            {!shop && (
+              <div className="flex justify-between">
+                <dt className="text-muted">Order fee</dt>
+                <dd className="font-mono">{quote ? money(quote.baseFeeCents) : "…"}</dd>
+              </div>
+            )}
             {quote && quote.minimumAdjCents > 0 && (
               <div className="flex justify-between">
                 <dt className="text-muted">Minimum order top-up</dt>

@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { cartItemSchema } from "@/lib/pricing/cart-schema";
+import { shopLineSchema } from "@/lib/shop/schema";
+import { lightlab } from "@config/lightlab";
 import { shipping } from "@config/shipping";
 import { uploads } from "@config/site";
 
@@ -55,10 +57,13 @@ export const checkoutRequestSchema = z.object({
   codes: z.array(z.string().trim().min(1).max(40)).max(4).default([]),
   customer: customerSchema,
   fulfillment: fulfillmentSchema,
-  items: z.array(cartItemSchema).min(1).max(uploads.maxFilesPerOrder),
+  /** Custom prints (uploaded files). */
+  items: z.array(cartItemSchema).max(uploads.maxFilesPerOrder).default([]),
+  /** LightLab shop products. An order is either prints or products, not both. */
+  products: z.array(shopLineSchema).max(lightlab.maxLinesPerOrder).default([]),
   /** The total the customer saw. If the server's price differs, we stop and show the new price. */
   expectedTotalCents: z.number().int().nonnegative(),
-});
+}).refine((b) => (b.items.length > 0) !== (b.products.length > 0), { message: "Your cart is empty.", path: ["items"] });
 
 export type CustomerInput = z.infer<typeof customerSchema>;
 export type AddressInput = z.infer<typeof addressSchema>;
