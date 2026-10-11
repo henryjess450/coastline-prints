@@ -11,7 +11,6 @@ const links = [
   { href: "/rewards", label: "Rewards" },
   { href: "/status", label: "Order status" },
   { href: "/app", label: "Get the app" },
-  { href: "/lightlab", label: "LightLab | Victoria" },
   { href: "/#faq", label: "FAQ" },
   { href: "/terms", label: "Terms & Conditions" },
   { href: "/privacy", label: "Privacy Policy" },
