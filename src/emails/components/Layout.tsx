@@ -48,7 +48,7 @@ export function EmailLayout({ preview, children, footerNote, brand = "coastline"
           <Hr style={{ borderColor: colors.line, margin: 0 }} />
           <Section style={{ padding: "16px 28px 24px" }}>
             <Text style={{ margin: 0, fontSize: 12, lineHeight: "18px", color: colors.faint }}>
-              {footerNote ?? (ll ? `${lightlab.name} · Novelty lamps · ${lightlab.partnerLine}.` : `${site.name} · Custom 3D printing · ${site.fulfillmentLabel} only.`)}
+              {footerNote ?? (ll ? `${lightlab.name} · Novelty lamps · ${lightlab.partnerLine}.` : `${site.name} · Custom 3D printing in downtown Victoria, BC · Pickup or shipping across Canada.`)}
               <br />
               <Link href={`${process.env.APP_URL ?? "http://localhost:3000"}/terms`} style={{ color: colors.faint, textDecoration: "underline" }}>
                 Terms

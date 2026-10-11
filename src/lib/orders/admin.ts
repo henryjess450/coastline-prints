@@ -1,6 +1,7 @@
 import "server-only";
 import { createFirstOrderReward } from "@/lib/codes/rewards";
 import { earnPoints } from "@/lib/rewards/server";
+import { queueReviewRequest } from "@/lib/reviews";
 import { db } from "@/lib/db";
 import { ORDER_STATUSES, type OrderStatus } from "./status";
 
@@ -12,7 +13,8 @@ export class StatusChangeError extends Error {}
  * orders, or the tracking number for shipped ones (never the address);
  * other changes email them only when `notify` is true. The email job is
  * queued in the same transaction, so it can't be lost. When a customer's
- * first order is picked up, their thank-you coupon is made here too.
+ * first order is picked up, their thank-you coupon is made here too, and
+ * every customer's first pickup queues a review request for the next day.
  */
 export async function changeOrderStatus(orderId: string, to: string, opts: { notify?: boolean; note?: string | null; trackingNumber?: string | null; from?: string; /** No email at all (undoing a scan). */ silent?: boolean } = {}) {
   if (!ORDER_STATUSES.some((s) => s.id === to)) throw new StatusChangeError(`Unknown status ${to}`);
@@ -51,6 +53,7 @@ export async function changeOrderStatus(orderId: string, to: string, opts: { not
     if (status === "PICKED_UP") {
       await createFirstOrderReward(tx, order);
       await earnPoints(tx, order); // Coastline Rewards: 2 points per $1, once the order is collected
+      if (!opts.silent) await queueReviewRequest(tx, order); // "how did it go?" a day later, once per customer
     }
     return { from: order.status, to: status, notified: notify };
   });

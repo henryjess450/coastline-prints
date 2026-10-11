@@ -36,6 +36,18 @@ export const seo = {
   indexNowKey: "361864c4a1ed200661e42a0413cfdaa6",
 };
 
+/**
+ * The "how did it go?" email asking for a Google review, sent once per
+ * customer a day after their first order is picked up or delivered.
+ * Google's rules: never offer anything in return for a review, and don't
+ * ask only the happy customers. So everyone gets the same plain ask.
+ */
+export const reviews = {
+  /** From Google Business Profile > "Ask for reviews". GOOGLE_REVIEW_URL="" in .env turns the email off. */
+  googleUrl: process.env.GOOGLE_REVIEW_URL ?? "https://g.page/r/CSFjJENuoFu2EAI/review",
+  delayHours: 24,
+};
+
 export const uploads = {
   /** Per-file limit in MB. Override with NEXT_PUBLIC_MAX_UPLOAD_MB. */
   maxFileMb: Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB ?? 100),

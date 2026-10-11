@@ -138,6 +138,13 @@ async function deliver(kind: string, template: string, payload: Payload, jobId: 
     if (email) await (mailer ?? getMailer()).send(email, jobId);
     return;
   }
+  if (kind === "email" && template === "review-request") {
+    // Skipped (not failed) if the order was moved back, they opted out, or the review link was removed.
+    const { buildReviewEmail } = await import("@/lib/reviews");
+    const email = await buildReviewEmail(payload.orderId);
+    if (email) await (mailer ?? getMailer()).send(email, jobId);
+    return;
+  }
   if (kind === "email" && template === "etransfer-instructions") {
     // Skipped (not failed) once the order is paid or cancelled: they don't need it any more.
     const { buildEtransferEmail } = await import("@/lib/payments/etransfer.server");
