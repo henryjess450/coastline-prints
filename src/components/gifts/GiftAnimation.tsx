@@ -4,14 +4,12 @@
  * then the shared scene takes over. A holiday card ends with the delivery
  * truck and the living room instead of the Benchy.
  */
-import { HolidayFinale } from "@/components/holiday/HolidayScenes";
+import { HOLIDAY_FINALE_MS, HolidayFinale } from "@/components/holiday/HolidayScenes";
 import { GOLD, SendOff, type PayResult } from "@/components/sendoff/SendOff";
 import type { GiftDesign } from "@/lib/giftcards/designs";
 
 export type { PayResult };
 
-/** How long the holiday ending plays: the street (3.6 s), then the living room. */
-const HOLIDAY_MS = 8200;
 
 export function GiftAnimation({ result, amount, design = "coastline", onDone }: { result: PayResult; amount: string; design?: GiftDesign; onDone: () => void }) {
   const holiday = design === "holiday";
@@ -21,7 +19,7 @@ export function GiftAnimation({ result, amount, design = "coastline", onDone }: 
       label={holiday ? "Delivering your gift" : "Sending your gift"}
       contents={<GiftCard amount={amount} design={design} />}
       finale={holiday ? (viewBox, className) => <HolidayFinale viewBox={viewBox} className={className} /> : undefined}
-      sailMs={holiday ? HOLIDAY_MS : undefined}
+      sailMs={holiday ? HOLIDAY_FINALE_MS : undefined}
       onDone={onDone}
     />
   );

@@ -24,6 +24,8 @@ export function ReelScene({ part }: { part: "send" | "reveal" }) {
 
   return (
     <div className="fixed inset-0 z-[70] overflow-hidden" style={{ background: "#10233a" }}>
+      {/* No Next.js dev badge in the recording */}
+      <style>{"nextjs-portal{display:none!important}"}</style>
       <AnimatePresence mode="wait">
         {!go ? null : !end ? (
           <motion.div key="play" className="absolute inset-0" exit={{ opacity: 0 }} transition={{ duration: 0.4 }}>

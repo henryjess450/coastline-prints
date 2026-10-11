@@ -7,7 +7,7 @@
  *   HolidayFinale   both in a row, as the ending of the gift card send-off
  * Everything that repeats (snow, lights, breathing) loops back to where it started.
  */
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, type Easing, type Transition } from "framer-motion";
 import { useEffect, useState } from "react";
 import { GOLD, GOLD_DARK, RED, RED_DARK, RED_LIGHT } from "@/components/sendoff/SendOff";
 
@@ -254,8 +254,40 @@ export function LivingRoom({ arrive = true, arriveDelay = 0.4, showPresent = tru
   );
 }
 
-/** The house at the end of the street: walls, snowy roof, glowing window, wreath on the door. */
-function House({ doorOpen }: { doorOpen: boolean }) {
+/**
+ * The street scene runs on one clock (STREET_S seconds), so every part moves
+ * in step: each element gets [second, value] keyframes on the same timeline.
+ */
+const STREET_S = 7.2;
+/** Keyframes on the street's clock, as framer-motion values plus a transition. */
+function track<V>(points: [number, V][], ease: Easing | Easing[] = "easeInOut"): { values: V[]; t: Transition } {
+  return { values: points.map((p) => p[1]), t: { duration: STREET_S, times: points.map((p) => p[0] / STREET_S), ease } };
+}
+/** Alternating values every `step` seconds from `from` to `to`, e.g. legs swinging while walking. */
+function swing(from: number, to: number, step: number, a: number, b: number): [number, number][] {
+  const pts: [number, number][] = [];
+  for (let t = from, k = 0; t < to - 0.001; t += step, k++) pts.push([+t.toFixed(3), k % 2 ? b : a]);
+  return pts;
+}
+
+// The truck rolls 656 units with wheels of radius 11, so they turn this far, eased exactly like the truck.
+const TRUCK_FROM = -420;
+const TRUCK_AT = 236;
+const ROLL = ((TRUCK_AT - TRUCK_FROM) / 11) * (180 / Math.PI);
+const ARRIVE: Easing = [0.22, 1, 0.36, 1];
+// The driver walks from the cab to the doorstep while their legs swing.
+const WALK_FROM = 2.75;
+const WALK_TO = 4.6;
+const STEP = 0.31;
+
+/** The house at the end of the street: walls, snowy roof, glowing window, wreath on the door that opens. */
+function House() {
+  const door = track([
+    [0, 1],
+    [5.85, 1],
+    [6.15, 0.12],
+    [STREET_S, 0.12],
+  ]);
   return (
     <g>
       <rect x="430" y="168" width="22" height="40" fill="#5b3a2c" />
@@ -268,10 +300,10 @@ function House({ doorOpen }: { doorOpen: boolean }) {
       <rect x="421" y="222" width="4" height="40" fill="#8f5a3c" />
       <rect x="400" y="240" width="46" height="4" fill="#8f5a3c" />
       <rect x="396" y="262" width="54" height="5" rx="2" fill={SNOW} />
-      {/* Door (opens to let the present in) */}
+      {/* Warm light behind the door, then the door swinging open from its hinge */}
       <rect x="490" y="232" width="40" height="68" fill="#f4c76b" />
-      <motion.rect x="490" y="232" width="40" height="68" fill="#2f6f7e" animate={{ scaleX: doorOpen ? 0.15 : 1 }} transition={{ duration: 0.35 }} style={{ originX: "490px" }} />
-      <motion.g animate={{ opacity: doorOpen ? 0 : 1 }}>
+      <motion.g initial={false} animate={{ scaleX: door.values }} transition={{ scaleX: door.t }} style={{ originX: "0%", originY: "50%" }}>
+        <rect x="490" y="232" width="40" height="68" fill="#2f6f7e" />
         <circle cx="510" cy="252" r="9" fill="none" stroke="#1d6b3c" strokeWidth="5" />
         <circle cx="510" cy="262" r="3" fill={RED} />
         <circle cx="523" cy="270" r="2" fill={GOLD} />
@@ -281,10 +313,26 @@ function House({ doorOpen }: { doorOpen: boolean }) {
   );
 }
 
-/** The delivery truck, facing right. (0, 0) is where its back wheel touches the road. */
-function Truck({ spinning }: { spinning: boolean }) {
+/** The delivery truck, facing right. (0, 0) is where its back wheel touches the road. Wheels roll with the truck; the cab door opens for the driver. */
+function Truck() {
+  const roll = track(
+    [
+      [0, 0],
+      [2.2, ROLL],
+      [STREET_S, ROLL],
+    ],
+    [ARRIVE, "linear"],
+  );
+  const door = track([
+    [0, 1],
+    [2.35, 1],
+    [2.6, 0.1],
+    [2.95, 0.1],
+    [3.2, 1],
+    [STREET_S, 1],
+  ]);
   const wheel = (cx: number) => (
-    <motion.g animate={spinning ? { rotate: [0, 360] } : { rotate: 0 }} transition={spinning ? { duration: 0.5, repeat: Infinity, ease: "linear" } : { duration: 0.2 }} style={{ originX: "50%", originY: "50%" }}>
+    <motion.g initial={false} animate={{ rotate: roll.values }} transition={{ rotate: roll.t }} style={{ originX: "50%", originY: "50%" }}>
       <circle cx={cx} cy="-10" r="11" fill="#1e2a36" />
       <circle cx={cx} cy="-10" r="4.5" fill="#9fb0c0" />
       <rect x={cx - 1} y="-20" width="2" height="20" fill="#9fb0c0" />
@@ -299,9 +347,15 @@ function Truck({ spinning }: { spinning: boolean }) {
       <circle cx="48" cy="-64" r="5" fill={GOLD} />
       {/* Snow on the roof */}
       <rect x="-30" y="-82" width="104" height="6" rx="3" fill={SNOW} />
-      {/* Cab */}
+      {/* Cab, with the inside showing when the door opens */}
       <path d="M74 -58h26l16 20v22H74z" fill={RED} />
-      <path d="M80 -52h17l11 14H80z" fill="#bfe1f5" />
+      <rect x="76" y="-55" width="24" height="38" fill="#3a1412" />
+      <motion.g initial={false} animate={{ scaleX: door.values }} transition={{ scaleX: door.t }} style={{ originX: "100%", originY: "50%" }}>
+        <rect x="76" y="-55" width="24" height="38" rx="2" fill={RED_LIGHT} />
+        <rect x="80" y="-52" width="17" height="14" rx="1" fill="#bfe1f5" />
+        <rect x="80" y="-31" width="7" height="2.5" rx="1" fill={RED_DARK} />
+      </motion.g>
+      <path d="M100 -52l8 14h-8z" fill="#bfe1f5" />
       <rect x="110" y="-30" width="8" height="6" rx="2" fill="#f4c76b" />
       <rect x="-32" y="-18" width="152" height="8" rx="3" fill="#2a3540" />
       {wheel(-8)}
@@ -310,17 +364,140 @@ function Truck({ spinning }: { spinning: boolean }) {
   );
 }
 
+/** When the driver lets go of the present; the doorstep copy appears at the same moment. */
+const SET_DOWN = 5.15;
 /**
- * The truck drives in, stops by the house, and the present hops from the
- * truck to the door, which opens to take it in. About 3.6 seconds.
+ * The delivery driver, feet on the snow, facing right. Steps out of the cab
+ * with the present, walks to the house, crouches to set it on the step,
+ * then stands, turns and waves.
+ */
+function Driver() {
+  const x = track(
+    [
+      [0, 322],
+      [2.45, 322],
+      [WALK_FROM, 344],
+      [WALK_TO, 474],
+      [STREET_S, 474],
+    ],
+    ["linear", "easeOut", "linear", "linear"],
+  );
+  const shown = track([
+    [0, 0],
+    [2.45, 0],
+    [2.65, 1],
+    [STREET_S, 1],
+  ]);
+  // A small bob with each step, then the crouch to set the present down.
+  const body = track([[0, 0], ...swing(WALK_FROM, WALK_TO, STEP / 2, 0, -1.4), [WALK_TO, 0], [4.95, 5], [5.3, 5], [5.65, 0], [STREET_S, 0]]);
+  const lean = track([
+    [0, 0],
+    [WALK_TO, 0],
+    [4.95, 16],
+    [5.3, 16],
+    [5.65, 0],
+    [STREET_S, 0],
+  ]);
+  const legA = track([[0, 0], ...swing(WALK_FROM, WALK_TO, STEP, -22, 22), [WALK_TO, 0], [STREET_S, 0]]);
+  const legB = track([[0, 0], ...swing(WALK_FROM, WALK_TO, STEP, 22, -22), [WALK_TO, 0], [STREET_S, 0]]);
+  // Arms hold the present out front, drop after setting it down, then one waves.
+  const armFront = track([
+    [0, -75],
+    [SET_DOWN, -75],
+    [5.5, 0],
+    [STREET_S, 0],
+  ]);
+  const armWave = track([[0, -75], [SET_DOWN, -75], [5.5, 0], [5.95, -150], ...swing(6.15, 7.15, 0.25, -130, -160), [STREET_S, -150]]);
+  const carry = track([
+    [0, 1],
+    [SET_DOWN - 0.01, 1],
+    [SET_DOWN, 0],
+    [STREET_S, 0],
+  ]);
+  const face = track([
+    [0, 1],
+    [5.6, 1],
+    [5.8, -1],
+    [STREET_S, -1],
+  ]);
+  const leg = (anim: ReturnType<typeof track<number>>, dx: number) => (
+    <motion.g initial={false} animate={{ rotate: anim.values }} transition={{ rotate: anim.t }} style={{ originX: "50%", originY: "0%" }}>
+      <rect x={dx - 3} y="-20" width="6.5" height="18" rx="3" fill="#26354d" />
+      <rect x={dx - 3} y="-4" width="9" height="4.5" rx="2" fill="#141c26" />
+    </motion.g>
+  );
+  const arm = (anim: ReturnType<typeof track<number>>) => (
+    <motion.g initial={false} animate={{ rotate: anim.values }} transition={{ rotate: anim.t }} style={{ originX: "50%", originY: "0%" }}>
+      <rect x="-2.5" y="-41" width="5.5" height="17" rx="2.75" fill="#0e4471" />
+      <circle cx="0.25" cy="-23" r="3" fill="#c98d62" />
+    </motion.g>
+  );
+  return (
+    <motion.g initial={false} animate={{ x: x.values, opacity: shown.values }} transition={{ x: x.t, opacity: shown.t }}>
+      <g transform="translate(0 302)">
+        <motion.g initial={false} animate={{ scaleX: face.values }} transition={{ scaleX: face.t }} style={{ originX: "50%", originY: "100%" }}>
+          {leg(legB, -1)}
+          {leg(legA, 2)}
+          <motion.g initial={false} animate={{ y: body.values, rotate: lean.values }} transition={{ y: body.t, rotate: lean.t }} style={{ originX: "50%", originY: "100%" }}>
+            {arm(armWave)}
+            {/* Jacket with a sun-yellow stripe, head, cap */}
+            <rect x="-9" y="-44" width="18" height="26" rx="6" fill="#0e4471" />
+            <rect x="-9" y="-33" width="18" height="3.5" fill={GOLD} />
+            <circle cx="1" cy="-52" r="7.5" fill="#c98d62" />
+            <path d="M-6.5 -54a7.5 7.5 0 0 1 15 0z" fill="#0e4471" />
+            <rect x="5" y="-55.5" width="7" height="2.5" rx="1.2" fill="#0e4471" />
+            <circle cx="4" cy="-52" r="1.1" fill="#2a1a12" />
+            {/* The present, held out front until it's set on the step */}
+            <motion.g initial={false} animate={{ opacity: carry.values }} transition={{ opacity: carry.t }}>
+              <g transform="translate(17 -24)">
+                <Present s={0.55} />
+              </g>
+            </motion.g>
+            {arm(armFront)}
+          </motion.g>
+        </motion.g>
+      </g>
+    </motion.g>
+  );
+}
+
+/**
+ * The truck rolls up a snowy street and eases to a stop by the house. The
+ * driver steps out with the present, walks to the door, sets it on the step,
+ * and waves; the door opens and the present goes inside. STREET_S seconds.
  */
 export function DeliveryStreet() {
-  const [step, setStep] = useState<"drive" | "drop" | "in">("drive");
-  useEffect(() => {
-    const a = window.setTimeout(() => setStep("drop"), 2000);
-    const b = window.setTimeout(() => setStep("in"), 3000);
-    return () => (window.clearTimeout(a), window.clearTimeout(b));
-  }, []);
+  const truck = track(
+    [
+      [0, TRUCK_FROM],
+      [2.2, TRUCK_AT],
+      [STREET_S, TRUCK_AT],
+    ],
+    [ARRIVE, "linear"],
+  );
+  // A little dip on the springs as it stops.
+  const settle = track([
+    [0, 0],
+    [2.15, 0],
+    [2.35, 1.6],
+    [2.6, 0],
+    [STREET_S, 0],
+  ]);
+  // The present on the step: appears as the driver lets go, then slides in through the open door.
+  const stepX = track([
+    [0, 491],
+    [6.15, 491],
+    [6.7, 512],
+    [STREET_S, 512],
+  ]);
+  const stepShown = track([
+    [0, 0],
+    [SET_DOWN - 0.01, 0],
+    [SET_DOWN, 1],
+    [6.2, 1],
+    [6.7, 0],
+    [STREET_S, 0],
+  ]);
   return (
     <g>
       <rect x="-2000" y="-2000" width="4600" height="2310" fill={NIGHT} />
@@ -341,36 +518,34 @@ export function DeliveryStreet() {
           <path d="M0 -40L-7 -26H7Z" fill={SNOW} />
         </g>
       ))}
-      <House doorOpen={step === "in"} />
-      {/* Ground and road */}
-      <rect x="-2000" y="300" width="4600" height="2000" fill={SNOW} />
-      <rect x="-2000" y="306" width="4600" height="22" fill="#56616d" />
-      <rect x="-2000" y="316" width="4600" height="2" fill="#8a96a3" />
-      <motion.g initial={{ x: -420 }} animate={{ x: 236 }} transition={{ duration: 2, ease: [0.25, 0.7, 0.35, 1] }}>
-        <g transform="translate(0 316)">
-          <Truck spinning={step === "drive"} />
+      <House />
+      {/* The present on the step, just inside the door frame */}
+      <motion.g initial={false} animate={{ x: stepX.values, opacity: stepShown.values }} transition={{ x: stepX.t, opacity: stepShown.t }}>
+        <g transform="translate(0 300)">
+          <Present s={0.55} />
         </g>
       </motion.g>
-      {/* The present hops off the back of the truck, onto the step, and in the door */}
-      {step !== "drive" && (
-        <motion.g
-          initial={{ x: 214, y: 236 }}
-          animate={step === "drop" ? { x: [214, 350, 470], y: [236, 170, 298] } : { x: 530, y: 298, opacity: 0 }}
-          transition={step === "drop" ? { duration: 0.8, ease: "easeInOut", times: [0, 0.5, 1] } : { duration: 0.5, ease: "easeIn" }}
-        >
-          <Present s={0.75} />
-        </motion.g>
-      )}
+      {/* Ground and road */}
+      <rect x="-2000" y="302" width="4600" height="2000" fill={SNOW} />
+      <rect x="-2000" y="306" width="4600" height="22" fill="#56616d" />
+      <rect x="-2000" y="316" width="4600" height="2" fill="#8a96a3" />
+      <motion.g initial={false} animate={{ x: truck.values, y: settle.values }} transition={{ x: truck.t, y: settle.t }}>
+        <g transform="translate(0 316)">
+          <Truck />
+        </g>
+      </motion.g>
+      <Driver />
       <Snow />
     </g>
   );
 }
 
-/** The ending of the holiday send-off: the delivery, then the living room with the present under the tree. */
+/** The ending of the holiday send-off: the delivery, then (cross-fading) the living room with the present arriving under the tree. */
+export const HOLIDAY_FINALE_MS = 12200;
 export function HolidayFinale({ viewBox, className }: { viewBox: string; className: string }) {
   const [inside, setInside] = useState(false);
   useEffect(() => {
-    const t = window.setTimeout(() => setInside(true), 3600);
+    const t = window.setTimeout(() => setInside(true), STREET_S * 1000);
     return () => window.clearTimeout(t);
   }, []);
   // On tall screens the send-off zooms in on the middle; here each scene picks its own middle
@@ -380,13 +555,14 @@ export function HolidayFinale({ viewBox, className }: { viewBox: string; classNa
   return (
     <motion.svg viewBox={view} preserveAspectRatio="xMidYMid meet" className={className} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }} aria-hidden>
       <HolidayStyles />
-      <AnimatePresence mode="wait">
+      {/* Both scenes overlap while one fades into the other */}
+      <AnimatePresence>
         {inside ? (
-          <motion.g key="room" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.45 }}>
-            <LivingRoom arriveDelay={0.5} />
+          <motion.g key="room" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.7, ease: "easeInOut" }}>
+            <LivingRoom arriveDelay={0.6} />
           </motion.g>
         ) : (
-          <motion.g key="street" exit={{ opacity: 0 }} transition={{ duration: 0.35 }}>
+          <motion.g key="street" exit={{ opacity: 0 }} transition={{ duration: 0.7, ease: "easeInOut" }}>
             <DeliveryStreet />
           </motion.g>
         )}
