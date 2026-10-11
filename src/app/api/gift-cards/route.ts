@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { SquareError } from "square";
 import { apiError, logError } from "@/lib/api";
 import { db } from "@/lib/db";
+import { pickup } from "@config/pickup";
+import { bonusFor } from "@/lib/giftcards/bonus";
+import { getGiftBonus } from "@/lib/giftcards/bonus.server";
 import { deliverAtFor, giftRequestSchema, isValidSendOn } from "@/lib/giftcards/rules";
+import { todayIn } from "@/lib/pickup";
 import { finalizeGiftPurchase, giftRef } from "@/lib/giftcards/server";
 import { sendNotificationsSoon } from "@/lib/notify/kick";
 import { paymentFacts } from "@/lib/orders/finalize";
@@ -40,6 +44,9 @@ export async function POST(req: Request) {
 
   if (d.expectedTotalCents !== d.amountCents) return apiError(409, "The amount changed. Please check it and try again.");
   if (!previous && !isValidSendOn(d.sendOn)) return apiError(400, "Please choose a delivery date between tomorrow and a year from now.");
+  // Any promotion bonus is fixed when the purchase is first saved; a retry keeps it.
+  const bonusCents = previous ? previous.bonusCents : bonusFor(d.amountCents, await getGiftBonus(), todayIn(pickup.timeZone));
+  if (!previous && bonusCents !== d.expectedBonusCents) return apiError(409, "The gift card bonus has changed. Please check the amount and try again.");
 
   const purchase =
     previous ??
@@ -47,6 +54,7 @@ export async function POST(req: Request) {
       data: {
         idempotencyKey: d.attemptId,
         amountCents: d.amountCents,
+        bonusCents,
         buyerName: d.buyerName,
         buyerEmail: d.buyerEmail,
         recipientName: d.recipientName,

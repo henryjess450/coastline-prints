@@ -14,6 +14,8 @@ import { GiftSent } from "./GiftSent";
 
 type Fields = { recipientName: string; recipientEmail: string; message: string; buyerName: string; buyerEmail: string };
 type Errors = Partial<Record<keyof GiftDetails | "custom", string>>;
+/** A live gift card promotion: cards of minCents or more get bonusCents extra. */
+export type LiveBonus = { name: string; minCents: number; bonusCents: number; line: string };
 type Outcome = { ok: true; recipientName: string; sendOn: string | null } | { ok: false; message: string };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -25,7 +27,7 @@ const formatTotal = (v: number) => money(Math.round(v));
  * while the payment goes through, ending on the confirmation.
  * `demo` (development only) skips Square so the animation can be previewed.
  */
-export function GiftCardShop({ square, range, demo = false }: { square: SquareConfig | null; range: { min: string; max: string }; demo?: boolean }) {
+export function GiftCardShop({ square, range, bonus = null, demo = false }: { square: SquareConfig | null; range: { min: string; max: string }; bonus?: LiveBonus | null; demo?: boolean }) {
   const payRef = useRef<PaymentMethodsHandle>(null);
   const payButton = useRef<HTMLButtonElement>(null);
   const [preset, setPreset] = useState<number | "custom">(5000);
@@ -48,6 +50,7 @@ export function GiftCardShop({ square, range, demo = false }: { square: SquareCo
 
   const customCents = Math.round(Number(custom.replace(/[$,\s]/g, "")) * 100);
   const amountCents = preset === "custom" ? (Number.isFinite(customCents) ? customCents : 0) : preset;
+  const bonusCents = bonus && amountCents >= bonus.minCents ? bonus.bonusCents : 0;
   const canPay = (!!square || demo) && !checking && phase === "form";
 
   const set = (k: keyof Fields, v: string) => {
@@ -81,7 +84,7 @@ export function GiftCardShop({ square, range, demo = false }: { square: SquareCo
       await sleep(1800);
       return { ok: true, recipientName: details.recipientName, sendOn: details.sendOn };
     }
-    const body = JSON.stringify({ ...details, attemptId, sourceId, expectedTotalCents: details.amountCents });
+    const body = JSON.stringify({ ...details, attemptId, sourceId, expectedTotalCents: details.amountCents, expectedBonusCents: bonusCents });
     for (let attempt = 0; attempt < 2; attempt++) {
       let res: Response;
       try {
@@ -111,7 +114,7 @@ export function GiftCardShop({ square, range, demo = false }: { square: SquareCo
       return { ok: false, message: data.error ?? "The payment didn't go through. Your card was not charged." };
     }
     return { ok: false, message: "The payment didn't go through. Your card was not charged." };
-  }, [demo]);
+  }, [demo, bonusCents]);
 
   /** Card checked: start the animation and the payment together. */
   async function send(details: GiftDetails, sourceId: string) {
@@ -184,7 +187,7 @@ export function GiftCardShop({ square, range, demo = false }: { square: SquareCo
   }, [demo]);
 
   // Full-screen animation over the whole page while the gift is sent.
-  if (phase === "sending") return <GiftAnimation result={result} amount={money(amountCents)} onDone={onDone} />;
+  if (phase === "sending") return <GiftAnimation result={result} amount={money(amountCents + bonusCents)} onDone={onDone} />;
   if (phase === "sent" && sent) return <GiftSent recipientName={sent.recipientName} when={sent.sendOn ? friendlyDate(sent.sendOn) : null} onAnother={another} />;
 
   return (
@@ -192,6 +195,11 @@ export function GiftCardShop({ square, range, demo = false }: { square: SquareCo
       <div className="min-w-0 space-y-6">
         <Card flat className="p-6 sm:p-8">
           <h2 className="font-display text-xl font-bold">Amount</h2>
+          {bonus && (
+            <p className="mt-3 rounded-xl bg-accent-soft px-4 py-3 text-sm">
+              <strong>{bonus.name}:</strong> {bonus.line}.
+            </p>
+          )}
           <div role="radiogroup" aria-label="Gift card amount" className="mt-5 flex flex-wrap gap-3">
             {GIFT_PRESETS_CENTS.map((c, i) => (
               <Chip key={c} active={preset === c} onClick={() => setPreset(c)} delay={i * 0.04}>
@@ -298,13 +306,13 @@ export function GiftCardShop({ square, range, demo = false }: { square: SquareCo
 
       {/* Live preview of the card: first on phones, beside the form on wide screens */}
       <div className="-order-1 min-w-0 lg:order-none lg:sticky lg:top-24 lg:self-start">
-        <CardPreview amountCents={amountCents} to={fields.recipientName} from={fields.buyerName} message={fields.message} />
+        <CardPreview amountCents={amountCents} bonusCents={bonusCents} to={fields.recipientName} from={fields.buyerName} message={fields.message} />
       </div>
     </div>
   );
 }
 
-function CardPreview({ amountCents, to, from, message }: { amountCents: number; to: string; from: string; message: string }) {
+function CardPreview({ amountCents, bonusCents, to, from, message }: { amountCents: number; bonusCents: number; to: string; from: string; message: string }) {
   return (
     <div>
       <motion.div className="relative aspect-[1.586] w-full rounded-3xl bg-accent p-6 text-accent-ink shadow-[var(--shadow)]" initial={{ rotate: -2, y: 10, opacity: 0 }} animate={{ rotate: -2, y: 0, opacity: 1 }} whileHover={{ rotate: 0, y: -4 }} transition={{ type: "spring", stiffness: 260, damping: 20 }}>
@@ -317,9 +325,16 @@ function CardPreview({ amountCents, to, from, message }: { amountCents: number; 
             <p className="truncate text-white/70">{to ? `For ${to}` : "For someone special"}</p>
             <p className="truncate text-white/70">{from ? `From ${from}` : ""}</p>
           </div>
-          <AnimatedNumber value={amountCents >= GIFT_MIN_CENTS ? amountCents : 0} format={formatTotal} live={false} pulse className="font-display text-3xl font-bold text-sand sm:text-4xl" />
+          <AnimatedNumber value={amountCents >= GIFT_MIN_CENTS ? amountCents + bonusCents : 0} format={formatTotal} live={false} pulse className="font-display text-3xl font-bold text-sand sm:text-4xl" />
         </div>
       </motion.div>
+      <AnimatePresence>
+        {bonusCents > 0 && (
+          <motion.p initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mt-4 text-sm font-medium text-accent-text">
+            You pay {money(amountCents)}. The card is worth {money(amountCents + bonusCents)} with the {money(bonusCents).replace(".00", "")} bonus.
+          </motion.p>
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {message.trim() && (
           <motion.blockquote initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mt-6 border-l-4 border-accent-line pl-4 text-sm leading-relaxed text-muted">

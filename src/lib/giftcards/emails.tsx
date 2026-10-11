@@ -31,7 +31,7 @@ export async function buildGiftEmail(template: GiftEmailTemplate, g: GiftData): 
     case "gift-owner":
       to = privateSite.ownerEmail;
       replyTo = g.buyerEmail;
-      subject = `Gift card sold: ${g.amount} from ${g.buyerName}`;
+      subject = `Gift card sold: ${g.paid} from ${g.buyerName}`;
       node = <GiftCardOwner g={g} when={when} />;
       withCard = false;
       break;

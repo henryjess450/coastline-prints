@@ -118,6 +118,7 @@ export const uses: Use[] = [
       "For a custom name keychain, use a customisable model on MakerWorld or Printables: type the name, download the file, upload it here.",
       "Book a pickup time when you order, so the gift is in hand when you need it.",
       "Gift cards never expire and work on any order.",
+      "Shopping for Christmas? See the Christmas gifts page for order-by dates.",
     ],
     search: "gift",
   },

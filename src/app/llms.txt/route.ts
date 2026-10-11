@@ -38,6 +38,7 @@ ${link("Find a model", "/library", "search free and paid 3D models from several 
 ${link("Questions", "/faq", "prices, files, materials, pickup and shipping")}
 ${link("About", "/about")}
 ${link("Gift cards", "/gift-cards")}
+${link("Christmas gifts", "/christmas-gifts", "holiday gift ideas, order-by dates and the gift card bonus")}
 
 ## What people print
 

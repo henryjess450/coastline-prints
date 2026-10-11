@@ -16,6 +16,7 @@ import { ButtonLink } from "@/components/ui/Button";
 import { SectionLabel } from "@/components/ui/Card";
 import { MAX_GIFT_CARDS } from "@/lib/codes/apply";
 import { getEffectiveConfig } from "@/lib/config/effective";
+import { todayIn } from "@/lib/pickup";
 import { faqs } from "@/lib/faq";
 import { money } from "@/lib/format";
 import { JsonLd, localBusiness, place, website } from "@/lib/seo";
@@ -38,6 +39,9 @@ const steps = [
 export default async function Home() {
   const cfg = await getEffectiveConfig();
   const p = cfg.pricing;
+  // October to Christmas: a link to the Christmas gifts page.
+  const today = todayIn(pickup.timeZone);
+  const seasonal = today.slice(5) >= "10-01" && today.slice(5) <= "12-25";
 
   return (
     <>
@@ -113,6 +117,13 @@ export default async function Home() {
               </Link>
             </Reveal>
           ))}
+          {seasonal && (
+            <Reveal as="li" delay={uses.length * 0.04}>
+              <Link href="/christmas-gifts" className="inline-block rounded-full border border-accent bg-accent px-5 py-3 font-medium text-accent-ink transition-transform duration-200 hover:-translate-y-0.5">
+                Christmas gifts
+              </Link>
+            </Reveal>
+          )}
           <Reveal as="li" delay={uses.length * 0.04}>
             <Link href="/guides" className="inline-block px-5 py-3 font-medium text-accent-text underline underline-offset-4">
               Guides

@@ -1,6 +1,7 @@
 "use client";
 import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { LiveAnnouncement } from "@/lib/announcements";
 
@@ -9,6 +10,8 @@ const key = (id: string) => `cp-announcement-closed:${id}`;
 /** A slim bar across the top of every page. Closing it hides that announcement for good (on this device). */
 export function AnnouncementBar({ a }: { a: LiveAnnouncement }) {
   const [open, setOpen] = useState(false);
+  const path = usePathname();
+  const hidden = a.coastlineOnly && path.startsWith("/lightlab");
   // Shown after mount, so a closed one never flashes back.
   useEffect(() => {
     let closed = false;
@@ -26,7 +29,7 @@ export function AnnouncementBar({ a }: { a: LiveAnnouncement }) {
   };
   return (
     <AnimatePresence initial={false}>
-      {open && (
+      {open && !hidden && (
         <motion.div role="region" aria-label="Announcement" initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} className="relative z-40 overflow-hidden bg-accent text-accent-ink">
           <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-2 text-sm sm:px-6">
             <p className="min-w-0 flex-1 text-center">

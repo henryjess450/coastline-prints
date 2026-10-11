@@ -44,9 +44,10 @@ export async function finalizeGiftPurchase(purchaseId: string, payment: PaymentF
             code: generateCode("GIFT_CARD"),
             pin: generatePin(),
             kind: "GIFT_CARD",
-            initialCents: purchase.amountCents,
-            balanceCents: purchase.amountCents,
-            note: `Bought online by ${purchase.buyerName} for ${purchase.recipientName}`.slice(0, 200),
+            // What was paid plus any promotion bonus.
+            initialCents: purchase.amountCents + purchase.bonusCents,
+            balanceCents: purchase.amountCents + purchase.bonusCents,
+            note: `Bought online by ${purchase.buyerName} for ${purchase.recipientName}${purchase.bonusCents ? ` (incl. ${money(purchase.bonusCents)} bonus)` : ""}`.slice(0, 200),
           },
         });
         const updated = await tx.giftPurchase.update({
@@ -81,8 +82,13 @@ export async function loadGiftData(purchaseId: string) {
   if (!p || !p.code) return null;
   return {
     id: p.id,
-    amountCents: p.amountCents,
-    amount: money(p.amountCents),
+    /** The card's value: what was paid plus any bonus. */
+    amountCents: p.amountCents + p.bonusCents,
+    amount: money(p.amountCents + p.bonusCents),
+    /** What the buyer paid. */
+    paid: money(p.amountCents),
+    /** The promotion bonus, if any ("$5.00"). */
+    bonus: p.bonusCents ? money(p.bonusCents) : null,
     buyerName: p.buyerName,
     buyerEmail: p.buyerEmail,
     recipientName: p.recipientName,

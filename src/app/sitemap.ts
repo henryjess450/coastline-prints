@@ -20,6 +20,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     page("/about", 0.6),
     page("/library", 0.6, "weekly"),
     page("/gift-cards", 0.6),
+    page("/christmas-gifts", 0.7, "weekly"),
     page("/rewards", 0.4),
     page("/app", 0.3),
     page("/terms", 0.1, "yearly"),

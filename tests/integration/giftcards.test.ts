@@ -21,6 +21,9 @@ const { POST: webhook } = await import("@/app/api/webhooks/square/route");
 const { db } = await import("@/lib/db");
 const { processOutbox } = await import("@/lib/notify/outbox");
 const { scheduleRange } = await import("@/lib/giftcards/rules");
+const { saveGiftBonus } = await import("@/lib/giftcards/bonus.server");
+const { defaultGiftBonus } = await import("@config/promotions");
+const { todayIn, addDays } = await import("@/lib/pickup");
 
 function completed(req: { idempotencyKey: string; referenceId: string; amountMoney: { amount: bigint; currency: string } }) {
   return { id: `pay_${req.idempotencyKey.slice(0, 8)}`, status: "COMPLETED", amountMoney: req.amountMoney, locationId: "TEST_LOCATION", referenceId: req.referenceId, cardDetails: { card: { cardBrand: "VISA", last4: "4242" } } };
@@ -35,7 +38,9 @@ async function purchase(over: Record<string, unknown> = {}) {
   return { res, data: await res.json(), body };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  // No bonus unless a test turns one on, so the results don't depend on today's date.
+  await saveGiftBonus({ ...defaultGiftBonus, on: false });
   square.payments.create.mockReset();
   square.payments.get.mockReset();
 });
@@ -109,6 +114,38 @@ describe("buying a gift card", () => {
     expect(again.status).toBe(200);
     expect(square.payments.create).toHaveBeenCalledTimes(1);
     expect(await db.giftPurchase.count({ where: { idempotencyKey: body.attemptId } })).toBe(1);
+  });
+});
+
+describe("gift card bonus", () => {
+  const today = todayIn("America/Vancouver");
+  const runningBonus = { ...defaultGiftBonus, on: true, minCents: 5000, bonusCents: 500, startsOn: addDays(today, -1), endsOn: addDays(today, 1) };
+
+  it("adds the bonus to the card, while charging only what they chose", async () => {
+    await saveGiftBonus(runningBonus);
+    square.payments.create.mockImplementation(async (req) => ({ payment: completed(req) }));
+    const { res, body } = await purchase({ expectedBonusCents: 500 });
+    expect(res.status).toBe(200);
+    expect(square.payments.create.mock.calls[0][0].amountMoney.amount).toBe(BigInt(5000));
+    const gift = await db.giftPurchase.findUniqueOrThrow({ where: { idempotencyKey: body.attemptId }, include: { code: true } });
+    expect(gift.bonusCents).toBe(500);
+    expect(gift.code).toMatchObject({ initialCents: 5500, balanceCents: 5500 });
+  });
+
+  it("gives no bonus under the minimum", async () => {
+    await saveGiftBonus(runningBonus);
+    square.payments.create.mockImplementation(async (req) => ({ payment: completed(req) }));
+    const { res, body } = await purchase({ amountCents: 2500 });
+    expect(res.status).toBe(200);
+    const gift = await db.giftPurchase.findUniqueOrThrow({ where: { idempotencyKey: body.attemptId }, include: { code: true } });
+    expect(gift.code?.initialCents).toBe(2500);
+  });
+
+  it("refuses before charging if the bonus changed since the page loaded", async () => {
+    await saveGiftBonus({ ...runningBonus, endsOn: addDays(today, -1) });
+    const { res } = await purchase({ expectedBonusCents: 500 });
+    expect(res.status).toBe(409);
+    expect(square.payments.create).not.toHaveBeenCalled();
   });
 });
 

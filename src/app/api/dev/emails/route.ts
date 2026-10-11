@@ -10,6 +10,8 @@ const SAMPLE_GIFT: GiftData = {
   id: "sample",
   amountCents: 5000,
   amount: "$50.00",
+  paid: "$50.00",
+  bonus: null,
   buyerName: "Sam Rivera",
   buyerEmail: "sam@example.com",
   recipientName: "Jordan Lee",
@@ -29,13 +31,15 @@ export const runtime = "nodejs";
  * DEV ONLY email preview: /api/dev/emails?template=customer-receipt
  * (optionally &order=CP-XXXX-XXXX). Gift emails: template=gift-recipient,
  * gift-buyer, gift-owner, or gift-card-image for the card picture (sample
- * data, add &now=1 for a send-now gift). Returns 404 in production.
+ * data, add &now=1 for a send-now gift, &bonus=1 for a $5 holiday bonus).
+ * The review request email is at /dev/review-email. Returns 404 in production.
  */
 export async function GET(req: Request) {
   if (process.env.NODE_ENV === "production") return new Response("Not found", { status: 404 });
   const url = new URL(req.url);
   const raw = url.searchParams.get("template") ?? "customer-receipt";
-  const sample = { ...SAMPLE_GIFT, sendOn: url.searchParams.get("now") ? null : SAMPLE_GIFT.sendOn };
+  const bonus = url.searchParams.get("bonus") ? { amountCents: 5500, amount: "$55.00", bonus: "$5.00" } : {};
+  const sample = { ...SAMPLE_GIFT, ...bonus, sendOn: url.searchParams.get("now") ? null : SAMPLE_GIFT.sendOn };
   if (raw === "gift-card-image") return new Response(new Uint8Array(await renderGiftCardPng(sample)), { headers: { "Content-Type": "image/png" } });
   if ((GIFT_EMAIL_TEMPLATES as readonly string[]).includes(raw)) {
     const email = await buildGiftEmail(raw as GiftEmailTemplate, sample);

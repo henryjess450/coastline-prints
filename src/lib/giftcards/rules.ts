@@ -41,6 +41,8 @@ export const giftRequestSchema = giftDetailsSchema.extend({
   attemptId: z.string().uuid(),
   sourceId: z.string().min(1).max(500),
   expectedTotalCents: z.number().int(),
+  /** The bonus the page showed, so a promotion ending mid-checkout is caught. */
+  expectedBonusCents: z.number().int().min(0).optional().default(0),
 });
 
 /** The earliest and latest days a gift can be scheduled for. */

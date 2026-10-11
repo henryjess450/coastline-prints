@@ -71,7 +71,8 @@ export function GiftCardBuyer({ g, when }: { g: GiftData; when: string | null })
         )}
       </P>
       <Label>Receipt</Label>
-      <Text style={{ margin: "0 0 4px", fontSize: 14 }}>Gift card · {g.amount} CAD</Text>
+      <Text style={{ margin: "0 0 4px", fontSize: 14 }}>Gift card · {g.paid} CAD</Text>
+      {g.bonus && <Text style={{ margin: "0 0 4px", fontSize: 14, color: colors.muted }}>Plus a {g.bonus} bonus, so the card is worth {g.amount}</Text>}
       {g.card && <Text style={{ margin: "0 0 4px", fontSize: 14, color: colors.muted }}>Paid with {g.card}</Text>}
       {g.receiptUrl && (
         <Text style={{ margin: "0 0 4px", fontSize: 14 }}>
@@ -91,8 +92,9 @@ export function GiftCardBuyer({ g, when }: { g: GiftData; when: string | null })
 /** Heads-up for the shop. */
 export function GiftCardOwner({ g, when }: { g: GiftData; when: string | null }) {
   return (
-    <EmailLayout preview={`Gift card sold: ${g.amount}`}>
-      <H1>Gift card sold: {g.amount}</H1>
+    <EmailLayout preview={`Gift card sold: ${g.paid}`}>
+      <H1>Gift card sold: {g.paid}</H1>
+      {g.bonus && <P muted>Includes a {g.bonus} bonus: the card is worth {g.amount}.</P>}
       <P muted>
         From {g.buyerName} ({g.buyerEmail}) to {g.recipientName} ({g.recipientEmail}). {when ? `Emails to the recipient on ${when} at 9 am.` : "Emailed to the recipient now."}
       </P>

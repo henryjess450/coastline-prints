@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { createAnnouncementAction, createSaleAction, endAnnouncementAction, endSaleAction, sendBroadcastAction } from "@/app/admin/tools-actions";
+import { pickup } from "@config/pickup";
+import { createAnnouncementAction, createSaleAction, endAnnouncementAction, endSaleAction, saveGiftBonusAction, sendBroadcastAction } from "@/app/admin/tools-actions";
 import { area, field, Field, ToolForm } from "@/components/admin/ToolForm";
 import { Card } from "@/components/ui/Card";
 import { requireAdmin } from "@/lib/admin/auth";
@@ -8,6 +9,9 @@ import { broadcastAudience } from "@/lib/broadcast";
 import { formatCardNumber } from "@/lib/codes/apply";
 import { db } from "@/lib/db";
 import { money } from "@/lib/format";
+import { bonusLine, bonusLive } from "@/lib/giftcards/bonus";
+import { getGiftBonus } from "@/lib/giftcards/bonus.server";
+import { todayIn } from "@/lib/pickup";
 
 export const metadata = { title: "Promote" };
 
@@ -25,6 +29,10 @@ export default async function PromotePage() {
     db.promoCode.findMany({ where: { active: true, kind: { not: "GIFT_CARD" }, ownerId: null, referrerId: null, rewardOrderId: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }, orderBy: { createdAt: "desc" }, take: 50 }),
     broadcastAudience(),
   ]);
+  const bonus = await getGiftBonus();
+  const today = todayIn(pickup.timeZone);
+  const bonusOn: boolean = bonusLive(bonus, today); // a plain boolean, so `bonus` keeps its type below
+  const bonusState = bonusOn ? "On now" : !bonus.on ? "Off" : today < bonus.startsOn ? `Starts ${day(new Date(`${bonus.startsOn}T12:00:00-08:00`))}` : "Ended";
   const live = (s: { startsAt: Date | null }) => !s.startsAt || s.startsAt <= now;
 
   return (
@@ -74,6 +82,43 @@ export default async function PromotePage() {
               <input name="endsAt" type="date" className={field} />
             </Field>
           </div>
+        </ToolForm>
+      </Card>
+
+      <Card className="p-5 sm:p-6">
+        <h2 className="font-display text-xl font-semibold">Gift card bonus</h2>
+        <p className="mt-1 text-sm text-muted">
+          Gift cards bought online between these dates get extra value added to the card, like $5 extra on $50 or more. While it&apos;s on, the gift card page shows it and, if no other announcement is up, the
+          announcement bar does too.
+        </p>
+        <p className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl bg-accent-soft px-4 py-3 text-sm">
+          <span className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold uppercase text-accent-ink">{bonusState}</span>
+          <span>
+            <strong>{bonus.name}</strong>: {bonusLine(bonus)}
+          </span>
+        </p>
+        <ToolForm action={saveGiftBonusAction} submit="Save the bonus" className="mt-5">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <Field label="Name" hint="Shown on the gift card page.">
+              <input name="name" required maxLength={40} defaultValue={bonus.name} className={field} />
+            </Field>
+            <Field label="On cards of at least ($)">
+              <input name="min" inputMode="decimal" required defaultValue={bonus.minCents / 100} className={field} />
+            </Field>
+            <Field label="Bonus ($)">
+              <input name="bonus" inputMode="decimal" required defaultValue={bonus.bonusCents / 100} className={field} />
+            </Field>
+            <Field label="Starts">
+              <input name="startsOn" type="date" required defaultValue={bonus.startsOn} className={field} />
+            </Field>
+            <Field label="Ends" hint="Last day, included.">
+              <input name="endsOn" type="date" required defaultValue={bonus.endsOn} className={field} />
+            </Field>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="on" defaultChecked={bonus.on} className="h-4 w-4 accent-[var(--accent)]" />
+            On
+          </label>
         </ToolForm>
       </Card>
 

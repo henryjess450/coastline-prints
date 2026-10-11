@@ -8,6 +8,7 @@ import { clearAnnouncementCache } from "@/lib/announcements";
 import { logError } from "@/lib/api";
 import { queueBroadcast } from "@/lib/broadcast";
 import { db } from "@/lib/db";
+import { saveGiftBonus } from "@/lib/giftcards/bonus.server";
 import { sendNotificationsSoon } from "@/lib/notify/kick";
 
 /*
@@ -96,6 +97,30 @@ export async function createSaleAction(_: ActionState, form: FormData): Promise<
   await db.sale.create({ data: { name, percentOff, startsAt, endsAt } });
   revalidatePath("/admin/promote");
   return { ok: true, message: `${name}: ${percentOff}% off, saved.` };
+}
+
+/** The gift card bonus ("$5 extra on $50 or more") and its dates. */
+export async function saveGiftBonusAction(_: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const dollars = (k: string) => Math.round(Number(String(form.get(k) ?? "").replace(/[$,\s]/g, "")) * 100);
+  const b = {
+    on: form.get("on") === "on",
+    name: text(form, "name", 40),
+    minCents: dollars("min"),
+    bonusCents: dollars("bonus"),
+    startsOn: text(form, "startsOn", 10),
+    endsOn: text(form, "endsOn", 10),
+  };
+  if (b.name.length < 2) return { error: "Give the bonus a name, like Holiday bonus." };
+  if (!Number.isFinite(b.minCents) || b.minCents < 0) return { error: "The minimum needs to be a dollar amount." };
+  if (!Number.isFinite(b.bonusCents) || b.bonusCents < 100 || b.bonusCents > 10000) return { error: "The bonus needs to be $1 to $100." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(b.startsOn) || !/^\d{4}-\d{2}-\d{2}$/.test(b.endsOn)) return { error: "Pick a start and end date." };
+  if (b.endsOn < b.startsOn) return { error: "The end date needs to be on or after the start." };
+  await saveGiftBonus(b);
+  clearAnnouncementCache();
+  revalidatePath("/admin/promote");
+  revalidatePath("/gift-cards");
+  return { ok: true, message: b.on ? "Gift card bonus saved." : "Gift card bonus switched off." };
 }
 
 export async function endSaleAction(form: FormData) {
