@@ -6,6 +6,7 @@ import { squarePublicConfig } from "@/lib/square/client";
 export const metadata: Metadata = {
   title: "Gift cards",
   description: "Send a Coastline Prints gift card by email, today or on a day you choose. Works on any 3D print order and doesn't expire.",
+  alternates: { canonical: "/gift-cards" },
 };
 export const dynamic = "force-dynamic"; // the schedule range depends on today's date
 

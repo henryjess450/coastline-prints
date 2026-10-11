@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ORDER_NUMBER_RE } from "@/lib/orders/number";
 import { StatusLookup } from "./StatusLookup";
 
-export const metadata: Metadata = { title: "Order status" };
+export const metadata: Metadata = { title: "Order status", alternates: { canonical: "/status" } };
 
 export default async function StatusPage({ searchParams }: { searchParams: Promise<{ order?: string }> }) {
   const { order } = await searchParams;

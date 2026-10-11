@@ -11,7 +11,10 @@ const links = [
   { href: "/rewards", label: "Rewards" },
   { href: "/status", label: "Order status" },
   { href: "/app", label: "Get the app" },
-  { href: "/#faq", label: "FAQ" },
+  { href: "/3d-printing", label: "What we print" },
+  { href: "/guides", label: "Guides" },
+  { href: "/faq", label: "FAQ" },
+  { href: "/about", label: "About" },
   { href: "/terms", label: "Terms & Conditions" },
   { href: "/privacy", label: "Privacy Policy" },
 ];

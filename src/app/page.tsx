@@ -1,9 +1,10 @@
 import Image from "next/image";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { gallery } from "@config/gallery";
 import { pickup } from "@config/pickup";
-import { shipping } from "@config/shipping";
-import { legal, uploads } from "@config/site";
+import { legal, seo, site, uploads } from "@config/site";
+import { FaqList } from "@/components/home/FaqList";
 import { HeroDrop } from "@/components/home/HeroDrop";
 import { HowItWorks } from "@/components/home/HowItWorks";
 import { MaterialSwatches } from "@/components/home/MaterialSwatches";
@@ -15,8 +16,16 @@ import { ButtonLink } from "@/components/ui/Button";
 import { SectionLabel } from "@/components/ui/Card";
 import { MAX_GIFT_CARDS } from "@/lib/codes/apply";
 import { getEffectiveConfig } from "@/lib/config/effective";
+import { faqs } from "@/lib/faq";
 import { money } from "@/lib/format";
+import { JsonLd, localBusiness, place, website } from "@/lib/seo";
+import { uses } from "@/lib/uses";
 
+export const metadata: Metadata = {
+  title: { absolute: `3D Printing Services in ${place} · ${site.name}` },
+  description: `Custom 3D printing services in ${seo.neighbourhood}, BC. Upload an STL or 3MF file for an instant quote. PLA, PETG and PLA-CF, pickup downtown or shipped across Canada.`,
+  alternates: { canonical: "/" },
+};
 export const dynamic = "force-dynamic"; // shows live rates from admin settings
 
 const steps = [
@@ -26,57 +35,23 @@ const steps = [
   { title: "Pick up or ship", body: "You get an email when your print is ready, or when it ships. The pickup address comes with your receipt." },
 ];
 
-const faqs = [
-  {
-    q: "What files can I upload?",
-    a: `STL (binary or ASCII) or 3MF files, up to ${uploads.maxFileMb} MB each and ${uploads.maxFilesPerOrder} files per order. 3MF projects from Bambu Studio, Orca Slicer and PrusaSlicer work, including painted colours. If your model is in another format, export it as STL or 3MF first.`,
-  },
-  {
-    q: "My model showed up tiny. Why?",
-    a: "It was probably modelled in inches. Press “Modelled in inches?” in the size panel and it will be multiplied by 25.4.",
-  },
-  {
-    q: "How is the print time worked out?",
-    a: "It's an estimate based on how much filament the part needs, the quality setting and the printer. The real time can be different. You pay the price shown at checkout either way.",
-  },
-  {
-    q: "Where do I pick up my order?",
-    a: "The pickup address is shown after you pay and is in your confirmation email.",
-  },
-  {
-    q: "Do you ship?",
-    a: `Yes, anywhere in Canada with Canada Post. Small, flat prints can go in a padded bubble mailer by Lettermail (from ${money(shipping.mailer.rates[0].priceCents + shipping.mailer.packingFeeCents)}, no tracking). Anything else, or if you want tracking, goes in the smallest flat rate box it fits (from ${money(shipping.boxes[0].priceCents + shipping.packingFeePerBoxCents)}). Prices include packing.`,
-  },
-  {
-    q: "Which printers do you use?",
-    a: "A Bambu Lab A1 Mini for smaller parts and an Elegoo Centauri Carbon for bigger parts and anything in PLA-CF. Each part is sent to the right printer automatically.",
-  },
-  {
-    q: "Can I cancel?",
-    a: "Yes, for a full refund, as long as printing hasn't started. After that the order can't be cancelled.",
-    link: { href: "/terms", label: "Terms & Conditions" },
-  },
-  {
-    q: "Will you print anything?",
-    a: "Only files you have the right to use. No weapons or weapon parts, and nothing illegal. Orders like that are refunded and cancelled.",
-    link: { href: "/terms", label: "Terms & Conditions" },
-  },
-];
-
 export default async function Home() {
   const cfg = await getEffectiveConfig();
   const p = cfg.pricing;
 
   return (
     <>
+      <JsonLd data={[localBusiness(), website()]} />
       <HeroDrop config={cfg}>
-        <h1 className="font-display text-5xl font-bold leading-[1.02] tracking-tight sm:text-6xl">
+        {/* The search-facing heading is the small label; the big lines are the slogan. */}
+        <h1 className="mb-5 text-xs font-semibold uppercase tracking-[0.14em] text-accent-text">3D printing services in downtown {place}</h1>
+        <p className="font-display text-5xl font-bold leading-[1.02] tracking-tight sm:text-6xl">
           Upload an STL.
           <br />
           Get a price.
           <br />
           <span className="text-accent-text">Pick up your print.</span>
-        </h1>
+        </p>
         <div className="mt-12 flex flex-wrap gap-4">
           <SailStartButton>Start an order</SailStartButton>
           <ButtonLink href="/library" size="lg" variant="secondary">
@@ -117,8 +92,33 @@ export default async function Home() {
         <Reveal>
           <SectionLabel>How it works</SectionLabel>
           <h2 className="mt-3 font-display text-3xl font-bold tracking-tight sm:text-4xl">From file to finished part</h2>
+          <p className="mt-4 max-w-2xl leading-relaxed text-muted">
+            Getting something 3D printed in {seo.city} shouldn&apos;t mean emailing for a quote and waiting. Upload your STL or 3MF, see the price for your exact part, and pay online. Custom 3D printing for pickup downtown, or shipped
+            anywhere in Canada.
+          </p>
         </Reveal>
         <HowItWorks steps={steps} />
+      </section>
+
+      <section id="uses" className="mx-auto max-w-7xl scroll-mt-20 px-4 sm:px-6">
+        <Reveal>
+          <SectionLabel>What people print</SectionLabel>
+          <h2 className="mt-3 font-display text-3xl font-bold tracking-tight sm:text-4xl">Parts, props, gifts and more</h2>
+        </Reveal>
+        <ul className="mt-10 flex flex-wrap gap-3">
+          {uses.map((u, i) => (
+            <Reveal as="li" key={u.slug} delay={i * 0.04}>
+              <Link href={`/3d-printing/${u.slug}`} className="inline-block rounded-full border border-line bg-surface px-5 py-3 font-medium transition-[transform,border-color,color] duration-200 hover:-translate-y-0.5 hover:border-accent hover:text-accent-text">
+                {u.name}
+              </Link>
+            </Reveal>
+          ))}
+          <Reveal as="li" delay={uses.length * 0.04}>
+            <Link href="/guides" className="inline-block px-5 py-3 font-medium text-accent-text underline underline-offset-4">
+              Guides
+            </Link>
+          </Reveal>
+        </ul>
       </section>
 
       <section id="pricing" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-24 sm:px-6 sm:py-32">
@@ -184,26 +184,14 @@ export default async function Home() {
           <SectionLabel>FAQ</SectionLabel>
           <h2 className="mt-3 font-display text-3xl font-bold tracking-tight sm:text-4xl">Questions</h2>
         </Reveal>
-        <div className="mt-12 space-y-4">
-          {faqs.map((f) => (
-            <details key={f.q} className="group glass rounded-2xl px-6 py-5 [&_summary::-webkit-details-marker]:hidden">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-medium">
-                {f.q}
-                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 border-line text-accent-text transition-transform duration-300 group-open:rotate-45" aria-hidden>
-                  +
-                </span>
-              </summary>
-              <p className="mt-4 text-sm leading-relaxed text-muted">
-                {f.a}{" "}
-                {f.link && (
-                  <Link href={f.link.href} className="text-accent-text underline underline-offset-4">
-                    {f.link.label}
-                  </Link>
-                )}
-              </p>
-            </details>
-          ))}
+        <div className="mt-12">
+          <FaqList faqs={faqs(cfg).filter((f) => f.home)} />
         </div>
+        <p className="mt-6 text-sm">
+          <Link href="/faq" className="font-medium text-accent-text underline underline-offset-4">
+            More questions
+          </Link>
+        </p>
       </section>
 
       <section className="mx-auto max-w-7xl px-4 sm:px-6">
@@ -267,7 +255,7 @@ function PickupStrip() {
       <Reveal>
         <div className="grid gap-8 rounded-3xl border border-line bg-surface p-8 sm:p-12 md:grid-cols-[auto_auto_auto] md:items-center md:justify-between md:gap-16">
           <h2 id="pickup-title" className="font-display text-2xl font-bold">
-            Local pickup
+            Pickup in downtown {seo.city}
           </h2>
           <div>
             <p className="text-sm text-faint">Ready in</p>

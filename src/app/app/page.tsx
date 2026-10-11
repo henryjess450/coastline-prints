@@ -4,6 +4,7 @@ import { GetTheApp } from "@/components/app/GetTheApp";
 export const metadata: Metadata = {
   title: "Get the app",
   description: "Add Coastline Prints to your phone's home screen: start orders, check on them, and keep your gift cards and coupons one tap away.",
+  alternates: { canonical: "/app" },
 };
 
 export default function AppPage() {

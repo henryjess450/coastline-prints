@@ -4,7 +4,7 @@ import Link from "next/link";
 import { legal, site } from "@config/site";
 import { LegalPage, Section } from "@/components/legal/LegalPage";
 
-export const metadata: Metadata = { title: "Terms & Conditions" };
+export const metadata: Metadata = { title: "Terms & Conditions", alternates: { canonical: "/terms" } };
 
 export default function TermsPage() {
   const email = legal.contactEmail;

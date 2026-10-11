@@ -11,6 +11,7 @@ import { rewardsSummary } from "@/lib/rewards/server";
 export const metadata: Metadata = {
   title: "Rewards",
   description: `Earn ${POINTS_PER_DOLLAR} points for every $1 you spend on 3D prints, and trade them for money off and gift cards.`,
+  alternates: { canonical: "/rewards" },
 };
 export const dynamic = "force-dynamic";
 

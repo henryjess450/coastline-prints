@@ -11,6 +11,31 @@ export const site = {
   fulfillmentLabel: "Local pickup",
 };
 
+/**
+ * What search engines are told about where we are. Only the city and area,
+ * never the pickup address (that's sent after payment).
+ */
+export const seo = {
+  /** The live address. Search engines need full URLs. */
+  url: (process.env.APP_URL ?? "https://coastlineprints.ca").replace(/\/$/, ""),
+  /** Where pickup is, as precise as we say in public. */
+  neighbourhood: "Downtown Victoria",
+  city: "Victoria",
+  region: "BC",
+  regionName: "British Columbia",
+  /** Areas served, nearest first. "Canada" is shipping. */
+  areaServed: ["Downtown Victoria", "Greater Victoria", "Saanich", "Oak Bay", "Esquimalt", "View Royal", "Langford", "Vancouver Island", "Canada"],
+  instagram: "https://www.instagram.com/coastline.printz/",
+  /** Year the shop opened. */
+  founded: "2026",
+  /**
+   * IndexNow key: tells Bing (which ChatGPT search uses), Yandex and others
+   * about changed pages right away. Public on purpose; served from
+   * public/<key>.txt. scripts/indexnow.mjs sends the sitemap.
+   */
+  indexNowKey: "361864c4a1ed200661e42a0413cfdaa6",
+};
+
 export const uploads = {
   /** Per-file limit in MB. Override with NEXT_PUBLIC_MAX_UPLOAD_MB. */
   maxFileMb: Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB ?? 100),

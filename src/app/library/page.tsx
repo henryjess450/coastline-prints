@@ -4,8 +4,9 @@ import { DownloadGuide } from "./DownloadGuide";
 import { LibrarySearch } from "./LibrarySearch";
 
 export const metadata: Metadata = {
-  title: "Find a model",
+  title: "Find a 3D model to print",
   description: "Search free and paid 3D models from Thingiverse, MyMiniFactory, Cults3D, MakerWorld, Printables and more, then have it printed by Coastline Prints.",
+  alternates: { canonical: "/library" },
 };
 export const dynamic = "force-dynamic";
 

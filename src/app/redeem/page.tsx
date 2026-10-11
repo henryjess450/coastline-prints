@@ -10,6 +10,7 @@ import { walletFor } from "@/lib/account/wallet";
 export const metadata: Metadata = {
   title: "Save a gift card or coupon",
   description: "Save your Coastline Prints gift card or coupon to your account so it's ready to tap at checkout, and only you can use it.",
+  alternates: { canonical: "/redeem" },
 };
 export const dynamic = "force-dynamic";
 

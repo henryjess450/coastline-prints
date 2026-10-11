@@ -3,7 +3,7 @@ import Link from "next/link";
 import { legal, site } from "@config/site";
 import { LegalPage, Section } from "@/components/legal/LegalPage";
 
-export const metadata: Metadata = { title: "Privacy Policy" };
+export const metadata: Metadata = { title: "Privacy Policy", alternates: { canonical: "/privacy" } };
 
 export default function PrivacyPage() {
   const email = legal.contactEmail;
