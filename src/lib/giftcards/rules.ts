@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { GIFT_DESIGNS } from "./designs";
 import { pickup } from "@config/pickup";
-import { addDays, todayIn } from "@/lib/pickup";
+import { addDays, atShopHour, todayIn } from "@/lib/pickup";
 
 export const GIFT_PRESETS_CENTS = [2500, 5000, 7500, 10000];
 export const GIFT_MIN_CENTS = 1000;
@@ -66,13 +66,7 @@ export function isValidSendOn(sendOn: string | null, now = new Date()) {
  */
 export function deliverAtFor(sendOn: string | null, now = new Date(), timeZone = pickup.timeZone) {
   if (!sendOn) return now;
-  const [y, m, d] = sendOn.split("-").map(Number);
-  const guess = Date.UTC(y, m - 1, d, GIFT_SEND_HOUR);
-  // What wall-clock time is `guess` in the shop's zone? The difference is the offset.
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date(guess));
-  const get = (t: string) => Number(parts.find((p) => p.type === t)!.value);
-  const asIfUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"));
-  return new Date(guess - (asIfUtc - guess));
+  return atShopHour(sendOn, GIFT_SEND_HOUR, timeZone);
 }
 
 /** "Saturday, October 10" */

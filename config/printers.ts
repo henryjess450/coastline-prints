@@ -48,3 +48,14 @@ export const printers: PrinterConfig[] = [
 
 /** Clearance kept free on every axis (mm), so a 180 mm bed accepts up to 175 mm. */
 export const SAFETY_MARGIN_MM = 5;
+
+/**
+ * The receipt printer stays quiet overnight: a new order's ticket that comes
+ * in between `from` and `until` (shop time, 24-hour clock) waits and prints
+ * at `until`, e.g. an 11 pm order prints at 7 am. Reprints and coupon slips
+ * you press print on yourself still print straight away.
+ */
+export const receiptQuietHours = {
+  from: 22,
+  until: 7,
+};

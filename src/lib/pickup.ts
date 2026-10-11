@@ -15,6 +15,25 @@ export function todayIn(timeZone: string, now = new Date()) {
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
+/** The current hour (0 to 23) in the shop's time zone. */
+export function hourIn(timeZone: string, now = new Date()) {
+  return Number(new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", hour: "2-digit" }).format(now));
+}
+
+/**
+ * The moment it's `hour` o'clock on `date` ("YYYY-MM-DD") in the shop's time
+ * zone, as a Date (daylight saving handled by asking the zone for its offset).
+ */
+export function atShopHour(date: string, hour: number, timeZone: string) {
+  const [y, m, d] = date.split("-").map(Number);
+  const guess = Date.UTC(y, m - 1, d, hour);
+  // What wall-clock time is `guess` in the shop's zone? The difference is the offset.
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date(guess));
+  const get = (t: string) => Number(parts.find((p) => p.type === t)!.value);
+  const asIfUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"));
+  return new Date(guess - (asIfUtc - guess));
+}
+
 export function addDays(date: string, n: number) {
   const [y, m, d] = date.split("-").map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d + n));

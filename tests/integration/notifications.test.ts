@@ -166,3 +166,19 @@ describe("outbox", () => {
     expect(sent).toHaveLength(2);
   });
 });
+
+describe("receipt printer quiet hours", () => {
+  it("holds a new order's ticket overnight until 7 am, without counting it as an attempt", async () => {
+    const order = await createPaidOrder();
+    await db.outboxJob.deleteMany();
+    await db.outboxJob.create({
+      data: { kind: "print", template: "order-receipt", payload: JSON.stringify({ orderId: order.id }), dedupeKey: `${order.id}:order-receipt`, nextAttemptAt: new Date("2026-10-12T05:59:00Z") },
+    });
+    // 11 pm Pacific on October 11.
+    const result = await processOutbox({ now: new Date("2026-10-12T06:00:00Z") });
+    expect(result).toEqual({ sent: 0, failed: 0, retrying: 0 });
+    const job = await db.outboxJob.findUniqueOrThrow({ where: { dedupeKey: `${order.id}:order-receipt` } });
+    expect(job).toMatchObject({ status: "PENDING", attempts: 0 });
+    expect(job.nextAttemptAt.toISOString()).toBe("2026-10-12T14:00:00.000Z"); // 7 am Pacific
+  });
+});

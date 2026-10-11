@@ -8,6 +8,7 @@ import { buildGiftEmail } from "@/lib/giftcards/emails";
 import { buildRewardEmail } from "@/lib/codes/reward-email";
 import { GIFT_EMAIL_TEMPLATES, loadGiftData, type GiftEmailTemplate } from "@/lib/giftcards/server";
 import { printCodeSlip, printOrderReceipt, printScanStub } from "@/lib/receipt/print";
+import { quietUntil } from "@/lib/receipt/quiet";
 import { findOrCreateSquareCustomer, updateSquareCustomer } from "@/lib/square/customers";
 import { profileFor } from "@/lib/account/profile";
 import { postDiscordNewOrder } from "./discord";
@@ -50,6 +51,12 @@ async function run({ limit = 25, mailer, now = new Date() }: { limit?: number; m
   });
 
   for (const job of due) {
+    // A new order's ticket overnight waits for the morning (receiptQuietHours); it isn't an attempt.
+    const morning = isAutoReceipt(job) ? quietUntil(now) : null;
+    if (morning) {
+      await db.outboxJob.updateMany({ where: { id: job.id, status: { in: ["PENDING", "SENDING"] } }, data: { status: "PENDING", nextAttemptAt: morning } });
+      continue;
+    }
     // Claim with a conditional update so two workers can never send the same job.
     const claimed = await db.outboxJob.updateMany({
       where: { id: job.id, status: { in: ["PENDING", "SENDING"] }, nextAttemptAt: { lte: now } },
@@ -83,6 +90,9 @@ async function run({ limit = 25, mailer, now = new Date() }: { limit?: number; m
 }
 
 class UnknownJobError extends Error {}
+
+/** The ticket queued by a new order (not a reprint the owner asked for, which prints right away). */
+const isAutoReceipt = (job: { kind: string; template: string; dedupeKey: string | null }) => job.kind === "print" && job.template === "order-receipt" && !!job.dedupeKey?.endsWith(":order-receipt");
 
 async function deliver(kind: string, template: string, payload: Payload, jobId: string, mailer?: Mailer) {
   if (kind === "square" && template === "account-sync") {
