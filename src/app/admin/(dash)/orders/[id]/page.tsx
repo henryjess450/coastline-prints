@@ -192,6 +192,7 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
               <Row label="Total paid" value={money(order.totalCents)} strong />
               {order.cardLast4 && <Row label="Card" value={`${order.cardBrand ?? "Card"} •••• ${order.cardLast4}`} />}
               {order.paymentMethod === "ETRANSFER" && <Row label="Paid by" value="Interac e-Transfer" />}
+              {order.source && <Row label="Came from" value={order.firstSource && order.firstSource !== order.source ? `${order.source} (first found you: ${order.firstSource})` : order.source} />}
             </dl>
             <p className="mt-2 break-all font-mono text-xs text-faint">{order.squarePaymentId.startsWith("nopay_")
                 ? "No card payment (covered by gift card)"

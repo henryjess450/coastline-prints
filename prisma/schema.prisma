@@ -50,6 +50,10 @@ model Checkout {
   id                     String    @id @default(cuid())
   status                 String    @default("PENDING") // PENDING | COMPLETED | FAILED
   idempotencyKey         String    @unique
+  /// Where they came from (src/lib/attribution.ts): the latest outside visit, the first one, and the details as JSON.
+  source                 String?
+  firstSource            String?
+  sourceDetail           String?
   cart                   String // JSON: server-priced cart snapshot
   totalCents             Int
   currency               String    @default("CAD")
@@ -141,6 +145,10 @@ model Order {
   squareCustomerId       String?
   /// 1 = first order from this email, 2 = second, ...
   customerOrderCount     Int       @default(1)
+  /// Where they came from (src/lib/attribution.ts): the latest outside visit, the first one, and the details as JSON.
+  source                 String?
+  firstSource            String?
+  sourceDetail           String?
   receiptUrl             String?
   cardBrand              String?
   cardLast4              String?
@@ -153,6 +161,7 @@ model Order {
   @@index([status])
   @@index([customerEmail])
   @@index([createdAt])
+  @@index([source])
 }
 
 model OrderItem {
@@ -294,6 +303,9 @@ model GiftPurchase {
   bonusCents      Int        @default(0)
   /// coastline | holiday (src/lib/giftcards/designs.ts). Every design works everywhere.
   design          String     @default("coastline")
+  /// Where the buyer came from (src/lib/attribution.ts).
+  source          String?
+  sourceDetail    String?
   /// Unguessable link for the recipient's "open your gift" page.
   revealToken     String?    @unique
   buyerName       String

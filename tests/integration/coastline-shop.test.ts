@@ -85,6 +85,17 @@ describe("Coastline shop", () => {
     expect(mail.html).not.toContain("queue them on the right printer");
   });
 
+  it("saves where the customer came from on the order", async () => {
+    const k = await keychain();
+    const cookie = `cp_src=${encodeURIComponent(JSON.stringify({ s: "instagram", m: "bio", at: 2 }))}; cp_src1=${encodeURIComponent(JSON.stringify({ ref: "google.ca", at: 1 }))}`;
+    const body = { attemptId: randomUUID(), sourceId: "cnon:card-nonce-ok", customer, products: [{ productId: k.id, variantId: null, quantity: 1, customText: "Mo" }], expectedTotalCents: 800, fulfillment: await validPickup() };
+    const res = await checkout(jsonRequest("http://test/api/checkout", body, { cookie }));
+    const data = await res.json();
+    const order = await db.order.findUniqueOrThrow({ where: { orderNumber: data.orderNumber } });
+    expect(order).toMatchObject({ source: "Instagram", firstSource: "Google search" });
+    expect(JSON.parse(order.sourceDetail!).last).toMatchObject({ s: "instagram", m: "bio" });
+  });
+
   it("won't mix the two shops in one cart", async () => {
     const k = await keychain();
     const lamp = await db.shopProduct.create({ data: { slug: `lamp-${randomUUID().slice(0, 8)}`, name: "Lamp", priceCents: 4500 } });

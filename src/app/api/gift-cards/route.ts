@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
+import { sourceFields } from "@/lib/attribution";
 import { SquareError } from "square";
 import { apiError, logError } from "@/lib/api";
 import { db } from "@/lib/db";
@@ -49,6 +50,8 @@ export async function POST(req: Request) {
   const bonusCents = previous ? previous.bonusCents : bonusFor(d.amountCents, await getGiftBonus(), todayIn(pickup.timeZone));
   if (!previous && bonusCents !== d.expectedBonusCents) return apiError(409, "The gift card bonus has changed. Please check the amount and try again.");
 
+  // Where the buyer came from (the cp_src cookies).
+  const src = sourceFields(req.headers.get("cookie"));
   const purchase =
     previous ??
     (await db.giftPurchase.create({
@@ -57,6 +60,8 @@ export async function POST(req: Request) {
         amountCents: d.amountCents,
         bonusCents,
         design: d.design,
+        source: src.source,
+        sourceDetail: src.sourceDetail,
         revealToken: randomBytes(18).toString("base64url"),
         buyerName: d.buyerName,
         buyerEmail: d.buyerEmail,

@@ -1,6 +1,7 @@
 import "server-only";
 import { render, toPlainText } from "@react-email/render";
 import { privateSite } from "@config/private.server";
+import { tagged } from "@/lib/attribution";
 import { FirstOrderCoupon } from "@/emails/FirstOrderCoupon";
 import type { OrderEmailData } from "@/lib/email/data";
 import type { OutgoingEmail } from "@/lib/email/transport";
@@ -16,7 +17,7 @@ export async function buildRewardEmail(d: OrderEmailData, codeId: string): Promi
   const amount = money(c.amountCents ?? 0);
   const useBy = (c.expiresAt ?? new Date()).toLocaleDateString("en-CA", { month: "long", day: "numeric", year: "numeric", timeZone: "America/Vancouver" });
   const html = await render(
-    <FirstOrderCoupon firstName={d.customerName.split(/\s+/)[0]} amount={amount} number={formatCardNumber(c.code)} useBy={useBy} saved={!!c.ownerId} orderUrl={`${base}/order`} redeemUrl={`${base}/redeem`} />,
+    <FirstOrderCoupon firstName={d.customerName.split(/\s+/)[0]} amount={amount} number={formatCardNumber(c.code)} useBy={useBy} saved={!!c.ownerId} orderUrl={tagged(`${base}/order`, "thank-you-coupon")} redeemUrl={`${base}/redeem`} />,
   );
   return { to: d.customerEmail, replyTo: privateSite.ownerEmail, subject: `Thanks for your first order! Here's ${amount} off your next one`, html, text: toPlainText(html) };
 }

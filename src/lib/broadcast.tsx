@@ -2,6 +2,7 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { render, toPlainText } from "@react-email/render";
 import { legal } from "@config/site";
+import { tagged } from "@/lib/attribution";
 import { AccountInvite } from "@/emails/AccountInvite";
 import { BroadcastEmail } from "@/emails/Broadcast";
 import { db } from "@/lib/db";
@@ -27,6 +28,12 @@ export function unsubscribeTokenOk(customerId: string, token: string) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+/** Links to this site are tagged, so sales from the email show as "Email" under Sources. */
+function broadcastLink(url: string, id: string) {
+  const full = url.startsWith("/") ? `${appUrl()}${url}` : url;
+  return full.startsWith(appUrl()) ? tagged(full, `broadcast-${id.slice(-6)}`) : url;
+}
+
 export type BroadcastInput = { subject: string; heading: string; body: string; linkUrl?: string | null; linkLabel?: string | null; code?: string | null };
 
 /** Who a broadcast goes to: accounts that haven't unsubscribed. */
@@ -48,7 +55,7 @@ export async function queueBroadcast(input: BroadcastInput) {
 export async function buildBroadcastEmail(broadcastId: string, customerId: string): Promise<OutgoingEmail | null> {
   const [b, c] = await Promise.all([db.broadcast.findUnique({ where: { id: broadcastId } }), db.customer.findUnique({ where: { id: customerId } })]);
   if (!b || !c || c.emailOptOut) return null;
-  const html = await render(<BroadcastEmail heading={b.heading} body={b.body} linkUrl={b.linkUrl} linkLabel={b.linkLabel} code={b.code} unsubscribeUrl={unsubscribeUrl(c.id)} mailingAddress={legal.mailingAddress} />);
+  const html = await render(<BroadcastEmail heading={b.heading} body={b.body} linkUrl={b.linkUrl ? broadcastLink(b.linkUrl, b.id) : b.linkUrl} linkLabel={b.linkLabel} code={b.code} unsubscribeUrl={unsubscribeUrl(c.id)} mailingAddress={legal.mailingAddress} />);
   return { to: c.email, subject: b.subject, html, text: toPlainText(html) };
 }
 

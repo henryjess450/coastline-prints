@@ -60,7 +60,7 @@ export const uploads = {
  * Have these reviewed before going live.
  */
 export const legal = {
-  lastUpdated: "October 7, 2026",
+  lastUpdated: "October 11, 2026",
   province: "British Columbia",
   contactEmail: process.env.NEXT_PUBLIC_CONTACT_EMAIL ?? "coastline.printz@gmail.com",
   /**

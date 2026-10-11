@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sourceFields } from "@/lib/attribution";
 import { liveSale } from "@/lib/sales";
 import { pickup as pickupConfig } from "@config/pickup";
 import { SquareError } from "square";
@@ -131,6 +132,8 @@ export async function POST(req: Request) {
     const checkout = await db.checkout.create({
       data: {
         idempotencyKey: attemptId,
+        // Where they came from (the cp_src cookies), carried onto the order.
+        ...sourceFields(req.headers.get("cookie")),
         cart: JSON.stringify(snapshot),
         totalCents: dueCents,
         discountCents: discount.discountCents,

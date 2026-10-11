@@ -71,8 +71,10 @@ export default function PrivacyPage() {
 
       <Section title="Cookies and local storage">
         <p>
-          We don&apos;t use advertising or tracking cookies. The site sets one small cookie to remember whether you chose the light or dark theme. The admin area uses a login cookie that only affects staff. The
-          payment form is provided by Square, which may set its own cookies for fraud prevention.
+          We don&apos;t use advertising cookies or outside trackers. The site sets one small cookie to remember whether you chose the light or dark theme. If you arrive from another site or a link with a tag
+          (like Google, Instagram or one of our emails), a small cookie remembers where you came from, so we can see which places bring in orders. It holds only the source (for example &ldquo;instagram&rdquo;),
+          never who you are, stays on this site, and expires after a year at most. The admin area uses a login cookie that only affects staff. The payment form is provided by Square, which may set its own
+          cookies for fraud prevention.
         </p>
       </Section>
 

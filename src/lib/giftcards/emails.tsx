@@ -1,6 +1,7 @@
 import "server-only";
 import { render, toPlainText } from "@react-email/render";
 import { privateSite } from "@config/private.server";
+import { tagged } from "@/lib/attribution";
 import { GiftCardBuyer, GiftCardOwner, GiftCardRecipient } from "@/emails/GiftCard";
 import type { OutgoingEmail } from "@/lib/email/transport";
 import { renderGiftCardPng } from "./card-image";
@@ -11,7 +12,7 @@ import type { GiftData, GiftEmailTemplate } from "./server";
 export async function buildGiftEmail(template: GiftEmailTemplate, g: GiftData): Promise<OutgoingEmail> {
   const when = g.sendOn ? friendlyDate(g.sendOn) : null;
   const base = (process.env.APP_URL ?? "https://coastlineprints.ca").replace(/\/$/, "");
-  const orderUrl = `${base}/order`;
+  const orderUrl = tagged(`${base}/order`, "gift-card");
   let to: string;
   let subject: string;
   let replyTo: string | undefined = privateSite.ownerEmail;
