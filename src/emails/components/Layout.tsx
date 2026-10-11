@@ -1,4 +1,3 @@
-import { createContext, useContext } from "react";
 import { Body, Container, Head, Hr, Html, Img, Link, Preview, Section, Text } from "@react-email/components";
 import { site } from "@config/site";
 import { lightlab } from "@config/lightlab";
@@ -19,10 +18,10 @@ export function accentFor(lightlab: boolean) {
     ? { brand: "#297f9d", brandSoft: "#e8f2f6", label: "#297f9d", link: { color: "#297f9d" } }
     : { brand: colors.brand, brandSoft: colors.brandSoft, label: colors.faint, link: { color: colors.brand } };
 }
-const Accent = createContext(accentFor(false));
+/** Passed to the shared pieces below; Coastline navy when left out. (No React context: emails render on the server.) */
+export type Accent = ReturnType<typeof accentFor>;
+const COASTLINE = accentFor(false);
 const base = { muted: "#4a5b6d" };
-/** The accent of the email this is in (set by EmailLayout's brand). */
-export const useAccent = () => useContext(Accent);
 
 export const font = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
@@ -44,7 +43,7 @@ export function EmailLayout({ preview, children, footerNote, brand = "coastline"
             )}
           </Section>
           <Section style={{ padding: "28px" }}>
-            <Accent.Provider value={accentFor(ll)}>{children}</Accent.Provider>
+            {children}
           </Section>
           <Hr style={{ borderColor: colors.line, margin: 0 }} />
           <Section style={{ padding: "16px 28px 24px" }}>
@@ -66,8 +65,7 @@ export function EmailLayout({ preview, children, footerNote, brand = "coastline"
   );
 }
 
-export function PillButton({ href, children }: { href: string; children: React.ReactNode }) {
-  const accent = useAccent();
+export function PillButton({ href, children, accent = COASTLINE }: { href: string; children: React.ReactNode; accent?: Accent }) {
   return (
     <Link
       href={href}
@@ -86,14 +84,13 @@ export function P({ children, muted }: { children: React.ReactNode; muted?: bool
   return <Text style={{ margin: "0 0 14px", fontSize: 15, lineHeight: "23px", color: muted ? colors.muted : colors.text }}>{children}</Text>;
 }
 
-export function Label({ children }: { children: React.ReactNode }) {
-  const accent = useAccent();
+export function Label({ children, accent = COASTLINE }: { children: React.ReactNode; accent?: Accent }) {
   return <Text style={{ margin: "18px 0 6px", fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: accent.label }}>{children}</Text>;
 }
 
 /** The customer's own shipping address. */
-export function ShipToBox({ lines, label = "Shipping to" }: { lines: string[]; label?: string }) {
-  const colors = { ...base, ...useAccent() };
+export function ShipToBox({ lines, label = "Shipping to", accent = COASTLINE }: { lines: string[]; label?: string; accent?: Accent }) {
+  const colors = { ...base, ...accent };
   return (
     <Section style={{ backgroundColor: colors.brandSoft, borderRadius: 12, padding: "14px 16px", margin: "4px 0 6px" }}>
       <Text style={{ margin: 0, fontSize: 12, color: colors.muted }}>{label}</Text>
@@ -107,8 +104,8 @@ export function ShipToBox({ lines, label = "Shipping to" }: { lines: string[]; l
 }
 
 /** Highlighted pickup box (receipt and ready emails only). */
-export function AddressBox({ address, when }: { address: string; when?: string | null }) {
-  const colors = { ...base, ...useAccent() };
+export function AddressBox({ address, when, accent = COASTLINE }: { address: string; when?: string | null; accent?: Accent }) {
+  const colors = { ...base, ...accent };
   return (
     <Section style={{ backgroundColor: colors.brandSoft, borderRadius: 12, padding: "14px 16px", margin: "4px 0 6px" }}>
       {when && (

@@ -18,7 +18,7 @@ export function CustomerReceipt({ d }: { d: OrderEmailData }) {
         Order <strong style={{ color: colors.text }}>{d.orderNumber}</strong> · {money(d.totalCents)} CAD paid
       </P>
 
-      <Label>Your order</Label>
+      <Label accent={accent}>Your order</Label>
       <ItemTable d={d} />
       <Text style={{ margin: "10px 0 0", fontSize: 13 }}>
         Your invoice is attached as a PDF.{" "}
@@ -35,7 +35,7 @@ export function CustomerReceipt({ d }: { d: OrderEmailData }) {
         )}
       </Text>
 
-      <Label>What happens next</Label>
+      <Label accent={accent}>What happens next</Label>
       {steps.map((s, i) => (
         <Text key={i} style={{ margin: "0 0 6px", fontSize: 15, lineHeight: "22px" }}>
           <span style={{ display: "inline-block", width: 22, height: 22, lineHeight: "22px", borderRadius: 999, backgroundColor: accent.brand, color: "#fff", textAlign: "center", fontSize: 12, fontWeight: 700, marginRight: 8 }}>{i + 1}</span>
@@ -45,25 +45,25 @@ export function CustomerReceipt({ d }: { d: OrderEmailData }) {
 
       {d.shipTo ? (
         <>
-          <Label>Shipping</Label>
+          <Label accent={accent}>Shipping</Label>
           <P muted>{d.lightlab ? "We pack it in a few days" : "Prints usually take 2 to 5 days"}, then Canada Post delivery takes a few more. If anything in this address is wrong, reply to this email before it ships.</P>
-          <ShipToBox lines={d.shipTo} />
+          <ShipToBox accent={accent} lines={d.shipTo} />
         </>
       ) : (
         <>
-          <Label>Pickup</Label>
+          <Label accent={accent}>Pickup</Label>
           <P muted>
             {d.pickupWhen
               ? "Here's the pickup time you chose. We'll email you to confirm once your order is ready. If the time stops working for you, just reply to this email."
               : "This order is for local pickup. Please wait for the \"ready for pickup\" email before coming by."}
           </P>
-          <AddressBox address={d.pickupAddress ?? ""} when={d.pickupWhen} />
+          <AddressBox accent={accent} address={d.pickupAddress ?? ""} when={d.pickupWhen} />
           <Text style={{ margin: "0 0 20px", fontSize: 12, color: colors.faint }}>Please keep this address private.</Text>
         </>
       )}
 
       <Section style={{ margin: "8px 0 4px" }}>
-        <PillButton href={d.links.status}>Track your order</PillButton>
+        <PillButton accent={accent} href={d.links.status}>Track your order</PillButton>
       </Section>
       <P muted>
         Questions? Just reply to this email. Your order details are also at{" "}

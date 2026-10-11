@@ -15,7 +15,7 @@ export function Shipped({ d, note }: { d: OrderEmailData; note?: string | null }
 
       {d.tracking && (
         <>
-          <Label>Tracking number</Label>
+          <Label accent={accent}>Tracking number</Label>
           <Text style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: accent.brand }}>
             <Link href={d.tracking.url} style={accent.link}>
               {d.tracking.number}
@@ -28,12 +28,12 @@ export function Shipped({ d, note }: { d: OrderEmailData; note?: string | null }
 
       {d.shipTo && (
         <>
-          <Label>Shipping to</Label>
-          <ShipToBox lines={d.shipTo} label={d.shippingLabel ?? "Canada Post"} />
+          <Label accent={accent}>Shipping to</Label>
+          <ShipToBox accent={accent} lines={d.shipTo} label={d.shippingLabel ?? "Canada Post"} />
         </>
       )}
 
-      <Label>Your items</Label>
+      <Label accent={accent}>Your items</Label>
       {d.items.map((it, i) => (
         <Text key={i} style={{ margin: "0 0 4px", fontSize: 14 }}>
           {it.fileName} × {it.quantity} · {it.material} {it.colorName}
@@ -41,7 +41,7 @@ export function Shipped({ d, note }: { d: OrderEmailData; note?: string | null }
       ))}
 
       <Section style={{ marginTop: 18 }}>
-        <PillButton href={d.tracking?.url ?? d.links.status}>{d.tracking ? "Track your package" : "View order status"}</PillButton>
+        <PillButton accent={accent} href={d.tracking?.url ?? d.links.status}>{d.tracking ? "Track your package" : "View order status"}</PillButton>
       </Section>
       <P muted>If something arrives damaged, reply to this email with a photo and we&apos;ll sort it out.</P>
     </EmailLayout>
