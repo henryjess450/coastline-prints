@@ -20,4 +20,6 @@ export const lightlab = {
   maxLinesPerOrder: 20,
   maxImagesPerProduct: 8,
   maxImageMb: 8,
+  /** Email the owner when a product (or option) gets down to this many, and again when it sells out. */
+  lowStockAt: 2,
 } as const;

@@ -1,10 +1,11 @@
 import { lightlab } from "@config/lightlab";
 import { ButtonLink } from "@/components/ui/Button";
+import { dayParts, type MarketDto } from "@/lib/shop/markets";
 import { LightLabLogo } from "./LightLabLogo";
 import { PartnerBadge } from "./PartnerBadge";
 
-/** The left side of the LightLab hero: logo, welcome, intro, partner line, button. */
-export function LightLabHeroText() {
+/** The left side of the LightLab hero: logo, welcome, intro, partner line, button, and the next market. */
+export function LightLabHeroText({ nextMarket, today }: { nextMarket?: MarketDto | null; today?: string }) {
   return (
     <div>
       <h1 className="sr-only">{lightlab.name}</h1>
@@ -18,7 +19,30 @@ export function LightLabHeroText() {
         <ButtonLink href="/lightlab#shop" size="lg">
           Shop the collection
         </ButtonLink>
+        {nextMarket && <NextMarket m={nextMarket} today={nextMarket.date === today} />}
       </div>
     </div>
+  );
+}
+
+/** Shaped like the button beside it (same height), but just information: when and where the next market is. Sized to show the whole name. */
+function NextMarket({ m, today }: { m: MarketDto; today: boolean }) {
+  const d = dayParts(m.date);
+  return (
+    <p className="inline-flex min-h-14 max-w-full items-center gap-3 rounded-full border border-line bg-surface py-1.5 pl-2 pr-6">
+      <span className="flex h-10 shrink-0 flex-col items-center justify-center rounded-full bg-accent px-3 text-center text-[10px] font-bold uppercase leading-tight tracking-wide text-accent-ink" aria-hidden>
+        <span>{today ? "Today" : d.weekday}</span>
+        <span>
+          {d.month} {d.day}
+        </span>
+      </span>
+      <span className="min-w-0 leading-tight">
+        <span className="ll-accent block text-lg/tight">next market</span>
+        <span className="block text-base/tight font-semibold">
+          <span className="sr-only">{d.long}, </span>
+          {m.name}
+        </span>
+      </span>
+    </p>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { Fragment } from "react";
 import { usePathname } from "next/navigation";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { site } from "@config/site";
@@ -9,6 +10,9 @@ import { useSeason } from "@/components/season/SeasonContext";
 import { Logo } from "./Logo";
 import { CoBrand } from "@/components/lightlab/CoBrand";
 import { CartButton } from "@/components/lightlab/CartButton";
+import { LightLabLogo } from "@/components/lightlab/LightLabLogo";
+import { lightlab as lightlabConfig } from "@config/lightlab";
+import { cn } from "@/lib/cn";
 
 const nav = [
   { href: "/#how-it-works", label: "How it works" },
@@ -44,12 +48,18 @@ export function SiteHeader() {
         )}
         <nav aria-label="Main" className={lightlab ? "hidden" : "hidden items-center gap-1 lg:flex"}>
           {nav.map((n) => (
-            <Link key={n.href} href={n.href} className="whitespace-nowrap rounded-md px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-strong hover:text-fg">
-              {n.label}
-            </Link>
+            <Fragment key={n.href}>
+              <Link href={n.href} className="whitespace-nowrap rounded-md px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-strong hover:text-fg">
+                {n.label}
+              </Link>
+              {/* Our partner shop, right after "Find a model" */}
+              {n.href === "/library" && <LightLabPill />}
+            </Fragment>
           ))}
         </nav>
         <div className="flex items-center gap-3">
+          {/* Phones don't show the main menu, so the LightLab button sits here instead. */}
+          {!lightlab && !pathname.startsWith("/admin") && !pathname.startsWith("/lightlab") && <LightLabPill className="lg:hidden" />}
           {!pathname.startsWith("/admin") && (
             <Link href="/account" aria-label="Your account" title="Your account" className={buttonClass("secondary", "sm", "w-10 px-0")}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -68,5 +78,19 @@ export function SiteHeader() {
       </div>
       {season.trim && <Trim kind={season.trim} />}
     </header>
+  );
+}
+
+/** A small button with the LightLab logo: the way into our partner shop. */
+function LightLabPill({ className }: { className?: string }) {
+  return (
+    <Link
+      href="/lightlab"
+      aria-label={`${lightlabConfig.name}, our partner lamp shop`}
+      title={`${lightlabConfig.name}: novelty lamps`}
+      className={cn("inline-flex h-9 shrink-0 items-center rounded-full border border-line bg-surface px-3.5 transition-[border-color,transform] duration-200 hover:-translate-y-0.5 hover:border-accent-line active:scale-95", className)}
+    >
+      <LightLabLogo className="h-6" />
+    </Link>
   );
 }

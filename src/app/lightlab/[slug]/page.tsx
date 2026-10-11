@@ -4,13 +4,17 @@ import { notFound } from "next/navigation";
 import { PartnerBadge } from "@/components/lightlab/PartnerBadge";
 import { ProductBuy } from "@/components/lightlab/ProductBuy";
 import { productBySlug } from "@/lib/shop/products.server";
+import { money } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const p = await productBySlug((await params).slug);
   if (!p) return {};
-  return { title: p.name, description: p.tagline || undefined, openGraph: p.images[0] ? { images: [p.images[0]] } : undefined };
+  // The share picture comes from opengraph-image.tsx; the text says what it is and what it costs.
+  const from = Math.min(p.priceCents, ...p.variants.map((v) => v.priceCents ?? p.priceCents));
+  const description = [money(from), p.tagline].filter(Boolean).join(" · ");
+  return { title: p.name, description, openGraph: { title: `${p.name} · LightLab | Victoria`, description }, twitter: { card: "summary_large_image", title: p.name, description } };
 }
 
 export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {

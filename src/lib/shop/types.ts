@@ -64,6 +64,15 @@ export function inStock(p: Pick<ShopProductDto, "stock" | "variants">, variantId
   return p.stock;
 }
 
+/**
+ * Which stock count a purchase comes out of: an option with its own count,
+ * or the product's shared count (the product itself, or options without one).
+ */
+export function poolKey(p: Pick<ShopProductDto, "id" | "variants">, variantId: string | null) {
+  const v = variantOf(p, variantId);
+  return v && v.stock != null ? `${p.id}:${v.id}` : `${p.id}:*`;
+}
+
 /** Products with options need one picked. */
 export function needsVariant(p: Pick<ShopProductDto, "variants">) {
   return p.variants.length > 0;

@@ -6,7 +6,8 @@ import { db } from "@/lib/db";
 import { CartError } from "@/lib/pricing/server-quote";
 import { quoteShipping } from "@/lib/shipping/pack";
 import { toProductDto } from "./products.server";
-import { inStock, needsVariant, unitPrice, variantOf, type PricedShopLine, type ShopLineInput } from "./types";
+import { heldStock, withHolds } from "./holds.server";
+import { inStock, needsVariant, poolKey, unitPrice, variantOf, type PricedShopLine, type ShopLineInput } from "./types";
 
 /**
  * The authoritative price of a LightLab cart, in the same shape as a print
@@ -16,9 +17,12 @@ import { inStock, needsVariant, unitPrice, variantOf, type PricedShopLine, type 
 export async function priceShopCart(lines: ShopLineInput[], cfg?: AppConfig) {
   const config = cfg ?? (await getEffectiveConfig());
   const rows = await db.shopProduct.findMany({ where: { id: { in: [...new Set(lines.map((l) => l.productId))] }, shop: lightlab.id } });
-  const byId = new Map(rows.map((r) => [r.id, toProductDto(r)]));
+  // Stock held for other people's checkouts in progress (e.g. waiting for an e-Transfer) isn't for sale.
+  const raw = rows.map(toProductDto);
+  const held = await heldStock(raw);
+  const byId = new Map(raw.map((p) => [p.id, withHolds(p, held)]));
 
-  // The same product and option twice counts against stock once.
+  // Lines drawing on the same stock count (same option, or options sharing the product's count) add up.
   const wanted = new Map<string, number>();
   const shopLines: PricedShopLine[] = [];
   for (const line of lines) {
@@ -27,7 +31,7 @@ export async function priceShopCart(lines: ShopLineInput[], cfg?: AppConfig) {
     const variant = variantOf(p, line.variantId);
     if (line.variantId && !variant) throw new CartError(`That option of ${p.name} is no longer available. Please choose another.`);
     if (!variant && needsVariant(p)) throw new CartError(`Please choose an option for ${p.name}.`);
-    const key = `${p.id}:${variant?.id ?? ""}`;
+    const key = poolKey(p, variant?.id ?? null);
     const total = (wanted.get(key) ?? 0) + line.quantity;
     wanted.set(key, total);
     const left = inStock(p, variant?.id ?? null);

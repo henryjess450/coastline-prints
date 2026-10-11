@@ -9,6 +9,7 @@ import { useShopCart } from "@/lib/shop/cart";
 import { inStock, unitPrice, variantOf, type ShopProductDto } from "@/lib/shop/types";
 import { LampPlaceholder } from "./ProductGrid";
 import { QuantityStepper } from "./QuantityStepper";
+import { RestockForm } from "./RestockForm";
 
 /** Photos, options, quantity and "Add to cart" for one product. */
 export function ProductBuy({ product: p }: { product: ShopProductDto }) {
@@ -102,10 +103,17 @@ export function ProductBuy({ product: p }: { product: ShopProductDto }) {
         </p>
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          {!soldOut && canAdd > 0 && <QuantityStepper value={quantity} max={canAdd} onChange={setQty} />}
-          <Button size="lg" className="min-w-48 flex-1 sm:flex-none" onClick={addToCart} disabled={soldOut || canAdd <= 0}>
-            {soldOut ? "Sold out" : canAdd <= 0 ? "All in your cart" : `Add to cart · ${money(price * quantity)}`}
-          </Button>
+          {soldOut ? (
+            // Keyed so switching options starts a fresh form.
+            <RestockForm key={variantId ?? ""} productId={p.id} variantId={variantId} label={variant ? `${p.name} (${variant.name})` : p.name} />
+          ) : (
+            <>
+              {canAdd > 0 && <QuantityStepper value={quantity} max={canAdd} onChange={setQty} />}
+              <Button size="lg" className="min-w-48 flex-1 sm:flex-none" onClick={addToCart} disabled={canAdd <= 0}>
+                {canAdd <= 0 ? "All in your cart" : `Add to cart · ${money(price * quantity)}`}
+              </Button>
+            </>
+          )}
         </div>
         <AnimatePresence>
           {added > 0 && (

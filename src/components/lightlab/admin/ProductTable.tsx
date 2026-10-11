@@ -88,7 +88,7 @@ function Row({ product: p, stats, onDrop, onSaved }: { product: ShopProductDto; 
   function save(patch: Parameters<typeof quickUpdateAction>[1], label: string) {
     start(async () => {
       const r = await quickUpdateAction(p.id, patch);
-      onSaved(r.error ?? `${p.name}: ${label}`, !!r.error);
+      onSaved(r.error ?? `${p.name}: ${label}${r.message ?? ""}`, !!r.error);
       router.refresh();
     });
   }

@@ -9,6 +9,8 @@ import { logError } from "@/lib/api";
 import { db } from "@/lib/db";
 import { getStorage } from "@/lib/storage";
 import { slugify } from "@/lib/shop/types";
+import { queueRestockEmails } from "@/lib/shop/emails";
+import { sendNotificationsSoon } from "@/lib/notify/kick";
 
 export type ShopActionState = { ok?: boolean; error?: string; message?: string; id?: string };
 
@@ -109,10 +111,24 @@ export async function saveProductAction(input: ProductInput): Promise<ShopAction
       if (existing.slug !== slug) revalidatePath(`/lightlab/${existing.slug}`);
     }
     revalidateShop(slug);
-    return { ok: true, id: saved.id, message: existing ? "Saved." : "Product added." };
+    const told = await restocked(saved.id);
+    return { ok: true, id: saved.id, message: (existing ? "Saved." : "Product added.") + told };
   } catch (err) {
     logError("lightlab:save", err);
     return { error: "Couldn't save the product." };
+  }
+}
+
+/** Back in stock: email the people who asked. Returns a note for the admin ("" if nobody was waiting). */
+async function restocked(productId: string) {
+  try {
+    const n = await queueRestockEmails(productId);
+    if (!n) return "";
+    sendNotificationsSoon("lightlab-restock");
+    return ` Emailing ${n} ${n === 1 ? "person" : "people"} that it's back.`;
+  } catch (err) {
+    logError("lightlab:restock", err);
+    return "";
   }
 }
 
@@ -158,7 +174,7 @@ export async function quickUpdateAction(id: string, patch: z.infer<typeof quickS
       await db.shopProduct.update({ where: { id }, data: parsed.data });
     }
     revalidateShop(p.slug);
-    return { ok: true };
+    return { ok: true, message: await restocked(id) };
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") return { error: "That product was deleted." };
     logError("lightlab:quick", err);

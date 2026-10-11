@@ -122,7 +122,7 @@ export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts
           },
         });
         await tx.checkout.update({ where: { id: checkoutId }, data: { status: "COMPLETED", squarePaymentId: payment.id } });
-        for (const line of cart.shopLines ?? []) await takeStock(tx, line);
+        for (const line of cart.shopLines ?? []) await takeStock(tx, line, order.id);
         await tx.codeRedemption.updateMany({ where: { checkoutId, status: "RESERVED" }, data: { status: "USED" } });
         await tx.outboxJob.createMany({ data: notificationJobs(order.id, !checkout.squareCustomerId) });
         // Ordered with a friend's invite code: the friend gets their points now.
@@ -205,16 +205,31 @@ function shopItemData(line: PricedShopLine) {
 }
 
 /** Sold: take them off the shelf (the option's count if it has one, else the product's). Never below zero. */
-async function takeStock(tx: Prisma.TransactionClient, line: PricedShopLine) {
+async function takeStock(tx: Prisma.TransactionClient, line: PricedShopLine, orderId: string) {
   const p = await tx.shopProduct.findUnique({ where: { id: line.productId } });
   if (!p) return;
   const variants = JSON.parse(p.variants) as { id: string; stock: number | null }[];
   const v = line.variantId ? variants.find((x) => x.id === line.variantId) : null;
+  let before: number;
+  let after: number;
   if (v && v.stock != null) {
-    v.stock = Math.max(0, v.stock - line.quantity);
+    before = v.stock;
+    after = v.stock = Math.max(0, v.stock - line.quantity);
     await tx.shopProduct.update({ where: { id: p.id }, data: { variants: JSON.stringify(variants) } });
   } else if (p.stock != null) {
-    await tx.shopProduct.update({ where: { id: p.id }, data: { stock: Math.max(0, p.stock - line.quantity) } });
+    before = p.stock;
+    after = Math.max(0, p.stock - line.quantity);
+    await tx.shopProduct.update({ where: { id: p.id }, data: { stock: after } });
+  } else {
+    return; // made to order
+  }
+  // Running low or sold out: tell the owner (once per crossing).
+  if ((after === 0 && before > 0) || (after <= lightlab.lowStockAt && before > lightlab.lowStockAt)) {
+    const pool = v && v.stock != null ? v.id : "";
+    const dedupeKey = `${orderId}:stock:${p.id}:${pool}`;
+    const payload = JSON.stringify({ orderId, productId: p.id, variantId: pool, left: after });
+    // Two lines can share one stock count: keep a single alert with the latest count.
+    await tx.outboxJob.upsert({ where: { dedupeKey }, create: { kind: "email", template: "lightlab-stock-alert", payload, dedupeKey }, update: { payload } });
   }
 }
 

@@ -30,6 +30,11 @@ const { renderInvoicePdf } = await import("@/lib/invoice/pdf");
 const { loadOrderEmailData } = await import("@/lib/email/data");
 const { buildEmail } = await import("@/lib/email/build");
 const { findScannedOrder } = await import("@/lib/orders/scan");
+const { POST: restock } = await import("@/app/api/shop/restock/route");
+const { buildRestockEmail, buildStockAlertEmail, queueRestockEmails } = await import("@/lib/shop/emails");
+const { listProducts } = await import("@/lib/shop/products.server");
+const { upcomingMarkets, shopToday } = await import("@/lib/shop/markets.server");
+const { GET: marketCalendar } = await import("@/app/lightlab/markets/[id]/calendar/route");
 
 async function lamp(over: Record<string, unknown> = {}) {
   return db.shopProduct.create({
@@ -166,5 +171,76 @@ describe("LightLab shop", () => {
     expect(printMail.subject).toContain("Coastline Prints");
     expect(printMail.html).toContain("#0e4471");
     expect(print.orderNumber).toMatch(/^CP-/);
+  });
+
+  it("holds stock for an e-Transfer that hasn't arrived, and frees it if it expires", async () => {
+    const p = await lamp({ variants: "[]", stock: 1 });
+    const line = { productId: p.id, variantId: null, quantity: 1, name: p.name, variantName: null, unitCents: 4500, lineCents: 4500, size: { x: 150, y: 150, z: 150 }, grams: 300 };
+    const co = await db.checkout.create({
+      data: { idempotencyKey: randomUUID(), cart: JSON.stringify({ lines: [], shopLines: [line], quote: {} }), totalCents: 4500, customerName: "A", customerEmail: "a@example.com", customerPhone: "6045550123", paymentMethod: "ETRANSFER", expiresAt: new Date(Date.now() + 60 * 60_000) },
+    });
+    const held = await quoteOf([{ productId: p.id, variantId: null, quantity: 1 }]);
+    expect(held.status).toBe(422);
+    expect(held.body.error).toMatch(/sold out/);
+    expect((await listProducts()).find((x) => x.id === p.id)?.stock).toBe(0);
+
+    await db.checkout.update({ where: { id: co.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    expect((await quoteOf([{ productId: p.id, variantId: null, quantity: 1 }])).status).toBe(200);
+  });
+
+  it("counts options that share the product's stock together", async () => {
+    const p = await lamp({
+      stock: 1,
+      variants: JSON.stringify([
+        { id: "red0001", name: "Red", priceCents: null, stock: null, hex: null },
+        { id: "blue001", name: "Blue", priceCents: null, stock: null, hex: null },
+      ]),
+    });
+    expect((await quoteOf([{ productId: p.id, variantId: "red0001", quantity: 1 }])).status).toBe(200);
+    expect((await quoteOf([{ productId: p.id, variantId: "red0001", quantity: 1 }, { productId: p.id, variantId: "blue001", quantity: 1 }])).status).toBe(422);
+  });
+
+  it("tells the owner when stock runs low and when it sells out", async () => {
+    const p = await lamp({ variants: "[]", stock: 3 });
+    const first = await pay([{ productId: p.id, variantId: null, quantity: 1 }], 4500);
+    const low = await db.outboxJob.findFirstOrThrow({ where: { template: "lightlab-stock-alert", dedupeKey: { startsWith: `${(await db.order.findUniqueOrThrow({ where: { orderNumber: first.data.orderNumber } })).id}:stock:` } } });
+    const lowMail = await buildStockAlertEmail(JSON.parse(low.payload));
+    expect(lowMail?.subject).toBe("Banana Lamp: only 2 left");
+    expect(lowMail?.to).toBe("owner@coastline.test");
+
+    const second = await pay([{ productId: p.id, variantId: null, quantity: 2 }], 9000);
+    const out = await db.outboxJob.findFirstOrThrow({ where: { template: "lightlab-stock-alert", dedupeKey: { startsWith: `${(await db.order.findUniqueOrThrow({ where: { orderNumber: second.data.orderNumber } })).id}:stock:` } } });
+    expect((await buildStockAlertEmail(JSON.parse(out.payload)))?.subject).toBe("Banana Lamp just sold out");
+  });
+
+  it("emails people who asked once a sold-out lamp is restocked", async () => {
+    const p = await lamp({ variants: "[]", stock: 0 });
+    const ask = (email: string) => restock(jsonRequest("http://test/api/shop/restock", { productId: p.id, variantId: null, email }));
+    expect((await ask("fan@example.com")).status).toBe(200);
+    expect((await ask("fan@example.com")).status).toBe(200); // asking twice is one request
+    expect(await db.restockRequest.count({ where: { productId: p.id } })).toBe(1);
+    expect(await queueRestockEmails(p.id)).toBe(0); // still sold out
+
+    await db.shopProduct.update({ where: { id: p.id }, data: { stock: 4 } });
+    expect((await ask("late@example.com")).status).toBe(409); // in stock: nothing to wait for
+    expect(await queueRestockEmails(p.id)).toBe(1);
+    expect(await queueRestockEmails(p.id)).toBe(0); // only once
+    const req = await db.restockRequest.findFirstOrThrow({ where: { productId: p.id } });
+    expect(req.notifiedAt).not.toBeNull();
+    const mail = await buildRestockEmail({ requestId: req.id });
+    expect(mail).toMatchObject({ to: "fan@example.com", subject: "Banana Lamp is back at LightLab" });
+    expect(mail!.html).toContain(`/lightlab/${p.slug}`);
+  });
+
+  it("shows upcoming markets only, with a calendar file for each", async () => {
+    const today = shopToday();
+    const past = await db.market.create({ data: { name: "Old Market", place: "Hall", date: "2020-01-04", startTime: "09:00", endTime: "13:00" } });
+    const next = await db.market.create({ data: { name: "Winter Market", place: "Hall", address: "1 Main St", date: today, startTime: "10:00", endTime: "15:30" } });
+    const shown = await upcomingMarkets(50);
+    expect(shown.some((m) => m.id === next.id)).toBe(true);
+    expect(shown.some((m) => m.id === past.id)).toBe(false);
+    const ics = await (await marketCalendar(new Request("http://test/x"), { params: Promise.resolve({ id: next.id }) })).text();
+    expect(ics).toContain("SUMMARY:LightLab | Victoria at Winter Market");
+    expect(ics).toContain("LOCATION:Hall\\, 1 Main St");
   });
 });

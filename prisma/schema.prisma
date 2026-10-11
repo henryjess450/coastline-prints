@@ -13,8 +13,8 @@ datasource db {
 
 /// An uploaded STL. Stats are computed by the server parser, never the client.
 model Upload {
-  id             String   @id @default(cuid())
-  storageKey     String   @unique
+  id             String    @id @default(cuid())
+  storageKey     String    @unique
   originalName   String
   safeName       String
   sizeBytes      Int
@@ -32,10 +32,10 @@ model Upload {
   bboxZ          Float
   boundaryEdges  Int
   nonManifold    Int
-  warnings       String   @default("[]") // JSON MeshWarning[]
+  warnings       String    @default("[]") // JSON MeshWarning[]
   /// Set when the stored file is removed by the retention cleanup.
   fileDeletedAt  DateTime?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
 
   orderItems OrderItem[]
 
@@ -47,105 +47,105 @@ model Upload {
 /// once Square reports COMPLETED. idempotencyKey comes from the browser's
 /// "Pay" attempt, so a retried request reuses the same Square payment.
 model Checkout {
-  id               String   @id @default(cuid())
-  status           String   @default("PENDING") // PENDING | COMPLETED | FAILED
-  idempotencyKey   String   @unique
-  cart             String // JSON: server-priced cart snapshot
-  totalCents       Int
-  currency         String   @default("CAD")
-  customerName     String
-  customerEmail    String
-  customerPhone    String
-  notes            String?
-  pickupDate       String? // "YYYY-MM-DD", shop time zone
-  pickupTime       String? // "HH:MM" slot start
+  id                     String    @id @default(cuid())
+  status                 String    @default("PENDING") // PENDING | COMPLETED | FAILED
+  idempotencyKey         String    @unique
+  cart                   String // JSON: server-priced cart snapshot
+  totalCents             Int
+  currency               String    @default("CAD")
+  customerName           String
+  customerEmail          String
+  customerPhone          String
+  notes                  String?
+  pickupDate             String? // "YYYY-MM-DD", shop time zone
+  pickupTime             String? // "HH:MM" slot start
   /// PICKUP or SHIP (Canada Post bubble mailer or flat rate box).
-  fulfillment      String   @default("PICKUP")
+  fulfillment            String    @default("PICKUP")
   /// Shipping charged: postage plus packing fee. 0 for pickup.
-  shippingCents    Int      @default(0)
+  shippingCents          Int       @default(0)
   /// JSON packages: the mailer or flat rate boxes, and how many pieces in each.
-  shippingBoxes    String?
-  shipName         String?
-  shipLine1        String?
-  shipLine2        String?
-  shipCity         String?
-  shipProvince     String?
-  shipPostal       String?
+  shippingBoxes          String?
+  shipName               String?
+  shipLine1              String?
+  shipLine2              String?
+  shipCity               String?
+  shipProvince           String?
+  shipPostal             String?
   /// CARD (Square) or ETRANSFER (Interac, matched from the deposit email).
-  paymentMethod    String   @default("CARD")
+  paymentMethod          String    @default("CARD")
   /// The code the customer puts in the e-Transfer message, e.g. "PAY-7K4QX".
-  etransferCode    String?  @unique
+  etransferCode          String?   @unique
   /// Discount for paying by e-Transfer (no card fees).
-  etransferDiscountCents Int @default(0)
+  etransferDiscountCents Int       @default(0)
   /// e-Transfer checkouts are cancelled if nothing arrives by then.
-  expiresAt        DateTime?
-  squarePaymentId  String?  @unique
-  squareCustomerId String?
+  expiresAt              DateTime?
+  squarePaymentId        String?   @unique
+  squareCustomerId       String?
   /// JSON AppliedCode[]: coupons and gift cards used, with amounts.
-  appliedCodes     String   @default("[]")
-  discountCents    Int      @default(0)
-  giftCardCents    Int      @default(0)
-  failureReason    String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  appliedCodes           String    @default("[]")
+  discountCents          Int       @default(0)
+  giftCardCents          Int       @default(0)
+  failureReason          String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
-  order       Order?
-  redemptions CodeRedemption[]
+  order            Order?
+  redemptions      CodeRedemption[]
   etransferDeposit EtransferDeposit?
 }
 
 model Order {
-  id              String   @id @default(cuid())
-  orderNumber     String   @unique
+  id                     String    @id @default(cuid())
+  orderNumber            String    @unique
   /// Unguessable token for the customer's confirmation link (shows pickup address).
-  viewToken       String   @unique
-  checkoutId      String   @unique
-  checkout        Checkout @relation(fields: [checkoutId], references: [id])
-  status          String   @default("PAID") // PAID | QUEUED | PRINTING | POST_PROCESSING | READY_FOR_PICKUP | PICKED_UP
+  viewToken              String    @unique
+  checkoutId             String    @unique
+  checkout               Checkout  @relation(fields: [checkoutId], references: [id])
+  status                 String    @default("PAID") // PAID | QUEUED | PRINTING | POST_PROCESSING | READY_FOR_PICKUP | PICKED_UP
   /// Tucked away by the owner: hidden from the admin's boards and lists (the customer still sees it).
-  archivedAt      DateTime?
-  customerName    String
-  customerEmail   String
-  customerPhone   String
-  notes           String?
-  pickupDate      String? // "YYYY-MM-DD", shop time zone
-  pickupTime      String? // "HH:MM" slot start
+  archivedAt             DateTime?
+  customerName           String
+  customerEmail          String
+  customerPhone          String
+  notes                  String?
+  pickupDate             String? // "YYYY-MM-DD", shop time zone
+  pickupTime             String? // "HH:MM" slot start
   /// PICKUP or SHIP (Canada Post bubble mailer or flat rate box).
-  fulfillment      String   @default("PICKUP")
+  fulfillment            String    @default("PICKUP")
   /// Shipping charged: postage plus packing fee. 0 for pickup.
-  shippingCents    Int      @default(0)
+  shippingCents          Int       @default(0)
   /// JSON packages: the mailer or flat rate boxes, and how many pieces in each.
-  shippingBoxes    String?
-  shipName         String?
-  shipLine1        String?
-  shipLine2        String?
-  shipCity         String?
-  shipProvince     String?
-  shipPostal       String?
+  shippingBoxes          String?
+  shipName               String?
+  shipLine1              String?
+  shipLine2              String?
+  shipCity               String?
+  shipProvince           String?
+  shipPostal             String?
   /// Canada Post tracking number, added when the order ships.
-  trackingNumber   String?
-  subtotalCents   Int
-  baseFeeCents    Int
-  minimumAdjCents Int      @default(0)
-  discountCents   Int      @default(0)
-  giftCardCents   Int      @default(0)
+  trackingNumber         String?
+  subtotalCents          Int
+  baseFeeCents           Int
+  minimumAdjCents        Int       @default(0)
+  discountCents          Int       @default(0)
+  giftCardCents          Int       @default(0)
   /// JSON AppliedCode[]
-  appliedCodes    String   @default("[]")
-  totalCents      Int
-  currency        String   @default("CAD")
+  appliedCodes           String    @default("[]")
+  totalCents             Int
+  currency               String    @default("CAD")
   /// CARD or ETRANSFER.
-  paymentMethod   String   @default("CARD")
-  etransferDiscountCents Int @default(0)
+  paymentMethod          String    @default("CARD")
+  etransferDiscountCents Int       @default(0)
   /// "nopay_<checkoutId>" when a gift card covered the whole order; "etr_<depositId>" for e-Transfers.
-  squarePaymentId String   @unique
-  squareCustomerId String?
+  squarePaymentId        String    @unique
+  squareCustomerId       String?
   /// 1 = first order from this email, 2 = second, ...
-  customerOrderCount Int    @default(1)
-  receiptUrl      String?
-  cardBrand       String?
-  cardLast4       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  customerOrderCount     Int       @default(1)
+  receiptUrl             String?
+  cardBrand              String?
+  cardLast4              String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   items  OrderItem[]
   events OrderStatusEvent[]
@@ -156,40 +156,40 @@ model Order {
 }
 
 model OrderItem {
-  id            String @id @default(cuid())
-  orderId       String
-  order         Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id          String       @id @default(cuid())
+  orderId     String
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
   /// The customer's uploaded file. Null for shop products (LightLab).
-  uploadId      String?
-  upload        Upload? @relation(fields: [uploadId], references: [id])
+  uploadId    String?
+  upload      Upload?      @relation(fields: [uploadId], references: [id])
   /// Shop product bought as-is (LightLab | Victoria). Null for custom prints.
-  productId     String?
-  product       ShopProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productId   String?
+  product     ShopProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
   /// The product option chosen (e.g. a shade colour), if it has options.
-  variantId     String?
-  fileName      String
-  unitFactor    Float  @default(1) // 25.4 when "modelled in inches" was applied
-  scaleX        Float
-  scaleY        Float
-  scaleZ        Float
-  orientation   Int // index into ORIENTATIONS
-  sizeX         Float // final printed size, mm, as oriented on the bed
-  sizeY         Float
-  sizeZ         Float
-  material      String
-  colorId       String
-  colorName     String
+  variantId   String?
+  fileName    String
+  unitFactor  Float        @default(1) // 25.4 when "modelled in inches" was applied
+  scaleX      Float
+  scaleY      Float
+  scaleZ      Float
+  orientation Int // index into ORIENTATIONS
+  sizeX       Float // final printed size, mm, as oriented on the bed
+  sizeY       Float
+  sizeZ       Float
+  material    String
+  colorId     String
+  colorName   String
   /// Multicolour 3MF: JSON ColorSlot[] (which stock colour each file colour prints in).
-  colorSlots    String?
-  quality       String
-  infill        String
-  quantity      Int
-  printerId     String
-  printerName   String
-  gramsEach     Float
-  hoursEach     Float
-  unitCents     Int
-  lineCents     Int
+  colorSlots  String?
+  quality     String
+  infill      String
+  quantity    Int
+  printerId   String
+  printerName String
+  gramsEach   Float
+  hoursEach   Float
+  unitCents   Int
+  lineCents   Int
 
   @@index([printerId])
   @@index([productId])
@@ -210,16 +210,16 @@ model OrderStatusEvent {
 
 /// Durable outbox for emails and Discord posts, retried with backoff.
 model OutboxJob {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   kind          String // "email" | "discord"
   template      String
   payload       String // JSON
-  status        String   @default("PENDING") // PENDING | SENT | FAILED
-  attempts      Int      @default(0)
-  nextAttemptAt DateTime @default(now())
+  status        String    @default("PENDING") // PENDING | SENT | FAILED
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now())
   lastError     String?
-  dedupeKey     String?  @unique
-  createdAt     DateTime @default(now())
+  dedupeKey     String?   @unique
+  createdAt     DateTime  @default(now())
   sentAt        DateTime?
 
   @@index([status, nextAttemptAt])
@@ -252,18 +252,18 @@ model PromoCode {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  redemptions CodeRedemption[]
+  redemptions   CodeRedemption[]
   /// Set when the card was bought online on the gift card page.
-  purchase    GiftPurchase?
+  purchase      GiftPurchase?
   /// Saved to (and locked to) a customer account at /redeem. Only that account can spend it.
   ownerId       String?
-  owner         Customer? @relation("Saved", fields: [ownerId], references: [id])
+  owner         Customer?        @relation("Saved", fields: [ownerId], references: [id])
   savedAt       DateTime?
   /// First-order thank-you coupons: the order they were made for (one per order).
-  rewardOrderId String?   @unique
+  rewardOrderId String?          @unique
   /// Invite codes: the account that shares it. Works on a friend's first order only.
-  referrerId    String?   @unique
-  referrer      Customer? @relation("Invites", fields: [referrerId], references: [id])
+  referrerId    String?          @unique
+  referrer      Customer?        @relation("Invites", fields: [referrerId], references: [id])
 
   @@index([ownerId])
 }
@@ -315,27 +315,27 @@ model GiftPurchase {
 
 /// A customer account. Sign-in is by a 6-digit code emailed to them; no passwords.
 model Customer {
-  id         String            @id @default(cuid())
-  email      String            @unique
+  id               String            @id @default(cuid())
+  email            String            @unique
   /// Their customer record in Square (found or created once, never duplicated).
   squareCustomerId String?
   /// Saved details, used to fill in checkout. Empty until they set them or place an order.
-  name       String?
-  phone      String?
+  name             String?
+  phone            String?
   /// JSON AddressInput: where they ship to, filled in at checkout when shipping.
-  shipAddress String?
+  shipAddress      String?
   /// "light" or "dark"; applied whenever they sign in.
-  theme      String?
+  theme            String?
   /// Said no to news and promotions (order emails still come).
-  emailOptOut Boolean @default(false)
+  emailOptOut      Boolean           @default(false)
   /// When the owner set up this account for them from the admin panel.
-  invitedAt  DateTime?
-  createdAt  DateTime          @default(now())
-  lastSeenAt DateTime?
-  sessions   CustomerSession[]
-  codes      PromoCode[] @relation("Saved")
+  invitedAt        DateTime?
+  createdAt        DateTime          @default(now())
+  lastSeenAt       DateTime?
+  sessions         CustomerSession[]
+  codes            PromoCode[]       @relation("Saved")
   /// Their invite code, made the first time they open the account page.
-  invite     PromoCode? @relation("Invites")
+  invite           PromoCode?        @relation("Invites")
 }
 
 /// A signed-in browser. The cookie holds a random token; only its hash is stored.
@@ -366,28 +366,28 @@ model LoginCode {
 /// Rewards points ledger, by email (so points are earned even before someone
 /// makes an account). Earned when an order is picked up; spent on prizes.
 model PointsEntry {
-  id        String   @id @default(cuid())
-  email     String
+  id            String   @id @default(cuid())
+  email         String
   /// Positive when earned, negative when spent on a prize.
-  points    Int
-  kind      String // EARN | REDEEM | INVITE
+  points        Int
+  kind          String // EARN | REDEEM | INVITE
   /// EARN: the order that earned them (once per order).
-  orderId   String?  @unique
+  orderId       String?  @unique
   /// INVITE: the friend's first order, placed with this person's invite code.
-  inviteOrderId String? @unique
+  inviteOrderId String?  @unique
   /// REDEEM: which prize, and the coupon or gift card it made.
-  prizeId   String?
-  codeId    String?
-  createdAt DateTime @default(now())
+  prizeId       String?
+  codeId        String?
+  createdAt     DateTime @default(now())
 
   @@index([email])
 }
 
 /// An Interac e-Transfer deposit email read from the shop's inbox.
 model EtransferDeposit {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   /// The email's Message-ID, so each deposit is handled once.
-  messageId   String   @unique
+  messageId   String    @unique
   receivedAt  DateTime
   amountCents Int
   senderName  String?
@@ -395,13 +395,13 @@ model EtransferDeposit {
   memo        String?
   reference   String?
   /// True when the email's DKIM signature is Interac's (not forged).
-  verified    Boolean  @default(false)
+  verified    Boolean   @default(false)
   /// MATCHED (paid an order) | REVIEW (needs the owner) | IGNORED
   status      String
   note        String?
-  checkoutId  String?  @unique
+  checkoutId  String?   @unique
   checkout    Checkout? @relation(fields: [checkoutId], references: [id])
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   @@index([status])
 }
@@ -445,7 +445,6 @@ model Sale {
   @@index([startsAt, endsAt])
 }
 
-
 /// A ready-made product in a partner shop (LightLab | Victoria at /lightlab), edited at /lightlab/admin.
 model ShopProduct {
   id             String   @id @default(cuid())
@@ -477,7 +476,45 @@ model ShopProduct {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  orderItems OrderItem[]
+  orderItems      OrderItem[]
+  restockRequests RestockRequest[]
 
   @@index([shop, active, sortOrder])
+}
+
+/// A market LightLab will be at, shown under "Find us at" on /lightlab. Past dates hide themselves.
+model Market {
+  id        String   @id @default(cuid())
+  name      String
+  /// Where, as people would say it ("Moss Street Market").
+  place     String
+  /// Street address for the map link (optional).
+  address   String   @default("")
+  /// "YYYY-MM-DD", shop time zone.
+  date      String
+  /// "HH:MM", 24-hour.
+  startTime String
+  endTime   String
+  note      String   @default("")
+  /// The market's own page (optional).
+  url       String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+}
+
+/// "Tell me when it's back": an email to send when a sold-out product (or option) is restocked.
+model RestockRequest {
+  id         String      @id @default(cuid())
+  productId  String
+  product    ShopProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// The option they wanted, or "" for the product itself.
+  variantId  String      @default("")
+  email      String
+  notifiedAt DateTime?
+  createdAt  DateTime    @default(now())
+
+  @@unique([productId, variantId, email])
+  @@index([productId, notifiedAt])
 }

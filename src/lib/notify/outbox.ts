@@ -28,7 +28,7 @@ export function backoffMs(attempts: number) {
   return BACKOFF_MIN[Math.min(attempts - 1, BACKOFF_MIN.length - 1)] * 60_000;
 }
 
-type Payload = { orderId: string; checkoutId?: string; giftId?: string; codeId?: string; customerId?: string; broadcastId?: string; note?: string | null; test?: boolean };
+type Payload = { orderId: string; productId?: string; variantId?: string; left?: number; requestId?: string; checkoutId?: string; giftId?: string; codeId?: string; customerId?: string; broadcastId?: string; note?: string | null; test?: boolean };
 
 let running: Promise<ProcessResult> | null = null;
 export type ProcessResult = { sent: number; failed: number; retrying: number };
@@ -128,6 +128,13 @@ async function deliver(kind: string, template: string, payload: Payload, jobId: 
     // News, coupon campaigns and account invites (skipped if they've unsubscribed since).
     const { buildBroadcastEmail, buildInviteEmail } = await import("@/lib/broadcast");
     const email = template === "broadcast" ? await buildBroadcastEmail(payload.broadcastId ?? "", payload.customerId ?? "") : await buildInviteEmail(payload.customerId ?? "", payload.note);
+    if (email) await (mailer ?? getMailer()).send(email, jobId);
+    return;
+  }
+  if (kind === "email" && (template === "lightlab-stock-alert" || template === "lightlab-back-in-stock")) {
+    // LightLab: running-low alerts to the owner, and "it's back" to shoppers (skipped if no longer true).
+    const { buildRestockEmail, buildStockAlertEmail } = await import("@/lib/shop/emails");
+    const email = template === "lightlab-stock-alert" ? await buildStockAlertEmail(payload) : await buildRestockEmail(payload);
     if (email) await (mailer ?? getMailer()).send(email, jobId);
     return;
   }

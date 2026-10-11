@@ -8,18 +8,20 @@ import { LightLabLogo } from "@/components/lightlab/LightLabLogo";
 import { ProductGrid } from "@/components/lightlab/ProductGrid";
 import { ButtonLink } from "@/components/ui/Button";
 import { listProducts } from "@/lib/shop/products.server";
+import { shopToday, upcomingMarkets } from "@/lib/shop/markets.server";
+import { FindUsAt } from "@/components/lightlab/FindUsAt";
 
 export const metadata: Metadata = { title: { absolute: `${lightlab.name} · Novelty lamps` } };
 export const dynamic = "force-dynamic"; // prices and stock change in /lightlab/admin
 
 export default async function LightLabShop() {
-  const products = await listProducts();
+  const [products, markets] = await Promise.all([listProducts(), upcomingMarkets(6)]);
   const featured = [...products].sort((a, b) => Number(b.featured) - Number(a.featured));
 
   return (
     <div className="overflow-x-clip">
       <section className="relative mx-auto grid max-w-7xl items-center gap-8 px-4 pb-16 pt-10 sm:px-6 sm:pt-16 lg:grid-cols-[minmax(0,1fr)_400px] lg:pb-24">
-        <LightLabHeroText />
+        <LightLabHeroText nextMarket={markets[0] ?? null} today={shopToday()} />
         {/* Fun-gi, Banana After Dark and Cloudy, drawn in line one after another */}
         <div className="mx-auto aspect-[4/5] w-full max-w-[300px] lg:max-w-[400px]">
           <OneLineLamps />
@@ -43,6 +45,8 @@ export default async function LightLabShop() {
           </div>
         )}
       </section>
+
+      <FindUsAt markets={markets} />
 
       <section className="mx-auto mt-28 max-w-7xl px-4 sm:px-6">
         <div className="grid gap-10 rounded-3xl border border-line bg-surface p-8 sm:p-12 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-center">
