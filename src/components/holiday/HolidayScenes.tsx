@@ -110,7 +110,8 @@ export function ChristmasTree({ cx = 430, base = 286, scale = 1 }: { cx?: number
         strokeWidth="1.5"
         animate={{ scale: [1, 1.12, 1] }}
         transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-        style={{ originX: "0px", originY: `${base - 197}px` }}
+        // SVG shapes transform around their own box: spin and scale from the middle.
+        style={{ originX: "50%", originY: "50%" }}
       />
     </g>
   );
@@ -232,7 +233,7 @@ export function LivingRoom({ arrive = true, arriveDelay = 0.4, showPresent = tru
       {showPresent && (
         <motion.g initial={arrive ? { x: -420, y: 0 } : false} animate={{ x: 0, y: [0, 0] }} transition={{ delay: arriveDelay, duration: 1.1, ease: [0.2, 0.8, 0.3, 1] }}>
           <g transform="translate(440 292)">
-            <motion.g animate={landed ? { scaleY: [1, 0.86, 1.05, 1] } : {}} transition={{ duration: 0.45 }} style={{ originX: "0px", originY: "0px" }}>
+            <motion.g animate={landed ? { scaleY: [1, 0.86, 1.05, 1] } : {}} transition={{ duration: 0.45 }} style={{ originX: "50%", originY: "100%" }}>
               <Present s={0.85} />
             </motion.g>
           </g>
@@ -283,7 +284,7 @@ function House({ doorOpen }: { doorOpen: boolean }) {
 /** The delivery truck, facing right. (0, 0) is where its back wheel touches the road. */
 function Truck({ spinning }: { spinning: boolean }) {
   const wheel = (cx: number) => (
-    <motion.g animate={spinning ? { rotate: [0, 360] } : { rotate: 0 }} transition={spinning ? { duration: 0.5, repeat: Infinity, ease: "linear" } : { duration: 0.2 }} style={{ originX: `${cx}px`, originY: "-10px" }}>
+    <motion.g animate={spinning ? { rotate: [0, 360] } : { rotate: 0 }} transition={spinning ? { duration: 0.5, repeat: Infinity, ease: "linear" } : { duration: 0.2 }} style={{ originX: "50%", originY: "50%" }}>
       <circle cx={cx} cy="-10" r="11" fill="#1e2a36" />
       <circle cx={cx} cy="-10" r="4.5" fill="#9fb0c0" />
       <rect x={cx - 1} y="-20" width="2" height="20" fill="#9fb0c0" />
@@ -345,7 +346,7 @@ export function DeliveryStreet() {
       <rect x="-2000" y="300" width="4600" height="2000" fill={SNOW} />
       <rect x="-2000" y="306" width="4600" height="22" fill="#56616d" />
       <rect x="-2000" y="316" width="4600" height="2" fill="#8a96a3" />
-      <motion.g initial={{ x: -420 }} animate={{ x: 300 }} transition={{ duration: 2, ease: [0.25, 0.7, 0.35, 1] }}>
+      <motion.g initial={{ x: -420 }} animate={{ x: 236 }} transition={{ duration: 2, ease: [0.25, 0.7, 0.35, 1] }}>
         <g transform="translate(0 316)">
           <Truck spinning={step === "drive"} />
         </g>
@@ -353,8 +354,8 @@ export function DeliveryStreet() {
       {/* The present hops off the back of the truck, onto the step, and in the door */}
       {step !== "drive" && (
         <motion.g
-          initial={{ x: 268, y: 296 }}
-          animate={step === "drop" ? { x: [268, 360, 470], y: [296, 196, 298] } : { x: 530, y: 298, opacity: 0 }}
+          initial={{ x: 214, y: 236 }}
+          animate={step === "drop" ? { x: [214, 350, 470], y: [236, 170, 298] } : { x: 530, y: 298, opacity: 0 }}
           transition={step === "drop" ? { duration: 0.8, ease: "easeInOut", times: [0, 0.5, 1] } : { duration: 0.5, ease: "easeIn" }}
         >
           <Present s={0.75} />
@@ -375,7 +376,7 @@ export function HolidayFinale({ viewBox, className }: { viewBox: string; classNa
   // On tall screens the send-off zooms in on the middle; here each scene picks its own middle
   // (the truck and the door, then the couch and the tree).
   const tall = viewBox !== "0 0 600 360";
-  const view = !tall ? viewBox : inside ? "150 40 380 320" : "260 60 330 300";
+  const view = !tall ? viewBox : inside ? "150 40 380 320" : "196 60 394 300";
   return (
     <motion.svg viewBox={view} preserveAspectRatio="xMidYMid meet" className={className} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }} aria-hidden>
       <HolidayStyles />
