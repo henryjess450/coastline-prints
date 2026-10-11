@@ -2,6 +2,7 @@ import { buildEmail, EMAIL_TEMPLATES, type EmailTemplate } from "@/lib/email/bui
 import { loadOrderEmailData } from "@/lib/email/data";
 import { db } from "@/lib/db";
 import { renderGiftCardPng } from "@/lib/giftcards/card-image";
+import { designOf } from "@/lib/giftcards/designs";
 import { buildGiftEmail } from "@/lib/giftcards/emails";
 import { GIFT_EMAIL_TEMPLATES, type GiftData, type GiftEmailTemplate } from "@/lib/giftcards/server";
 
@@ -12,6 +13,8 @@ const SAMPLE_GIFT: GiftData = {
   amount: "$50.00",
   paid: "$50.00",
   bonus: null,
+  design: "coastline",
+  revealUrl: "http://localhost:3000/gift/sample",
   buyerName: "Sam Rivera",
   buyerEmail: "sam@example.com",
   recipientName: "Jordan Lee",
@@ -31,7 +34,8 @@ export const runtime = "nodejs";
  * DEV ONLY email preview: /api/dev/emails?template=customer-receipt
  * (optionally &order=CP-XXXX-XXXX). Gift emails: template=gift-recipient,
  * gift-buyer, gift-owner, or gift-card-image for the card picture (sample
- * data, add &now=1 for a send-now gift, &bonus=1 for a $5 holiday bonus).
+ * data, add &now=1 for a send-now gift, &bonus=1 for a $5 holiday bonus,
+ * &design=holiday|lightlab|both for the other card designs).
  * The review request email is at /dev/review-email. Returns 404 in production.
  */
 export async function GET(req: Request) {
@@ -39,7 +43,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const raw = url.searchParams.get("template") ?? "customer-receipt";
   const bonus = url.searchParams.get("bonus") ? { amountCents: 5500, amount: "$55.00", bonus: "$5.00" } : {};
-  const sample = { ...SAMPLE_GIFT, ...bonus, sendOn: url.searchParams.get("now") ? null : SAMPLE_GIFT.sendOn };
+  const sample = { ...SAMPLE_GIFT, ...bonus, design: designOf(url.searchParams.get("design")), sendOn: url.searchParams.get("now") ? null : SAMPLE_GIFT.sendOn };
   if (raw === "gift-card-image") return new Response(new Uint8Array(await renderGiftCardPng(sample)), { headers: { "Content-Type": "image/png" } });
   if ((GIFT_EMAIL_TEMPLATES as readonly string[]).includes(raw)) {
     const email = await buildGiftEmail(raw as GiftEmailTemplate, sample);

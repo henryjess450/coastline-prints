@@ -117,6 +117,30 @@ describe("buying a gift card", () => {
   });
 });
 
+describe("holiday design", () => {
+  it("saves the design and a private link the recipient opens the present with", async () => {
+    square.payments.create.mockImplementation(async (req) => ({ payment: completed(req) }));
+    const { res, body } = await purchase({ design: "holiday" });
+    expect(res.status).toBe(200);
+    const gift = await db.giftPurchase.findUniqueOrThrow({ where: { idempotencyKey: body.attemptId } });
+    expect(gift.design).toBe("holiday");
+    expect(gift.revealToken).toMatch(/^[A-Za-z0-9_-]{24}$/);
+    const { loadGiftData } = await import("@/lib/giftcards/server");
+    expect((await loadGiftData(gift.id))?.revealUrl).toContain(`/gift/${gift.revealToken}`);
+  });
+
+  it("keeps the holiday card picture out of the recipient's email, so opening it is a surprise", async () => {
+    square.payments.create.mockImplementation(async (req) => ({ payment: completed(req) }));
+    const { body } = await purchase({ design: "holiday" });
+    const gift = await db.giftPurchase.findUniqueOrThrow({ where: { idempotencyKey: body.attemptId } });
+    const { loadGiftData } = await import("@/lib/giftcards/server");
+    const { buildGiftEmail } = await import("@/lib/giftcards/emails");
+    const mail = await buildGiftEmail("gift-recipient", (await loadGiftData(gift.id))!);
+    expect(mail.attachments ?? []).toHaveLength(0);
+    expect(mail.html).toContain("Open your present");
+  });
+});
+
 describe("gift card bonus", () => {
   const today = todayIn("America/Vancouver");
   const runningBonus = { ...defaultGiftBonus, on: true, minCents: 5000, bonusCents: 500, startsOn: addDays(today, -1), endsOn: addDays(today, 1) };

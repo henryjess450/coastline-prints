@@ -3,6 +3,7 @@
  * server (the real check). Dates are "YYYY-MM-DD" in the shop's time zone.
  */
 import { z } from "zod";
+import { GIFT_DESIGNS } from "./designs";
 import { pickup } from "@config/pickup";
 import { addDays, todayIn } from "@/lib/pickup";
 
@@ -18,6 +19,8 @@ const email = z.string().trim().toLowerCase().email("Please enter a valid email 
 const name = (what: string) => z.string().trim().min(1, `Please enter ${what}.`).max(80);
 
 export const giftDetailsSchema = z.object({
+  /** The card's look, which also sets where it can be spent (designs.ts). */
+  design: z.enum(GIFT_DESIGNS).optional().default("coastline"),
   amountCents: z
     .number()
     .int()

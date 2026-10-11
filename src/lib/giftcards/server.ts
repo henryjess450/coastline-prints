@@ -4,7 +4,9 @@ import { logError } from "@/lib/api";
 import { formatCardNumber } from "@/lib/codes/apply";
 import { generateCode, generatePin } from "@/lib/codes/server";
 import { db } from "@/lib/db";
+import { appUrl } from "@/lib/email/data";
 import { money } from "@/lib/format";
+import { designOf } from "./designs";
 import { sendOffHold } from "@/lib/notify/sendoff";
 import { PaymentMismatchError, type PaymentFacts } from "@/lib/orders/finalize";
 
@@ -85,6 +87,9 @@ export async function loadGiftData(purchaseId: string) {
     /** The card's value: what was paid plus any bonus. */
     amountCents: p.amountCents + p.bonusCents,
     amount: money(p.amountCents + p.bonusCents),
+    design: designOf(p.design),
+    /** The recipient's "open your gift" page. */
+    revealUrl: p.revealToken ? `${appUrl()}/gift/${p.revealToken}` : null,
     /** What the buyer paid. */
     paid: money(p.amountCents),
     /** The promotion bonus, if any ("$5.00"). */

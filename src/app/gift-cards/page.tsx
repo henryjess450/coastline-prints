@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { pickup } from "@config/pickup";
 import { GiftCardShop } from "@/components/gifts/GiftCardShop";
 import { bonusLine, bonusLive } from "@/lib/giftcards/bonus";
+import { designOf, holidaySeason, type GiftDesign } from "@/lib/giftcards/designs";
 import { getGiftBonus } from "@/lib/giftcards/bonus.server";
 import { todayIn } from "@/lib/pickup";
 import { scheduleRange } from "@/lib/giftcards/rules";
@@ -9,14 +10,19 @@ import { squarePublicConfig } from "@/lib/square/client";
 
 export const metadata: Metadata = {
   title: "Gift cards",
-  description: "Send a Coastline Prints gift card by email, today or on a day you choose. Works on any 3D print order and doesn't expire.",
+  description: "Send a Coastline Prints gift card by email, today or on a day you choose. Works on custom prints, the Coastline shop and LightLab lamps, and doesn't expire.",
   alternates: { canonical: "/gift-cards" },
 };
 export const dynamic = "force-dynamic"; // the schedule range depends on today's date
 
-export default async function GiftCardsPage({ searchParams }: { searchParams: Promise<{ demo?: string }> }) {
+export default async function GiftCardsPage({ searchParams }: { searchParams: Promise<{ demo?: string; design?: string }> }) {
+  const q = await searchParams;
   // ?demo=1 previews the animation without charging a card. Development only.
-  const demo = process.env.NODE_ENV !== "production" && (await searchParams).demo === "1";
+  const demo = process.env.NODE_ENV !== "production" && q.demo === "1";
+  const today = todayIn(pickup.timeZone);
+  // The holiday card leads in season; ?design= picks one (e.g. from the Christmas or LightLab pages).
+  const designs: GiftDesign[] = holidaySeason(today) ? ["holiday", "coastline"] : ["coastline"];
+  const initialDesign = designOf(q.design ?? designs[0]);
   const b = await getGiftBonus();
   const bonus = bonusLive(b, todayIn(pickup.timeZone)) ? { name: b.name, minCents: b.minCents, bonusCents: b.bonusCents, line: bonusLine(b) } : null;
   return (
@@ -25,7 +31,7 @@ export default async function GiftCardsPage({ searchParams }: { searchParams: Pr
         <h1 className="font-display text-4xl font-bold tracking-tight sm:text-5xl">Give the gift of 3D printing</h1>
         <p className="mt-4 text-lg leading-relaxed text-muted">Send a gift card by email, today or on a day you choose.</p>
       </div>
-      <GiftCardShop square={squarePublicConfig()} range={scheduleRange()} bonus={bonus} demo={demo} />
+      <GiftCardShop square={squarePublicConfig()} range={scheduleRange()} bonus={bonus} designs={designs} initialDesign={initialDesign} demo={demo} />
     </div>
   );
 }

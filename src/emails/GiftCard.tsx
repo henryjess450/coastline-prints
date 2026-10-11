@@ -1,5 +1,6 @@
 import { Img, Section, Text } from "@react-email/components";
 import type { GiftData } from "@/lib/giftcards/server";
+import { GIFT_WORKS_ON } from "@/lib/giftcards/designs";
 import { colors, EmailLayout, H1, Label, P, PillButton } from "./components/Layout";
 
 /** The card details in big, copyable type, next to the card picture. */
@@ -19,26 +20,38 @@ function CardDetails({ g }: { g: GiftData }) {
 
 const first = (name: string) => name.split(/\s+/)[0];
 
-/** To the loved one, at 9 am on the chosen day (or straight away). */
+/** To the loved one, at 9 am on the chosen day (or straight away). The button opens the gift on the site. */
 export function GiftCardRecipient({ g, orderUrl, redeemUrl }: { g: GiftData; orderUrl: string; redeemUrl: string }) {
+  const holiday = g.design === "holiday";
   return (
-    <EmailLayout preview={`${first(g.buyerName)} sent you a ${g.amount} Coastline Prints gift card`}>
+    <EmailLayout preview={holiday ? `${first(g.buyerName)} sent you a holiday gift. Open it!` : `${first(g.buyerName)} sent you a ${g.amount} gift card`}>
       <H1>
-        {first(g.recipientName)}, {first(g.buyerName)} sent you a gift card!
+        {first(g.recipientName)}, {first(g.buyerName)} sent you {holiday ? "a holiday gift!" : "a gift card!"}
       </H1>
-      <P muted>A {g.amount} gift card for custom 3D prints from Coastline Prints.</P>
+      <P muted>
+        A {g.amount} Coastline Prints gift card, for {GIFT_WORKS_ON}.
+      </P>
+      {g.revealUrl && (
+        <Section style={{ margin: "6px 0 18px" }}>
+          <PillButton href={g.revealUrl}>
+            {holiday ? "Open your present" : "Open your gift"}
+          </PillButton>
+        </Section>
+      )}
       {g.message && (
         <Section style={{ borderLeft: `4px solid ${colors.brand}`, padding: "4px 0 4px 16px", margin: "8px 0 18px" }}>
           <Text style={{ margin: 0, fontSize: 16, lineHeight: "24px", color: colors.text, whiteSpace: "pre-wrap" }}>{g.message}</Text>
           <Text style={{ margin: "8px 0 0", fontSize: 14, color: colors.muted }}>{g.buyerName}</Text>
         </Section>
       )}
-      <Img src="cid:giftcard" alt={`Coastline Prints gift card, ${g.amount}`} width={525} style={{ display: "block", width: "100%", maxWidth: 525, height: "auto", borderRadius: 24, margin: "8px 0 14px" }} />
+      {/* A holiday gift is a surprise: the card picture waits on the "open your present" page. */}
+      {!holiday && <Img src="cid:giftcard" alt={`Gift card, ${g.amount}`} width={525} style={{ display: "block", width: "100%", maxWidth: 525, height: "auto", borderRadius: 24, margin: "8px 0 14px" }} />}
+      {holiday && <Label>Your card details, for safekeeping</Label>}
       <CardDetails g={g} />
       <Label>How to use it</Label>
       <P muted>
-        Upload an STL file, choose the size, material and colour, and at checkout type the card number and PIN into the &ldquo;Coupons or Gift Cards&rdquo; box. Whatever you don&apos;t
-        spend stays on the card for next time. It doesn&apos;t expire.
+        Upload an STL file, pick something from the shop, or choose a LightLab lamp, and at checkout type the card number and PIN into the &ldquo;Coupons or Gift Cards&rdquo; box.{" "}
+        Whatever you don&apos;t spend stays on the card for next time. It doesn&apos;t expire.
       </P>
       <P muted>
         Tip: save it to your account at{" "}
@@ -83,7 +96,7 @@ export function GiftCardBuyer({ g, when }: { g: GiftData; when: string | null })
       )}
       <Label>A copy of the card</Label>
       <P muted>Just in case the email goes astray, here are the details. Please keep them private.</P>
-      <Img src="cid:giftcard" alt={`Coastline Prints gift card, ${g.amount}`} width={525} style={{ display: "block", width: "100%", maxWidth: 525, height: "auto", borderRadius: 24, margin: "8px 0 14px" }} />
+      <Img src="cid:giftcard" alt={`Gift card, ${g.amount}`} width={525} style={{ display: "block", width: "100%", maxWidth: 525, height: "auto", borderRadius: 24, margin: "8px 0 14px" }} />
       <CardDetails g={g} />
     </EmailLayout>
   );

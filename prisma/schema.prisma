@@ -292,6 +292,10 @@ model GiftPurchase {
   amountCents     Int
   /// Extra value from a promotion (like the holiday bonus), added to the card on top of what was paid.
   bonusCents      Int        @default(0)
+  /// coastline | holiday (src/lib/giftcards/designs.ts). Every design works everywhere.
+  design          String     @default("coastline")
+  /// Unguessable link for the recipient's "open your gift" page.
+  revealToken     String?    @unique
   buyerName       String
   buyerEmail      String
   recipientName   String

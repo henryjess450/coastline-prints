@@ -9,7 +9,9 @@ import { Card } from "@/components/ui/Card";
 import { cn } from "@/lib/cn";
 import { money } from "@/lib/format";
 import { friendlyDate, GIFT_MAX_CENTS, GIFT_MESSAGE_MAX, GIFT_MIN_CENTS, GIFT_PRESETS_CENTS, giftDetailsSchema, type GiftDetails } from "@/lib/giftcards/rules";
+import { GIFT_WORKS_ON, giftDesigns, type GiftDesign } from "@/lib/giftcards/designs";
 import { GiftAnimation, type PayResult } from "./GiftAnimation";
+import { GiftCardFace } from "./GiftCardFace";
 import { GiftSent } from "./GiftSent";
 
 type Fields = { recipientName: string; recipientEmail: string; message: string; buyerName: string; buyerEmail: string };
@@ -27,7 +29,23 @@ const formatTotal = (v: number) => money(Math.round(v));
  * while the payment goes through, ending on the confirmation.
  * `demo` (development only) skips Square so the animation can be previewed.
  */
-export function GiftCardShop({ square, range, bonus = null, demo = false }: { square: SquareConfig | null; range: { min: string; max: string }; bonus?: LiveBonus | null; demo?: boolean }) {
+export function GiftCardShop({
+  square,
+  range,
+  bonus = null,
+  designs = ["coastline"],
+  initialDesign = "coastline",
+  demo = false,
+}: {
+  square: SquareConfig | null;
+  range: { min: string; max: string };
+  bonus?: LiveBonus | null;
+  /** The designs on offer right now (the holiday one is seasonal). */
+  designs?: GiftDesign[];
+  initialDesign?: GiftDesign;
+  demo?: boolean;
+}) {
+  const [design, setDesign] = useState<GiftDesign>(designs.includes(initialDesign) ? initialDesign : designs[0]);
   const payRef = useRef<PaymentMethodsHandle>(null);
   const payButton = useRef<HTMLButtonElement>(null);
   const [preset, setPreset] = useState<number | "custom">(5000);
@@ -59,7 +77,7 @@ export function GiftCardShop({ square, range, bonus = null, demo = false }: { sq
   };
 
   function validate(): GiftDetails | null {
-    const r = giftDetailsSchema.safeParse({ ...fields, amountCents, sendOn: schedule ? sendOn : null });
+    const r = giftDetailsSchema.safeParse({ ...fields, amountCents, design, sendOn: schedule ? sendOn : null });
     const next: Errors = {};
     if (!r.success) for (const issue of r.error.issues) next[issue.path[0] as keyof GiftDetails] ??= issue.message;
     if (schedule && (sendOn < range.min || sendOn > range.max)) next.sendOn = "Pick a day between tomorrow and a year from now.";
@@ -187,12 +205,45 @@ export function GiftCardShop({ square, range, bonus = null, demo = false }: { sq
   }, [demo]);
 
   // Full-screen animation over the whole page while the gift is sent.
-  if (phase === "sending") return <GiftAnimation result={result} amount={money(amountCents + bonusCents)} onDone={onDone} />;
+  if (phase === "sending") return <GiftAnimation result={result} amount={money(amountCents + bonusCents)} design={design} onDone={onDone} />;
   if (phase === "sent" && sent) return <GiftSent recipientName={sent.recipientName} when={sent.sendOn ? friendlyDate(sent.sendOn) : null} onAnother={another} />;
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[minmax(0,1fr)_420px] lg:gap-12">
       <div className="min-w-0 space-y-6">
+        {designs.length > 1 && (
+          <Card flat className="p-6 sm:p-8">
+            <h2 className="font-display text-xl font-bold">Design</h2>
+            <div role="radiogroup" aria-label="Gift card design" className="mt-5 grid gap-3 sm:grid-cols-2">
+              {designs.map((d) => {
+                const on = d === design;
+                const swatch = d === "holiday" ? ["#a51d1d"] : ["#0e4471"];
+                return (
+                  <motion.button
+                    key={d}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => setDesign(d)}
+                    whileTap={{ scale: 0.97 }}
+                    className={cn("flex items-center gap-3 rounded-2xl border p-3 text-left transition-colors", on ? "border-accent-line bg-accent-soft" : "border-line bg-surface hover:border-accent-line")}
+                  >
+                    <span className="flex h-10 w-16 shrink-0 overflow-hidden rounded-lg" aria-hidden>
+                      {swatch.map((c) => (
+                        <span key={c} className="h-full flex-1" style={{ background: c }} />
+                      ))}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold">{giftDesigns[d].label}</span>
+                      <span className="block text-xs text-muted">{giftDesigns[d].blurb}</span>
+                    </span>
+                  </motion.button>
+                );
+              })}
+            </div>
+          </Card>
+        )}
+
         <Card flat className="p-6 sm:p-8">
           <h2 className="font-display text-xl font-bold">Amount</h2>
           {bonus && (
@@ -306,27 +357,22 @@ export function GiftCardShop({ square, range, bonus = null, demo = false }: { sq
 
       {/* Live preview of the card: first on phones, beside the form on wide screens */}
       <div className="-order-1 min-w-0 lg:order-none lg:sticky lg:top-24 lg:self-start">
-        <CardPreview amountCents={amountCents} bonusCents={bonusCents} to={fields.recipientName} from={fields.buyerName} message={fields.message} />
+        <CardPreview design={design} amountCents={amountCents} bonusCents={bonusCents} to={fields.recipientName} from={fields.buyerName} message={fields.message} />
       </div>
     </div>
   );
 }
 
-function CardPreview({ amountCents, bonusCents, to, from, message }: { amountCents: number; bonusCents: number; to: string; from: string; message: string }) {
+function CardPreview({ design, amountCents, bonusCents, to, from, message }: { design: GiftDesign; amountCents: number; bonusCents: number; to: string; from: string; message: string }) {
   return (
     <div>
-      <motion.div className="relative aspect-[1.586] w-full rounded-3xl bg-accent p-6 text-accent-ink shadow-[var(--shadow)]" initial={{ rotate: -2, y: 10, opacity: 0 }} animate={{ rotate: -2, y: 0, opacity: 1 }} whileHover={{ rotate: 0, y: -4 }} transition={{ type: "spring", stiffness: 260, damping: 20 }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/brand/lettering/coastline-prints-white.png" alt="" className="h-5 w-auto sm:h-6" />
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/brand/lettering/gift-card-blue.png" alt="" className="mt-3 h-10 w-auto sm:h-12" />
-        <div className="absolute inset-x-6 bottom-6 flex items-end justify-between gap-4">
-          <div className="min-w-0 text-sm">
-            <p className="truncate text-white/70">{to ? `For ${to}` : "For someone special"}</p>
-            <p className="truncate text-white/70">{from ? `From ${from}` : ""}</p>
-          </div>
-          <AnimatedNumber value={amountCents >= GIFT_MIN_CENTS ? amountCents + bonusCents : 0} format={formatTotal} live={false} pulse className="font-display text-3xl font-bold text-sand sm:text-4xl" />
-        </div>
+      <motion.div initial={{ rotate: -2, y: 10, opacity: 0 }} animate={{ rotate: -2, y: 0, opacity: 1 }} whileHover={{ rotate: 0, y: -4 }} transition={{ type: "spring", stiffness: 260, damping: 20 }}>
+        {/* Keyed so switching designs flips to the new card */}
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.div key={design} initial={{ rotateY: -90, opacity: 0 }} animate={{ rotateY: 0, opacity: 1 }} exit={{ rotateY: 90, opacity: 0 }} transition={{ duration: 0.28 }}>
+            <GiftCardFace design={design} to={to} from={from} amount={<AnimatedNumber value={amountCents >= GIFT_MIN_CENTS ? amountCents + bonusCents : 0} format={formatTotal} live={false} pulse />} />
+          </motion.div>
+        </AnimatePresence>
       </motion.div>
       <AnimatePresence>
         {bonusCents > 0 && (
@@ -342,7 +388,9 @@ function CardPreview({ amountCents, bonusCents, to, from, message }: { amountCen
           </motion.blockquote>
         )}
       </AnimatePresence>
-      <p className="mt-6 text-sm leading-relaxed text-faint">The card arrives by email with its number and PIN. It works on any order and doesn&apos;t expire.</p>
+      <p className="mt-6 text-sm leading-relaxed text-faint">
+        The card arrives by email with its number and PIN{design === "holiday" ? ", wrapped as a present they open on the site" : ""}. It works on {GIFT_WORKS_ON}, and doesn&apos;t expire.
+      </p>
     </div>
   );
 }

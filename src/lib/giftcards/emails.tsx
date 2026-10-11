@@ -10,7 +10,8 @@ import type { GiftData, GiftEmailTemplate } from "./server";
 /** Renders one of the gift card emails, with the card picture attached inline. */
 export async function buildGiftEmail(template: GiftEmailTemplate, g: GiftData): Promise<OutgoingEmail> {
   const when = g.sendOn ? friendlyDate(g.sendOn) : null;
-  const orderUrl = `${(process.env.APP_URL ?? "https://coastlineprints.ca").replace(/\/$/, "")}/order`;
+  const base = (process.env.APP_URL ?? "https://coastlineprints.ca").replace(/\/$/, "");
+  const orderUrl = `${base}/order`;
   let to: string;
   let subject: string;
   let replyTo: string | undefined = privateSite.ownerEmail;
@@ -20,8 +21,8 @@ export async function buildGiftEmail(template: GiftEmailTemplate, g: GiftData): 
   switch (template) {
     case "gift-recipient":
       to = g.recipientEmail;
-      subject = `${g.buyerName.split(/\s+/)[0]} sent you a ${g.amount} Coastline Prints gift card`;
-      node = <GiftCardRecipient g={g} orderUrl={orderUrl} redeemUrl={orderUrl.replace(/\/order$/, "/redeem")} />;
+      subject = `${g.buyerName.split(/\s+/)[0]} sent you a ${g.design === "holiday" ? "holiday gift" : `${g.amount} Coastline Prints gift card`}`;
+      node = <GiftCardRecipient g={g} orderUrl={orderUrl} redeemUrl={`${base}/redeem`} />;
       break;
     case "gift-buyer":
       to = g.buyerEmail;
@@ -38,6 +39,8 @@ export async function buildGiftEmail(template: GiftEmailTemplate, g: GiftData): 
   }
 
   const html = await render(node);
+  // The holiday recipient email has no picture (it's revealed on the site).
+  if (template === "gift-recipient" && g.design === "holiday") withCard = false;
   const attachments = withCard ? [{ filename: "coastline-prints-gift-card.png", content: await renderGiftCardPng(g), contentType: "image/png", cid: "giftcard" }] : undefined;
   return { to, replyTo, subject, html, text: toPlainText(html), attachments };
 }

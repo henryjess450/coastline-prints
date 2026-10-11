@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 import { absolute } from "@/lib/seo";
 
-const PRIVATE = ["/admin", "/api/", "/dev/", "/account", "/orders/", "/pay/", "/invite/", "/unsubscribe", "/offline", "/lightlab/admin", "/lightlab/checkout", "/shop/checkout"];
+const PRIVATE = ["/admin", "/api/", "/dev/", "/account", "/orders/", "/pay/", "/invite/", "/unsubscribe", "/offline", "/lightlab/admin", "/lightlab/checkout", "/shop/checkout", "/gift/"];
 
 /**
  * AI search and assistant crawlers, named so it's clear they're welcome: being

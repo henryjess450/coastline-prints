@@ -7,6 +7,7 @@
  *   wait      the box bobs gently until Square confirms the payment
  *   conveyor  the box rides a conveyor belt off to the right
  *   sail      the Benchy from the home page sails off with the box on its back deck
+ *             (or a `finale` of the caller's, like the holiday delivery)
  * It covers the whole screen. The box only leaves once the payment has gone
  * through; if it fails, the caller closes the scene and shows the error.
  */
@@ -37,7 +38,24 @@ const MID = "#3d7bb8";
 
 export type Intro = { ms: number; render: (viewBox: string, className: string) => React.ReactNode };
 
-export function SendOff({ result, label, contents, intro, sailMs = FLY_MS, onDone }: { result: PayResult; label: string; contents: React.ReactNode; intro?: Intro; sailMs?: number; onDone: () => void }) {
+export function SendOff({
+  result,
+  label,
+  contents,
+  intro,
+  finale,
+  sailMs = FLY_MS,
+  onDone,
+}: {
+  result: PayResult;
+  label: string;
+  contents: React.ReactNode;
+  intro?: Intro;
+  /** Replaces the Benchy sailing off (e.g. the holiday delivery). Plays for `sailMs`. */
+  finale?: (viewBox: string, className: string) => React.ReactNode;
+  sailMs?: number;
+  onDone: () => void;
+}) {
   // The stage follows from what has happened so far.
   const [introDone, setIntroDone] = useState(!intro);
   const [packed, setPacked] = useState(false);
@@ -103,6 +121,10 @@ export function SendOff({ result, label, contents, intro, sailMs = FLY_MS, onDon
               <GiftBox>{contents}</GiftBox>
             </motion.g>
           </motion.svg>
+        ) : finale ? (
+          <motion.div key="finale" className="absolute inset-0">
+            {finale(viewBox, svg)}
+          </motion.div>
         ) : (
           <Sea key="sea" viewBox={viewBox} className={svg} sailMs={sailMs} />
         )}

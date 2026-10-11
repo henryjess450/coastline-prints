@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { SquareError } from "square";
 import { apiError, logError } from "@/lib/api";
@@ -55,6 +56,8 @@ export async function POST(req: Request) {
         idempotencyKey: d.attemptId,
         amountCents: d.amountCents,
         bonusCents,
+        design: d.design,
+        revealToken: randomBytes(18).toString("base64url"),
         buyerName: d.buyerName,
         buyerEmail: d.buyerEmail,
         recipientName: d.recipientName,
