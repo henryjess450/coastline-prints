@@ -1,5 +1,7 @@
-# Runs the site and Caddy (HTTPS) together:
-#   docker compose up -d --build
+# Runs the site. HTTPS comes from the shared Caddy in C:\kindly-sent\edge, which reaches
+# this app over the "web" Docker network (one Caddy serves every site on the PC).
+#   docker network create web     (once)
+#   docker compose up -d --build --remove-orphans
 # Your settings and passwords come from .env (never committed).
 services:
   app:
@@ -21,23 +23,14 @@ services:
     ports:
       # Only for checking at http://localhost:3100 on the PC itself.
       - "127.0.0.1:3100:3100"
-
-  caddy:
-    image: caddy:2
-    restart: unless-stopped
-    depends_on:
-      - app
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data # HTTPS certificates
-      - caddy-config:/config
+    networks:
+      web:
+        aliases: [coastline-app]
 
 volumes:
   coastline-data:
   coastline-storage:
-  caddy-data:
-  caddy-config:
+
+networks:
+  web:
+    external: true
