@@ -15,10 +15,10 @@ const NIGHT = "#10233a";
 const SNOW = "#eef3f8";
 const SNOW_SHADE = "#c9d6e3";
 const PINE = ["#1d6b3c", "#22804a", "#2c9656"];
-const BULBS = ["#ff5a4e", "#e9c46a", "#7cc4f0", "#7bd88f", "#f59ad1"];
+export const BULBS = ["#ff5a4e", "#e9c46a", "#7cc4f0", "#7bd88f", "#f59ad1"];
 
 /** Same numbers every render, so the scene never jumps. */
-function seeded(n: number, seed: number) {
+export function seeded(n: number, seed: number) {
   let s = seed;
   return Array.from({ length: n }, () => {
     s = (s * 9301 + 49297) % 233280;
@@ -43,7 +43,7 @@ export function HolidayStyles() {
   );
 }
 
-const vars = (v: Record<string, string | number>) => Object.fromEntries(Object.entries(v).map(([k, x]) => [`--${k}`, typeof x === "number" ? `${x}s` : x])) as React.CSSProperties;
+export const vars = (v: Record<string, string | number>) => Object.fromEntries(Object.entries(v).map(([k, x]) => [`--${k}`, typeof x === "number" ? `${x}s` : x])) as React.CSSProperties;
 
 /** Snow falling across the given box; each flake falls past the bottom and starts again above the top, out of sight. */
 export function Snow({ x = -200, y = -40, w = 1000, h = 440, count = 46, seed = 7, opacity = 0.9, size = 1 }: { x?: number; y?: number; w?: number; h?: number; count?: number; seed?: number; opacity?: number; /** Flake size multiplier. */ size?: number }) {
@@ -130,16 +130,19 @@ function SmallGift({ x, y, w, h, box, ribbon }: { x: number; y: number; w: numbe
 }
 
 /** The present that's being delivered: red with a gold ribbon and bow, like the send-off box. Drawn around (0, 0), bottom at y = 0. */
-export function Present({ s = 1 }: { s?: number }) {
+export type PresentColors = { box: string; lid: string; ribbon: string; knot: string };
+export const PRESENT_RED: PresentColors = { box: RED, lid: RED_LIGHT, ribbon: GOLD, knot: GOLD_DARK };
+
+export function Present({ s = 1, colors: c = PRESENT_RED }: { s?: number; colors?: PresentColors }) {
   return (
     <g transform={`scale(${s})`}>
-      <rect x="-20" y="-28" width="40" height="28" rx="3" fill={RED} />
-      <rect x="-3.5" y="-28" width="7" height="28" fill={GOLD} />
-      <rect x="-23" y="-35" width="46" height="9" rx="3" fill={RED_LIGHT} />
-      <rect x="-3.5" y="-35" width="7" height="9" fill={GOLD} />
-      <ellipse cx="-7" cy="-40" rx="8" ry="5" fill={GOLD} transform="rotate(-22 -7 -40)" />
-      <ellipse cx="7" cy="-40" rx="8" ry="5" fill={GOLD} transform="rotate(22 7 -40)" />
-      <circle cx="0" cy="-38" r="3.5" fill={GOLD_DARK} />
+      <rect x="-20" y="-28" width="40" height="28" rx="3" fill={c.box} />
+      <rect x="-3.5" y="-28" width="7" height="28" fill={c.ribbon} />
+      <rect x="-23" y="-35" width="46" height="9" rx="3" fill={c.lid} />
+      <rect x="-3.5" y="-35" width="7" height="9" fill={c.ribbon} />
+      <ellipse cx="-7" cy="-40" rx="8" ry="5" fill={c.ribbon} transform="rotate(-22 -7 -40)" />
+      <ellipse cx="7" cy="-40" rx="8" ry="5" fill={c.ribbon} transform="rotate(22 7 -40)" />
+      <circle cx="0" cy="-38" r="3.5" fill={c.knot} />
     </g>
   );
 }
@@ -149,7 +152,7 @@ export function Present({ s = 1 }: { s?: number }) {
  * on the same timeline (the street's STREET_S, or the room's ROOM_S), so
  * everything stays in step, eases smoothly, and ends where it should.
  */
-type Anim = { values: number[]; t: Transition };
+export type Anim = { values: number[]; t: Transition };
 /**
  * Named and bezier eases become functions: framer-motion then runs every
  * keyframe itself (fades included, which it would otherwise hand to the
@@ -157,19 +160,19 @@ type Anim = { values: number[]; t: Transition };
  */
 const NAMED: Record<string, EasingFunction> = { linear: (v) => v, easeIn, easeOut, easeInOut };
 const asFn = (e: Easing): EasingFunction => (typeof e === "function" ? e : Array.isArray(e) ? cubicBezier(e[0], e[1], e[2], e[3]) : (NAMED[e as string] ?? easeInOut));
-function track<V>(points: [number, V][], ease: Easing | Easing[] = "easeInOut", duration = STREET_S): { values: V[]; t: Transition } {
+export function track<V>(points: [number, V][], ease: Easing | Easing[] = "easeInOut", duration = STREET_S): { values: V[]; t: Transition } {
   const fn = Array.isArray(ease) && typeof ease[0] !== "number" ? (ease as Easing[]).map(asFn) : asFn(ease as Easing);
   return { values: points.map((p) => p[1]), t: { duration, times: points.map((p) => p[0] / duration), ease: fn } };
 }
 /** Alternating values every `step` seconds from `from` to `to`, e.g. legs swinging while walking. */
-function swing(from: number, to: number, step: number, a: number, b: number): [number, number][] {
+export function swing(from: number, to: number, step: number, a: number, b: number): [number, number][] {
   const pts: [number, number][] = [];
   for (let t = from, k = 0; t < to - 0.001; t += step, k++) pts.push([+t.toFixed(3), k % 2 ? b : a]);
   return pts;
 }
 /** The same keyframes with every value passed through `f` (e.g. leg length from "how stood up"). */
-const mapAnim = (a: Anim, f: (v: number) => number): Anim => ({ values: a.values.map(f), t: a.t });
-const hold = (v: number): Anim => ({ values: [v, v], t: { duration: 0.01 } });
+export const mapAnim = (a: Anim, f: (v: number) => number): Anim => ({ values: a.values.map(f), t: a.t });
+export const hold = (v: number): Anim => ({ values: [v, v], t: { duration: 0.01 } });
 
 /** The room's clock: the present arrives, Dad brings it to the kid, the kid opens it. */
 const ROOM_S = 9.6;
@@ -180,7 +183,7 @@ const room = <V,>(points: [number, V][], ease: Easing | Easing[] = "easeInOut") 
  * (lap and dangling legs), standing is 1. Arms and legs swing from the
  * shoulder and hip like the driver's. `children` are held at the chest.
  */
-function Member({
+export function Member({
   x,
   scale = 1,
   skin,
@@ -194,6 +197,7 @@ function Member({
   legR = hold(0),
   armL = hold(-12),
   armR = hold(12),
+  glass,
   children,
 }: {
   x: Anim;
@@ -209,6 +213,8 @@ function Member({
   legR?: Anim;
   armL?: Anim;
   armR?: Anim;
+  /** A drink in the right hand, shown while this is 1; it stays upright as the arm moves (for a toast). */
+  glass?: Anim;
   children?: React.ReactNode;
 }) {
   // Sitting folds the legs to half height and lowers the body onto the seat; the lap shows.
@@ -221,11 +227,20 @@ function Member({
       <rect x={lx - 1} y="-5" width="9.5" height="5" rx="2.5" fill="#2a1a12" />
     </motion.g>
   );
-  const arm = (anim: Anim, ax: number) => (
+  const upright = mapAnim(armR, (v) => -v);
+  const arm = (anim: Anim, ax: number, holding?: Anim) => (
     <motion.g initial={false} animate={{ rotate: anim.values }} transition={{ rotate: anim.t }} style={{ originX: "50%", originY: "0%" }}>
       <rect x={ax - 3.25} y="-90" width="6.5" height="27" rx="3.25" fill={jumper} />
       {/* A touch darker than the jumper, so arms read in front of it */}
       <rect x={ax - 3.25} y="-90" width="6.5" height="27" rx="3.25" fill="#000" opacity="0.18" />
+      {holding && (
+        // Turned back by the arm's angle around the hand, so the glass stays upright.
+        <motion.g initial={false} animate={{ rotate: upright.values, opacity: holding.values }} transition={{ rotate: upright.t, opacity: holding.t }} style={{ originX: "50%", originY: "100%" }}>
+          <path d={`M${ax - 4} -76h8l-1.2 9h-5.6z`} fill="#f6e7c8" opacity="0.85" />
+          <path d={`M${ax - 3.4} -72h6.8l-0.8 5h-5.2z`} fill="#b8452a" />
+          <rect x={ax - 0.6} y="-67" width="1.2" height="5" fill="#f6e7c8" />
+        </motion.g>
+      )}
       <circle cx={ax} cy="-62" r="3.6" fill={skin} />
     </motion.g>
   );
@@ -248,7 +263,7 @@ function Member({
           <circle cx="-4.2" cy="-105" r="1.3" fill="#3a2418" />
           <circle cx="4.2" cy="-105" r="1.3" fill="#3a2418" />
           {arm(armL, -15)}
-          {arm(armR, 15)}
+          {arm(armR, 15, glass)}
           {children}
         </motion.g>
       </g>
@@ -270,13 +285,13 @@ function Couch() {
   );
 }
 
-const MOM = { skin: "#f1c7a3", hair: "#6b3a1e", jumper: RED, pants: "#3b4a63" };
-const KID = { skin: "#e0ac7e", hair: "#2a1a12", jumper: GOLD, pants: "#2f6f7e" };
-const DAD = { skin: "#8d5a3b", hair: "#1b1210", jumper: "#2c9656", pants: "#26354d" };
-const KID_SCALE = 0.78;
+export const MOM = { skin: "#f1c7a3", hair: "#6b3a1e", jumper: RED, pants: "#3b4a63" };
+export const KID = { skin: "#e0ac7e", hair: "#2a1a12", jumper: GOLD, pants: "#2f6f7e" };
+export const DAD = { skin: "#8d5a3b", hair: "#1b1210", jumper: "#2c9656", pants: "#26354d" };
+export const KID_SCALE = 0.78;
 
 /** The delivered present, with a lid that can pop off. (x, y) is the middle of its bottom edge. */
-function RoomPresent({ x, y, lid }: { x: Anim; y: Anim; lid: Anim }) {
+export function RoomPresent({ x, y, lid, colors = PRESENT_RED }: { x: Anim; y: Anim; lid: Anim; colors?: PresentColors }) {
   const lidY = mapAnim(lid, (v) => -34 * v);
   const lidX = mapAnim(lid, (v) => 22 * v);
   const lidTurn = mapAnim(lid, (v) => 40 * v);
@@ -284,14 +299,14 @@ function RoomPresent({ x, y, lid }: { x: Anim; y: Anim; lid: Anim }) {
   return (
     <motion.g initial={false} animate={{ x: x.values, y: y.values }} transition={{ x: x.t, y: y.t }}>
       <g transform="scale(0.85)">
-        <rect x="-20" y="-28" width="40" height="28" rx="3" fill={RED} />
-        <rect x="-3.5" y="-28" width="7" height="28" fill={GOLD} />
+        <rect x="-20" y="-28" width="40" height="28" rx="3" fill={colors.box} />
+        <rect x="-3.5" y="-28" width="7" height="28" fill={colors.ribbon} />
         <motion.g initial={false} animate={{ x: lidX.values, y: lidY.values, rotate: lidTurn.values, opacity: lidShown.values }} transition={{ x: lidX.t, y: lidY.t, rotate: lidTurn.t, opacity: lidShown.t }} style={{ originX: "50%", originY: "50%" }}>
-          <rect x="-23" y="-35" width="46" height="9" rx="3" fill={RED_LIGHT} />
-          <rect x="-3.5" y="-35" width="7" height="9" fill={GOLD} />
-          <ellipse cx="-7" cy="-40" rx="8" ry="5" fill={GOLD} transform="rotate(-22 -7 -40)" />
-          <ellipse cx="7" cy="-40" rx="8" ry="5" fill={GOLD} transform="rotate(22 7 -40)" />
-          <circle cx="0" cy="-38" r="3.5" fill={GOLD_DARK} />
+          <rect x="-23" y="-35" width="46" height="9" rx="3" fill={colors.lid} />
+          <rect x="-3.5" y="-35" width="7" height="9" fill={colors.ribbon} />
+          <ellipse cx="-7" cy="-40" rx="8" ry="5" fill={colors.ribbon} transform="rotate(-22 -7 -40)" />
+          <ellipse cx="7" cy="-40" rx="8" ry="5" fill={colors.ribbon} transform="rotate(22 7 -40)" />
+          <circle cx="0" cy="-38" r="3.5" fill={colors.knot} />
         </motion.g>
       </g>
     </motion.g>
@@ -612,8 +627,9 @@ function House() {
 }
 
 /** The delivery truck, facing right. (0, 0) is where its back wheel touches the road. Wheels roll with the truck; the cab door opens for the driver. */
-function Truck() {
-  const roll = track(
+export const TRUCK_ROLL = ROLL;
+export function DeliveryTruck({ roll, door, snowy = true }: { roll?: Anim; door?: Anim; /** Snow on the roof (winter). */ snowy?: boolean }) {
+  roll ??= track(
     [
       [0, 0],
       [2.2, ROLL],
@@ -621,7 +637,7 @@ function Truck() {
     ],
     [ARRIVE, "linear"],
   );
-  const door = track([
+  door ??= track([
     [0, 1],
     [2.35, 1],
     [2.6, 0.1],
@@ -644,7 +660,7 @@ function Truck() {
       <path d="M-8 -38c5-4 10-4 15 0s10 4 15 0 10-4 15 0" stroke="#86bbea" strokeWidth="3" fill="none" strokeLinecap="round" />
       <circle cx="48" cy="-64" r="5" fill={GOLD} />
       {/* Snow on the roof */}
-      <rect x="-30" y="-82" width="104" height="6" rx="3" fill={SNOW} />
+      {snowy && <rect x="-30" y="-82" width="104" height="6" rx="3" fill={SNOW} />}
       {/* Cab, with the inside showing when the door opens */}
       <path d="M74 -58h26l16 20v22H74z" fill={RED} />
       <rect x="76" y="-55" width="24" height="38" fill="#3a1412" />
@@ -718,13 +734,48 @@ function Driver() {
     [5.8, -1],
     [STREET_S, -1],
   ]);
-  const leg = (anim: ReturnType<typeof track<number>>, dx: number) => (
+  return <DriverFigure x={x} shown={shown} face={face} body={body} lean={lean} legA={legA} legB={legB} armFront={armFront} armWave={armWave} carry={carry} carried={<Present s={0.55} />} />;
+}
+
+/**
+ * The delivery driver figure, side view, feet on the ground at y 302, every
+ * part driven by keyframes (see Driver for the Christmas timing). `carried`
+ * is drawn in their hands while `carry` is 1.
+ */
+export function DriverFigure({
+  x,
+  shown,
+  face,
+  body,
+  lean,
+  legA,
+  legB,
+  armFront,
+  armWave,
+  carry,
+  carried,
+  ground = 302,
+}: {
+  x: Anim;
+  shown: Anim;
+  face: Anim;
+  body: Anim;
+  lean: Anim;
+  legA: Anim;
+  legB: Anim;
+  armFront: Anim;
+  armWave: Anim;
+  carry: Anim;
+  carried: React.ReactNode;
+  ground?: number;
+}) {
+  const leg = (anim: Anim, dx: number) => (
     <motion.g initial={false} animate={{ rotate: anim.values }} transition={{ rotate: anim.t }} style={{ originX: "50%", originY: "0%" }}>
       <rect x={dx - 3} y="-20" width="6.5" height="18" rx="3" fill="#26354d" />
       <rect x={dx - 3} y="-4" width="9" height="4.5" rx="2" fill="#141c26" />
     </motion.g>
   );
-  const arm = (anim: ReturnType<typeof track<number>>) => (
+  const arm = (anim: Anim) => (
     <motion.g initial={false} animate={{ rotate: anim.values }} transition={{ rotate: anim.t }} style={{ originX: "50%", originY: "0%" }}>
       <rect x="-2.5" y="-41" width="5.5" height="17" rx="2.75" fill="#0e4471" />
       <circle cx="0.25" cy="-23" r="3" fill="#c98d62" />
@@ -732,7 +783,7 @@ function Driver() {
   );
   return (
     <motion.g initial={false} animate={{ x: x.values, opacity: shown.values }} transition={{ x: x.t, opacity: shown.t }}>
-      <g transform="translate(0 302)">
+      <g transform={`translate(0 ${ground})`}>
         <motion.g initial={false} animate={{ scaleX: face.values }} transition={{ scaleX: face.t }} style={{ originX: "50%", originY: "100%" }}>
           {leg(legB, -1)}
           {leg(legA, 2)}
@@ -747,9 +798,7 @@ function Driver() {
             <circle cx="4" cy="-52" r="1.1" fill="#2a1a12" />
             {/* The present, held out front until it's set on the step */}
             <motion.g initial={false} animate={{ opacity: carry.values }} transition={{ opacity: carry.t }}>
-              <g transform="translate(17 -24)">
-                <Present s={0.55} />
-              </g>
+              <g transform="translate(17 -24)">{carried}</g>
             </motion.g>
             {arm(armFront)}
           </motion.g>
@@ -829,7 +878,7 @@ export function DeliveryStreet() {
       <rect x="-2000" y="316" width="4600" height="2" fill="#8a96a3" />
       <motion.g initial={false} animate={{ x: truck.values, y: settle.values }} transition={{ x: truck.t, y: settle.t }}>
         <g transform="translate(0 316)">
-          <Truck />
+          <DeliveryTruck />
         </g>
       </motion.g>
       <Driver />
