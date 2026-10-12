@@ -150,8 +150,8 @@ export function GiftBox({ children }: { children: React.ReactNode }) {
       <rect x="230" y="200" width="140" height="102" rx="6" fill={RED} />
       <rect x="292" y="200" width="16" height="102" fill={GOLD} />
       <rect x="292" y="200" width="5" height="102" fill={GOLD_DARK} opacity={0.5} />
-      {/* Lid, bow and all, drops on with a little bounce */}
-      <motion.g initial={{ y: -260 }} animate={{ y: 0 }} transition={{ delay: 1.25, type: "spring", stiffness: 260, damping: 15 }}>
+      {/* Lid, bow and all, drops onto the rim and bounces up a little; it never sinks below the top of the box */}
+      <motion.g initial={{ y: -260 }} animate={{ y: [-260, 0, -12, 0, -4, 0] }} transition={{ delay: 1.25, duration: 0.9, times: [0, 0.45, 0.62, 0.78, 0.89, 1], ease: ["easeIn", "easeOut", "easeIn", "easeOut", "easeIn"] }}>
         <rect x="222" y="178" width="156" height="30" rx="6" fill={RED_LIGHT} />
         <rect x="222" y="200" width="156" height="8" fill={RED} opacity={0.6} />
         <rect x="292" y="178" width="16" height="30" fill={GOLD} />

@@ -73,7 +73,9 @@ function BigPresent({ design, open }: { design: GiftDesign; open: boolean }) {
   );
 }
 
-export function GiftReveal({ gift, orderHref }: { gift: RevealGift; orderHref: string }) {
+/** `fill`: fill the parent instead of the screen (for recording reels). */
+export function GiftReveal({ gift, orderHref, fill = false }: { gift: RevealGift; orderHref: string; fill?: boolean }) {
+  const tallest = fill ? "h-full" : "min-h-[calc(100svh-4rem)]";
   const holiday = gift.design === "holiday";
   const [stage, setStage] = useState<Stage>("arrive");
   const [copied, setCopied] = useState(false);
@@ -110,7 +112,7 @@ export function GiftReveal({ gift, orderHref }: { gift: RevealGift; orderHref: s
   };
 
   return (
-    <div key={round} className="relative min-h-[calc(100svh-4rem)] overflow-hidden" style={{ background: holiday ? "#24304d" : "var(--bg)" }}>
+    <div key={round} className={`relative ${tallest} overflow-hidden`} style={{ background: holiday ? "#24304d" : "var(--bg)" }}>
       {/* The scene behind: the living room for a holiday card, gentle snow for the rest */}
       <svg viewBox={tall && holiday ? "290 40 290 320" : "0 0 600 360"} preserveAspectRatio={tall && holiday ? "xMidYMax meet" : "xMidYMid slice"} className="absolute inset-0 h-full w-full overflow-visible" aria-hidden>
         <HolidayStyles />
@@ -119,7 +121,7 @@ export function GiftReveal({ gift, orderHref }: { gift: RevealGift; orderHref: s
       {/* Dim the room once the present comes forward */}
       <motion.div className="absolute inset-0 bg-black" initial={{ opacity: 0 }} animate={{ opacity: stage === "arrive" ? 0 : holiday ? 0.55 : 0 }} transition={{ duration: 0.5 }} aria-hidden />
 
-      <div className="relative mx-auto flex min-h-[calc(100svh-4rem)] max-w-xl flex-col items-center justify-center px-4 py-12 text-center">
+      <div className={`relative mx-auto flex ${tallest} max-w-xl flex-col items-center justify-center px-4 py-12 text-center`}>
         <motion.p initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="font-display text-2xl font-bold text-white sm:text-3xl" style={holiday ? undefined : { color: "var(--fg)" }}>
           {stage === "card" ? `${holiday ? "Merry Christmas" : "Surprise"}, ${gift.recipientFirst}!` : `${gift.recipientFirst}, a gift from ${gift.buyerName.split(/\s+/)[0]}!`}
         </motion.p>
