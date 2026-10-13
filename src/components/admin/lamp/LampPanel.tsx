@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/Card";
 import { buttonClass } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 import { LAMP_ANIMS, LAMP_ANIM_IDS, type LampAnim } from "@/lib/lamp/animations";
+import { BottomCard } from "./BottomCard";
 import { LampRing } from "./LampRing";
 
 type Settings = {
@@ -18,6 +19,8 @@ type Settings = {
   bigAnim: string;
   count: boolean;
   quiet: { on: boolean; from: number; to: number };
+  offset: number;
+  reverse: boolean;
 };
 
 export type LampStatus = { online: boolean; agoMin: number | null; rssi: number | null; version: string | null };
@@ -35,7 +38,7 @@ const hourLabel = (h: number) => new Date(2026, 0, 1, h).toLocaleTimeString("en-
 const field = "h-11 w-full rounded-xl border-2 border-line bg-surface px-3 text-sm focus:border-accent-line focus:outline-none";
 const animName = (id: string) => LAMP_ANIMS[id as LampAnim]?.name ?? id;
 
-export function LampPanel({ settings, quietNow, status, plays, keyMadeAt, site }: { settings: Settings; quietNow: boolean; status: LampStatus; plays: LampPlay[]; keyMadeAt: string | null; site: string }) {
+export function LampPanel({ settings, quietNow, identifying, status, plays, keyMadeAt, site }: { settings: Settings; quietNow: boolean; identifying: boolean; status: LampStatus; plays: LampPlay[]; keyMadeAt: string | null; site: string }) {
   const router = useRouter();
   // Keep the online dot and the list of plays fresh.
   useEffect(() => {
@@ -61,6 +64,7 @@ export function LampPanel({ settings, quietNow, status, plays, keyMadeAt, site }
       <PlayCard />
       <SettingsCard settings={settings} />
       <TestSaleCard />
+      <BottomCard offset={settings.offset} showing={identifying} />
       <div className="grid gap-6 lg:grid-cols-2">
         <PairCard keyMadeAt={keyMadeAt} site={site} />
         <Card className="p-5 sm:p-6">

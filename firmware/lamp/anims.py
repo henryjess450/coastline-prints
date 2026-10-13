@@ -293,3 +293,29 @@ def hello(t, v=0):
 
 
 ANIMS["hello"] = (hello, 1.2)
+
+
+# ── Finding the bottom ───────────────────────────────────────────────────
+# While the dashboard's "Set the bottom" is open, each physical LED shows its
+# own colour (neighbours very different) so you can say which one is at the
+# bottom. Same list as IDENTIFY_COLORS in src/lib/lamp/animations.ts.
+IDENTIFY = (
+    (255, 0, 0),  # 0 red
+    (0, 255, 200),  # 1 aqua
+    (255, 200, 0),  # 2 yellow
+    (130, 0, 255),  # 3 purple
+    (140, 255, 0),  # 4 lime
+    (255, 60, 140),  # 5 pink
+    (0, 0, 255),  # 6 blue
+    (255, 90, 0),  # 7 orange
+    (255, 255, 255),  # 8 white
+    (0, 255, 0),  # 9 green
+    (255, 0, 255),  # 10 magenta
+    (0, 140, 255),  # 11 sky blue
+)
+
+
+def identify(t):
+    """Physical LED j's colour, breathing gently so it reads as 'setup'."""
+    b = 0.75 + 0.25 * math.cos(2 * math.pi * t / 2)
+    return [scale(c, b) for c in IDENTIFY]

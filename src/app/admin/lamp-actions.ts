@@ -4,7 +4,7 @@ import type { ActionState } from "@/app/admin/actions";
 import { requireAdmin } from "@/lib/admin/auth";
 import { logError } from "@/lib/api";
 import { LAMP_ANIMS, LAMP_ANIM_IDS, type LampAnim } from "@/lib/lamp/animations";
-import { getLampSettings, lampForSale, lampPresence, newLampKey, queueLamp, saveLampSettings, type SaleKind } from "@/lib/lamp/server";
+import { getLampSettings, lampForSale, lampPresence, newLampKey, queueLamp, saveLampSettings, setLampIdentify, type SaleKind } from "@/lib/lamp/server";
 
 /* The order lamp's dashboard controls. Every action checks the admin session first. */
 
@@ -58,6 +58,32 @@ export async function testSaleAction(_: ActionState, form: FormData): Promise<Ac
   revalidatePath("/admin/lamp");
   const names = played.map((a) => LAMP_ANIMS[a as LampAnim]?.name ?? a);
   return { ok: true, message: `Playing ${names.join(", then ")}.${lampPresence().online ? "" : " (The lamp is offline right now.)"}` };
+}
+
+/** "Set the bottom", step 1: the lamp shows one colour per LED (or stops showing them). */
+export async function identifyLampAction(on: boolean): Promise<ActionState> {
+  await requireAdmin();
+  setLampIdentify(on);
+  if (on && !lampPresence().online) return { error: "The lamp is offline. Plug it in and wait for its seafoam lap, then try again." };
+  return { ok: true };
+}
+
+/**
+ * "Set the bottom", step 2: which colour is at the bottom, and which is next
+ * to it going clockwise. Colours are physical LED numbers (IDENTIFY_COLORS).
+ */
+export async function setBottomAction(bottom: number, next: number): Promise<ActionState> {
+  await requireAdmin();
+  const ok = (n: number) => Number.isInteger(n) && n >= 0 && n < 12;
+  if (!ok(bottom) || !ok(next)) return { error: "Pick two colours." };
+  const reverse = next === (bottom + 11) % 12;
+  if (!reverse && next !== (bottom + 1) % 12) return { error: "Those two colours aren't next to each other on the ring. Look again and pick the bottom one first." };
+  await saveLampSettings({ ...(await getLampSettings()), offset: bottom, reverse });
+  setLampIdentify(false);
+  // The tide rises from the new bottom, so you can see it took.
+  await queueLamp([{ anim: "tide" }], "dash");
+  revalidatePath("/admin/lamp");
+  return { ok: true, message: "Bottom set. Watch the tide rise from the bottom of the ring." };
 }
 
 export type LampKeyState = ActionState & { key?: string };

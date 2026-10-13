@@ -22,10 +22,8 @@ except ImportError:
 import anims
 import config
 
-VERSION = "2"
+VERSION = "3"
 SERVER = getattr(config, "SERVER", "https://coastlineprints.ca").rstrip("/")
-OFFSET = getattr(config, "OFFSET", 0)  # which physical LED is the bottom
-REVERSE = getattr(config, "REVERSE", False)  # flip if animations go the wrong way round
 
 ring = neopixel.NeoPixel(machine.Pin(config.LED_PIN, machine.Pin.OUT), anims.N)
 
@@ -33,6 +31,11 @@ state = {
     "mode": "connecting",  # connecting | trouble | ready
     "bright": getattr(config, "BRIGHTNESS", 40) / 100,
     "idle": "off",  # off | calm
+    # Which physical LED is the bottom, and which way round is clockwise.
+    # Set on the dashboard (Set the bottom); config.py only until the site answers.
+    "offset": getattr(config, "OFFSET", 0),
+    "reverse": getattr(config, "REVERSE", False),
+    "identify": False,  # showing one colour per LED for "Set the bottom"
     "run": True,
 }
 queue = []  # (animation name, dollars) waiting to play
@@ -42,11 +45,12 @@ def log(*args):
     print("[lamp]", *args)
 
 
-def show(colors, level=1.0):
+def show(colors, level=1.0, physical=False):
     b = state["bright"] * level
+    offset, reverse = state["offset"], state["reverse"]
     for i in range(anims.N):
         c = colors[i]
-        j = (OFFSET + (-i if REVERSE else i)) % anims.N
+        j = i if physical else (offset + (-i if reverse else i)) % anims.N
         ring[j] = (min(255, int(c[0] * b)), min(255, int(c[1] * b)), min(255, int(c[2] * b)))
     ring.write()
 
@@ -86,7 +90,12 @@ def render():
         dt = time.ticks_diff(now, last) / 1000
         last = now
         mode = state["mode"]
-        if mode == "connecting":
+        if state["identify"] and mode == "ready":
+            # Bright enough to tell the colours apart even with the lamp turned down.
+            b = state["bright"]
+            show(anims.identify(t), max(1.0, 0.35 / b) if b else 1.0, physical=True)
+            dark = False
+        elif mode == "connecting":
             show(anims.connecting(t))
             dark = False
         elif mode == "trouble":
@@ -168,6 +177,9 @@ def main():
             failing_since = None
             state["bright"] = data.get("brightness", 40) / 100
             state["idle"] = data.get("idle", "off")
+            state["offset"] = data.get("offset", state["offset"]) % anims.N
+            state["reverse"] = bool(data.get("reverse", state["reverse"]))
+            state["identify"] = bool(data.get("identify", False))
             if state["mode"] != "ready":
                 state["mode"] = "ready"
                 if not greeted:
@@ -177,8 +189,9 @@ def main():
             for ev in data.get("events", []):
                 queue.append((ev["anim"], ev.get("value") or 0))
             after = data.get("last", after)
-            # Don't ask again until the animations are done.
-            while queue:
+            # Don't ask again until the animations are done (they wait while
+            # the colours for "Set the bottom" are showing, so keep asking then).
+            while queue and not state["identify"]:
                 time.sleep_ms(100)
         else:
             if status == 401:

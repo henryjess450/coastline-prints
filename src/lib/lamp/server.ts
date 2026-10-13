@@ -28,6 +28,9 @@ export const lampSettingsSchema = z.object({
   count: z.boolean().default(true),
   /** No sale animations between these hours, shop time. Dashboard plays still work. */
   quiet: z.object({ on: z.boolean().default(false), from: hour.default(22), to: hour.default(8) }).default({ on: false, from: 22, to: 8 }),
+  /** Which physical LED is the bottom of the ring, and whether the next one clockwise is the one before it. Set with "Set the bottom". */
+  offset: z.number().int().min(0).max(11).default(0),
+  reverse: z.boolean().default(false),
 });
 export type LampSettings = z.infer<typeof lampSettingsSchema>;
 export type SaleKind = keyof LampSettings["play"];
@@ -80,9 +83,23 @@ export async function lampKeyOk(header: string | null) {
 
 export type LampPresence = { seenAt: number; waiting: number; ip: string; rssi: number | null; version: string | null };
 
-const g = globalThis as unknown as { __lamp?: { presence: LampPresence | null; bus: EventTarget; settingsRev: number } };
-const lamp = (g.__lamp ??= { presence: null, bus: new EventTarget(), settingsRev: 0 });
+const g = globalThis as unknown as { __lamp?: { presence: LampPresence | null; bus: EventTarget; settingsRev: number; identifyUntil: number } };
+const lamp = (g.__lamp ??= { presence: null, bus: new EventTarget(), settingsRev: 0, identifyUntil: 0 });
 lamp.settingsRev ??= 0;
+lamp.identifyUntil ??= 0;
+
+/** How long the lamp shows its colours for "Set the bottom" before going back to normal. */
+const IDENTIFY_MS = 3 * 60_000;
+
+/** Starts (or stops) "Set the bottom": the lamp shows one colour per LED. Tells a waiting lamp at once. */
+export function setLampIdentify(on: boolean) {
+  lamp.identifyUntil = on ? Date.now() + IDENTIFY_MS : 0;
+  lamp.settingsRev++;
+  lamp.bus.dispatchEvent(new Event("wake"));
+}
+
+/** When the colours go away by themselves (ms since epoch), or 0 if they aren't showing. */
+export const lampIdentifyUntil = () => (lamp.identifyUntil > Date.now() ? lamp.identifyUntil : 0);
 
 /** Goes up on every settings save; a waiting request answers early when it changes. */
 export const lampSettingsRev = () => lamp.settingsRev;

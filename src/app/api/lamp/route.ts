@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api";
 import { db } from "@/lib/db";
-import { getLampSettings, lampIdle, lampKeyOk, lampSeen, lampSettingsRev, waitForLamp } from "@/lib/lamp/server";
+import { getLampSettings, lampIdentifyUntil, lampIdle, lampKeyOk, lampSeen, lampSettingsRev, waitForLamp } from "@/lib/lamp/server";
 import { clientIp, rateLimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
@@ -37,7 +37,8 @@ export async function GET(req: Request) {
   if (after !== null) {
     lampSeen(who, 1);
     try {
-      const until = Date.now() + HOLD_MS;
+      // While "Set the bottom" colours are showing, answer when they time out.
+      const until = Math.min(Date.now() + HOLD_MS, lampIdentifyUntil() || Infinity);
       const rev = lampSettingsRev();
       while (!req.signal.aborted) {
         events = await db.lampEvent.findMany({ where: { id: { gt: after }, createdAt: { gte: new Date(Date.now() - STALE_MS) } }, orderBy: { id: "asc" }, take: 6, select: { id: true, anim: true, value: true } });
@@ -54,5 +55,5 @@ export async function GET(req: Request) {
 
   const s = await getLampSettings();
   const last = events.at(-1)?.id ?? (after === null ? newest : Math.max(after, newest));
-  return NextResponse.json({ events, last, brightness: s.brightness, idle: lampIdle(s) }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ events, last, brightness: s.brightness, idle: lampIdle(s), offset: s.offset, reverse: s.reverse, identify: lampIdentifyUntil() > 0 }, { headers: { "Cache-Control": "no-store" } });
 }

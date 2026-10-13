@@ -20,7 +20,12 @@ vi.mock("@/lib/square/client", () => ({
   squarePublicConfig: () => ({ applicationId: "app", locationId: "TEST_LOCATION", environment: "sandbox", scriptUrl: "" }),
 }));
 
+// The dashboard actions, run as a logged-in admin.
+vi.mock("@/lib/admin/auth", () => ({ requireAdmin: async () => {}, isAdmin: async () => true, requestIsAdmin: () => true }));
+vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+
 const { POST: checkout } = await import("@/app/api/checkout/route");
+const { identifyLampAction, setBottomAction } = await import("@/app/admin/lamp-actions");
 const { GET: lampApi } = await import("@/app/api/lamp/route");
 const { db } = await import("@/lib/db");
 const { lampForSale, newLampKey, queueLamp, saveLampSettings, lampSettingsSchema } = await import("@/lib/lamp/server");
@@ -90,6 +95,26 @@ describe("order lamp", () => {
     await saveLampSettings({ idle: "calm", quiet: { on: true, from: hour, to: (hour + 2) % 24 } });
     expect(await (await ask(key)).json()).toMatchObject({ idle: "off" });
     expect(await lampForSale("print", 10_00)).toBe("quiet");
+  });
+
+  it("sets the bottom from the colours: shows them, checks the two picks are neighbours", async () => {
+    const key = await newLampKey();
+    const after = await lastId();
+    setTimeout(() => void identifyLampAction(true), 200);
+    const shown = await (await ask(key, `&after=${after}`)).json();
+    expect(shown).toMatchObject({ identify: true, offset: 0, reverse: false });
+
+    expect((await setBottomAction(4, 7)).error).toMatch(/next to each other/);
+    expect(await setBottomAction(4, 3)).toMatchObject({ ok: true });
+    const done = await (await ask(key)).json();
+    expect(done).toMatchObject({ identify: false, offset: 4, reverse: true });
+    expect(await reasons(after)).toEqual(["dash:tide:null"]);
+
+    await setBottomAction(11, 0);
+    expect(await (await ask(key)).json()).toMatchObject({ offset: 11, reverse: false });
+    // Saving the other settings keeps the bottom.
+    await saveLampSettings({ ...(await import("@/lib/lamp/server").then((m) => m.getLampSettings())), brightness: 55 });
+    expect(await (await ask(key)).json()).toMatchObject({ offset: 11, brightness: 55 });
   });
 
   it("answers as soon as something is queued", async () => {

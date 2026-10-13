@@ -215,5 +215,24 @@ export const animSeconds = (id: LampAnim, v = 0) => {
   return typeof s === "function" ? s(v) : s;
 };
 
+/**
+ * "Set the bottom": physical LED j shows colour j (neighbours very
+ * different). Same list as IDENTIFY in firmware/lamp/anims.py.
+ */
+export const IDENTIFY_COLORS = [
+  { name: "Red", rgb: [255, 0, 0] },
+  { name: "Aqua", rgb: [0, 255, 200] },
+  { name: "Yellow", rgb: [255, 200, 0] },
+  { name: "Purple", rgb: [130, 0, 255] },
+  { name: "Lime", rgb: [140, 255, 0] },
+  { name: "Pink", rgb: [255, 60, 140] },
+  { name: "Blue", rgb: [0, 0, 255] },
+  { name: "Orange", rgb: [255, 90, 0] },
+  { name: "White", rgb: [255, 255, 255] },
+  { name: "Green", rgb: [0, 255, 0] },
+  { name: "Magenta", rgb: [255, 0, 255] },
+  { name: "Sky blue", rgb: [0, 140, 255] },
+] as const;
+
 export type LampAnim = keyof typeof LAMP_ANIMS;
 export const LAMP_ANIM_IDS = Object.keys(LAMP_ANIMS) as LampAnim[];

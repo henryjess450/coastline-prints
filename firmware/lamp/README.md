@@ -38,5 +38,6 @@ Then it runs from any USB charger.
 
 They're in `anims.py` and copied line for line in `src/lib/lamp/animations.ts`
 (the dashboard preview), so change both. Each one must start and end dark.
-If the ring is mounted rotated or the animations go the wrong way round, change
-`OFFSET` or `REVERSE` in the lamp's `config.py` (`mpremote edit :config.py`, or re-run the script).
+If the ring is mounted turned round, use **Set the bottom** on the Lamp page: the
+lamp shows a different colour on every LED, you tap the one at the bottom, then the
+one next to it going clockwise (that also sets which way round the ring is wired).
