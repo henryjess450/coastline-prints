@@ -32,13 +32,13 @@ export async function GET(req: Request) {
   const afterRaw = url.searchParams.get("after");
   const after = afterRaw && /^\d{1,12}$/.test(afterRaw) ? Math.min(Number(afterRaw), newest) : null;
 
-  let events: { id: number; anim: string }[] = [];
+  let events: { id: number; anim: string; value: number | null }[] = [];
   if (after !== null) {
     lampSeen(who, 1);
     try {
       const until = Date.now() + HOLD_MS;
       while (!req.signal.aborted) {
-        events = await db.lampEvent.findMany({ where: { id: { gt: after }, createdAt: { gte: new Date(Date.now() - STALE_MS) } }, orderBy: { id: "asc" }, take: 6, select: { id: true, anim: true } });
+        events = await db.lampEvent.findMany({ where: { id: { gt: after }, createdAt: { gte: new Date(Date.now() - STALE_MS) } }, orderBy: { id: "asc" }, take: 6, select: { id: true, anim: true, value: true } });
         if (events.length || Date.now() >= until) break;
         // Woken straight away by queueLamp; the timeout is just a safety net.
         await waitForLamp(Math.min(5_000, until - Date.now()), req.signal);

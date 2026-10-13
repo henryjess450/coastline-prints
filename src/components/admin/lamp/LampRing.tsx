@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef } from "react";
-import { LAMP_ANIMS, N, calmSea, dark, type LampAnim, type Rgb } from "@/lib/lamp/animations";
+import { LAMP_ANIMS, N, animSeconds, calmSea, dark, type LampAnim, type Rgb } from "@/lib/lamp/animations";
 import { cn } from "@/lib/cn";
 
 /** Dark gap between replays. Every animation starts and ends dark, so the loop is seamless. */
@@ -8,9 +8,10 @@ const GAP_S = 0.9;
 
 /**
  * A drawing of the LED ring playing an animation on loop, using the same
- * frame functions as the lamp. LED 0 sits at the bottom.
+ * frame functions as the lamp. LED 0 sits at the bottom. `value` is the
+ * sample sale in dollars, for Payment.
  */
-export function LampRing({ anim, size = 120, className }: { anim: LampAnim | "calm" | "off"; size?: number; className?: string }) {
+export function LampRing({ anim, value = 7, size = 120, className }: { anim: LampAnim | "calm" | "off"; value?: number; size?: number; className?: string }) {
   const dots = useRef<(HTMLSpanElement | null)[]>([]);
 
   useEffect(() => {
@@ -27,11 +28,11 @@ export function LampRing({ anim, size = 120, className }: { anim: LampAnim | "ca
     if (anim === "off") return paint(dark());
     const frameAt = (t: number) => {
       if (anim === "calm") return calmSea(t);
-      const a = LAMP_ANIMS[anim];
-      const u = t % (a.seconds + GAP_S);
-      return u < a.seconds ? a.frame(u) : dark();
+      const d = animSeconds(anim, value);
+      const u = t % (d + GAP_S);
+      return u < d ? LAMP_ANIMS[anim].frame(u, value) : dark();
     };
-    if (still) return paint(anim === "calm" ? calmSea(0) : LAMP_ANIMS[anim].frame(LAMP_ANIMS[anim].seconds * 0.4));
+    if (still) return paint(anim === "calm" ? calmSea(0) : LAMP_ANIMS[anim].frame(animSeconds(anim, value) * 0.4, value));
     let raf = 0;
     const start = performance.now();
     const tick = (now: number) => {
@@ -40,7 +41,7 @@ export function LampRing({ anim, size = 120, className }: { anim: LampAnim | "ca
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [anim, size]);
+  }, [anim, value, size]);
 
   const dot = Math.max(8, Math.round(size / 8.5));
   const radius = size / 2 - dot / 2 - 2;

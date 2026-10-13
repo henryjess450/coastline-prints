@@ -543,6 +543,8 @@ model RestockRequest {
 model LampEvent {
   id        Int      @id @default(autoincrement())
   anim      String
+  /// The sale in whole dollars, for Payment (one LED per dollar).
+  value     Int?
   /// Why it played: "print", "coastline", "lightlab", "gift" or "dash".
   reason    String
   createdAt DateTime @default(now())

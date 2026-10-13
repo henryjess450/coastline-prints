@@ -24,6 +24,8 @@ export const lampSettingsSchema = z.object({
   /** A sale this big (cents, gift cards included) also plays `bigAnim` afterwards. 0 = never. */
   bigCents: z.number().int().min(0).max(10_000_00).default(100_00),
   bigAnim: anim.default("treasure"),
+  /** Then Payment counts what the sale made, one LED per dollar. */
+  count: z.boolean().default(true),
   /** No sale animations between these hours, shop time. Dashboard plays still work. */
   quiet: z.object({ on: z.boolean().default(false), from: hour.default(22), to: hour.default(8) }).default({ on: false, from: 22, to: 8 }),
 });
@@ -106,8 +108,9 @@ export function waitForLamp(ms: number, signal: AbortSignal) {
 
 // ── Queueing ────────────────────────────────────────────────────────────
 
-export async function queueLamp(anims: string[], reason: string) {
-  await db.lampEvent.createMany({ data: anims.map((a) => ({ anim: a, reason })) });
+/** `value` is the sale in whole dollars (Payment counts it). */
+export async function queueLamp(anims: { anim: string; value?: number }[], reason: string) {
+  await db.lampEvent.createMany({ data: anims.map((a) => ({ anim: a.anim, value: a.value ?? null, reason })) });
   lamp.bus.dispatchEvent(new Event("queued"));
 }
 
@@ -117,13 +120,17 @@ function inQuietHours(s: LampSettings, now = new Date()) {
   return s.quiet.from < s.quiet.to ? h >= s.quiet.from && h < s.quiet.to : h >= s.quiet.from || h < s.quiet.to;
 }
 
-/** A sale was paid: light the lamp. Never throws (a lamp problem must not break checkout). */
+/**
+ * A sale was paid: light the lamp. `cents` is what it made (gift cards
+ * included, shipping left out). Never throws: a lamp problem must not break checkout.
+ */
 export async function lampForSale(kind: SaleKind, cents: number) {
   try {
     const s = await getLampSettings();
     if (inQuietHours(s)) return;
-    const big = s.bigCents > 0 && cents >= s.bigCents;
-    await queueLamp(big ? [s.play[kind], s.bigAnim] : [s.play[kind]], kind);
+    const value = Math.max(1, Math.round(cents / 100));
+    const anims = [s.play[kind], s.bigCents > 0 && cents >= s.bigCents && s.bigAnim, s.count && "payment"].filter((a): a is string => !!a);
+    await queueLamp(anims.map((anim) => ({ anim, value })), kind);
   } catch (err) {
     logError("lamp", err);
   }

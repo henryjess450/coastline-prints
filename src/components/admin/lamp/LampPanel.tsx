@@ -16,11 +16,12 @@ type Settings = {
   play: Record<"print" | "coastline" | "lightlab" | "gift", string>;
   bigCents: number;
   bigAnim: string;
+  count: boolean;
   quiet: { on: boolean; from: number; to: number };
 };
 
 export type LampStatus = { online: boolean; agoMin: number | null; rssi: number | null; version: string | null };
-export type LampPlay = { id: number; anim: string; reason: string; at: string };
+export type LampPlay = { id: number; anim: string; value?: number | null; reason: string; at: string };
 
 const SALES: { key: keyof Settings["play"]; label: string }[] = [
   { key: "print", label: "Custom print order" },
@@ -64,7 +65,8 @@ export function LampPanel({ settings, status, plays, keyMadeAt, site }: { settin
               {plays.map((p) => (
                 <li key={p.id} className="flex items-center justify-between gap-3 py-2">
                   <span>
-                    <span className="font-semibold">{animName(p.anim)}</span> <span className="text-muted">· {REASONS[p.reason] ?? p.reason}</span>
+                    <span className="font-semibold">{animName(p.anim)}</span>
+                    {p.value ? <span className="tabular-nums"> ${p.value}</span> : null} <span className="text-muted">· {REASONS[p.reason] ?? p.reason}</span>
                   </span>
                   <time className="shrink-0 text-xs text-faint">{new Date(p.at).toLocaleString("en-CA", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</time>
                 </li>
@@ -103,6 +105,7 @@ function StatusLine({ status, paired }: { status: LampStatus; paired: boolean })
 
 function PlayCard() {
   const [state, action, pending] = useActionState<ActionState, FormData>(playLampAction, {});
+  const [dollars, setDollars] = useState(7);
   return (
     <Card className="p-5 sm:p-6">
       <h2 className="font-display text-lg font-semibold">Play on the lamp</h2>
@@ -110,13 +113,30 @@ function PlayCard() {
       <form action={action} className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {LAMP_ANIM_IDS.map((id) => (
           <div key={id} className="flex items-center gap-4 rounded-2xl border-2 border-line p-3">
-            <LampRing anim={id} size={76} />
+            <LampRing anim={id} value={dollars} size={76} />
             <div className="min-w-0 flex-1">
               <p className="font-semibold">{LAMP_ANIMS[id].name}</p>
               <p className="mt-0.5 text-xs leading-snug text-muted">{LAMP_ANIMS[id].blurb}</p>
-              <motion.button type="submit" name="anim" value={id} disabled={pending} whileTap={{ scale: 0.94 }} className={buttonClass("secondary", "sm", "mt-2")}>
-                Play
-              </motion.button>
+              <div className="mt-2 flex items-center gap-2">
+                <motion.button type="submit" name="anim" value={id} disabled={pending} whileTap={{ scale: 0.94 }} className={buttonClass("secondary", "sm")}>
+                  Play
+                </motion.button>
+                {id === "payment" && (
+                  <label className="flex items-center gap-1 text-sm text-muted">
+                    $
+                    <input
+                      name="dollars"
+                      type="number"
+                      min={1}
+                      max={48}
+                      value={dollars}
+                      onChange={(e) => setDollars(Math.min(48, Math.max(1, Math.round(Number(e.target.value)) || 1)))}
+                      aria-label="Dollars to count"
+                      className="h-9 w-16 rounded-full border-2 border-line bg-surface px-3 text-sm text-fg tabular-nums focus:border-accent-line focus:outline-none"
+                    />
+                  </label>
+                )}
+              </div>
             </div>
           </div>
         ))}
@@ -164,6 +184,11 @@ function SettingsCard({ settings }: { settings: Settings }) {
             <div className="mt-1.5">{animSelect("bigAnim", settings.bigAnim)}</div>
           </label>
         </div>
+
+        <label className="flex items-center gap-3 text-sm font-medium">
+          <input name="count" type="checkbox" defaultChecked={settings.count} className="h-5 w-5 accent-[var(--accent-line)]" />
+          Then play Payment: one light per dollar the sale made (shipping left out)
+        </label>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block text-sm font-medium">

@@ -22,7 +22,7 @@ except ImportError:
 import anims
 import config
 
-VERSION = "1"
+VERSION = "2"
 SERVER = getattr(config, "SERVER", "https://coastlineprints.ca").rstrip("/")
 OFFSET = getattr(config, "OFFSET", 0)  # which physical LED is the bottom
 REVERSE = getattr(config, "REVERSE", False)  # flip if animations go the wrong way round
@@ -35,7 +35,7 @@ state = {
     "idle": "off",  # off | calm
     "run": True,
 }
-queue = []  # animation names waiting to play
+queue = []  # (animation name, dollars) waiting to play
 
 
 def log(*args):
@@ -56,18 +56,20 @@ def clear():
     ring.write()
 
 
-def play(name):
+def play(name, value=0):
     fn, dur = anims.ANIMS.get(name, (None, 0))
     if not fn:
         log("unknown animation", name)
         return
-    log("playing", name)
+    if callable(dur):
+        dur = dur(value)
+    log("playing", name, "$%d" % value if value else "")
     start = time.ticks_ms()
     while state["run"]:
         t = time.ticks_diff(time.ticks_ms(), start) / 1000
         if t >= dur:
             break
-        show(fn(t))
+        show(fn(t, value))
         time.sleep_ms(20)
     clear()
 
@@ -94,7 +96,7 @@ def render():
             want = 0.0 if queue or state["idle"] != "calm" else 1.0
             idle = min(want, idle + dt * 1.5) if want > idle else max(want, idle - dt * 1.5)
             if queue and idle == 0.0:
-                play(queue[0])
+                play(*queue[0])
                 queue.pop(0)
                 dark = True
                 continue
@@ -169,11 +171,11 @@ def main():
             if state["mode"] != "ready":
                 state["mode"] = "ready"
                 if not greeted:
-                    queue.append("hello")
+                    queue.append(("hello", 0))
                     greeted = True
                     log("Waiting for orders")
             for ev in data.get("events", []):
-                queue.append(ev["anim"])
+                queue.append((ev["anim"], ev.get("value") or 0))
             after = data.get("last", after)
             # Don't ask again until the animations are done.
             while queue:

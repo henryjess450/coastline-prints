@@ -12,7 +12,9 @@ export async function playLampAction(_: ActionState, form: FormData): Promise<Ac
   await requireAdmin();
   const anim = String(form.get("anim") ?? "") as LampAnim;
   if (!LAMP_ANIM_IDS.includes(anim)) return { error: "Pick an animation." };
-  await queueLamp([anim], "dash");
+  // Payment counts a sale: the dollars typed on its card ($1 to $48).
+  const value = anim === "payment" ? Math.min(48, Math.max(1, Math.round(Number(form.get("dollars")) || 1))) : undefined;
+  await queueLamp([{ anim, value }], "dash");
   revalidatePath("/admin/lamp");
   return { ok: true, message: lampPresence().online ? "Sent to the lamp." : "Queued. The lamp is offline, so it plays if it's back within 10 minutes." };
 }
@@ -30,6 +32,7 @@ export async function saveLampSettingsAction(_: ActionState, form: FormData): Pr
       play: { print: s("play.print"), coastline: s("play.coastline"), lightlab: s("play.lightlab"), gift: s("play.gift") },
       bigCents: s("bigDollars") === "" ? 0 : Math.round(n("bigDollars") * 100),
       bigAnim: s("bigAnim"),
+      count: form.get("count") === "on",
       quiet: { on: form.get("quiet.on") === "on", from: n("quiet.from"), to: n("quiet.to") },
     });
   } catch (err) {

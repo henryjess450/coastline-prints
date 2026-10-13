@@ -15,7 +15,7 @@ export default async function LampPage() {
     <LampPanel
       settings={settings}
       status={{ online: p.online, agoMin: p.agoMin, rssi: p.rssi ?? null, version: p.version ?? null }}
-      plays={plays.map((e) => ({ id: e.id, anim: e.anim, reason: e.reason, at: e.createdAt.toISOString() }))}
+      plays={plays.map((e) => ({ id: e.id, anim: e.anim, value: e.value, reason: e.reason, at: e.createdAt.toISOString() }))}
       keyMadeAt={keyMadeAt?.toISOString() ?? null}
       site={appUrl().replace(/^https?:\/\//, "")}
     />

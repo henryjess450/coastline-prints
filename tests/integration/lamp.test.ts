@@ -25,7 +25,7 @@ const { GET: lampApi } = await import("@/app/api/lamp/route");
 const { db } = await import("@/lib/db");
 const { lampForSale, newLampKey, queueLamp, saveLampSettings, lampSettingsSchema } = await import("@/lib/lamp/server");
 
-const reasons = async (sinceId: number) => (await db.lampEvent.findMany({ where: { id: { gt: sinceId } }, orderBy: { id: "asc" } })).map((e) => `${e.reason}:${e.anim}`);
+const reasons = async (sinceId: number) => (await db.lampEvent.findMany({ where: { id: { gt: sinceId } }, orderBy: { id: "asc" } })).map((e) => `${e.reason}:${e.anim}:${e.value}`);
 const lastId = async () => (await db.lampEvent.findFirst({ orderBy: { id: "desc" } }))?.id ?? 0;
 const ask = (key: string | null, query = "") => lampApi(new Request(`http://test/api/lamp?v=1${query}`, { headers: key ? { authorization: `Bearer ${key}` } : {} }));
 
@@ -45,15 +45,20 @@ describe("order lamp", () => {
       jsonRequest("http://test/api/checkout", { attemptId: randomUUID(), sourceId: "cnon:card-nonce-ok", customer, products: [{ productId: p.id, variantId: null, quantity: 1 }], expectedTotalCents: 1200, fulfillment: await validPickup() }),
     );
     expect(res.status).toBe(200);
-    expect(await reasons(before)).toEqual(["coastline:ripple"]);
+    expect(await reasons(before)).toEqual(["coastline:ripple:12", "coastline:payment:12"]);
   });
 
   it("follows the dashboard: chosen animation, big orders, quiet hours", async () => {
     await saveLampSettings({ play: { ...lampSettingsSchema.parse({}).play, print: "swell" }, bigCents: 50_00, bigAnim: "treasure" });
     let before = await lastId();
-    await lampForSale("print", 20_00);
+    await lampForSale("print", 20_40);
     await lampForSale("print", 80_00);
-    expect(await reasons(before)).toEqual(["print:swell", "print:swell", "print:treasure"]);
+    expect(await reasons(before)).toEqual(["print:swell:20", "print:payment:20", "print:swell:80", "print:treasure:80", "print:payment:80"]);
+
+    await saveLampSettings({ count: false });
+    before = await lastId();
+    await lampForSale("gift", 25_00);
+    expect(await reasons(before)).toEqual(["gift:sunset:25"]);
 
     const hour = Number(new Intl.DateTimeFormat("en-CA", { hour: "numeric", hourCycle: "h23", timeZone: "America/Vancouver" }).format(new Date()));
     await saveLampSettings({ quiet: { on: true, from: hour, to: (hour + 1) % 24 } });
@@ -66,7 +71,7 @@ describe("order lamp", () => {
     expect((await ask(null)).status).toBe(401);
     const key = await newLampKey();
     expect((await ask("lamp_notTheRightKeyAtAll1234")).status).toBe(401);
-    await queueLamp(["tide"], "dash");
+    await queueLamp([{ anim: "tide" }], "dash");
     const hello = await (await ask(key)).json();
     expect(hello).toMatchObject({ events: [], last: await lastId(), brightness: 40, idle: "off" });
   });
@@ -74,11 +79,11 @@ describe("order lamp", () => {
   it("answers as soon as something is queued", async () => {
     const key = await newLampKey();
     const after = await lastId();
-    setTimeout(() => void queueLamp(["lighthouse"], "dash"), 200);
+    setTimeout(() => void queueLamp([{ anim: "payment", value: 7 }], "dash"), 200);
     const started = Date.now();
     const data = await (await ask(key, `&after=${after}`)).json();
     expect(Date.now() - started).toBeLessThan(2_000);
-    expect(data.events.map((e: { anim: string }) => e.anim)).toEqual(["lighthouse"]);
+    expect(data.events).toEqual([{ id: after + 1, anim: "payment", value: 7 }]);
     expect(data.last).toBe(after + 1);
   });
 });

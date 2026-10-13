@@ -1,6 +1,7 @@
 # The order lamp's animations, in Coastline colours.
 #
-# Each animation is a function of t (seconds since it started) that returns
+# Each animation is a function of t (seconds since it started) and v (the
+# sale in dollars, only Payment uses it) that returns
 # 12 (r, g, b) colours, one per LED. LED 0 is the bottom of the ring and
 # height(i) counts up both sides to the top (LED 6). Every animation starts
 # and ends dark, so they chain and repeat without a flash.
@@ -68,7 +69,7 @@ def hash01(n):
 # ── Tide: a custom print order ───────────────────────────────────────────
 # The sea rises up both sides of the ring, a white crest of foam laps the
 # ring twice, then the tide goes back out.
-def tide(t):
+def tide(t, v=0):
     out = []
     for i in range(N):
         d = height(i)
@@ -96,7 +97,7 @@ def tide(t):
 RIPPLES = ((0.15, 1.0), (1.35, 0.6), (2.55, 0.35))
 
 
-def ripple(t):
+def ripple(t, v=0):
     bg = ease(t / 0.5) * ease((4.5 - t) / 1.2) * 0.45
     out = []
     for i in range(N):
@@ -120,7 +121,7 @@ def ripple(t):
 # ── Lighthouse: a LightLab order ─────────────────────────────────────────
 # A warm beam sweeps round three times over a dark sea, with a fainter beam
 # opposite, like a real lighthouse lens.
-def lighthouse(t):
+def lighthouse(t, v=0):
     e = env(t, 6.5)
     p = t / 6.5 * 36
     out = []
@@ -133,7 +134,7 @@ def lighthouse(t):
 # ── Sunset: a gift card ──────────────────────────────────────────────────
 # The sun rises and fills the ring with gold, sets through coral into navy
 # from the top down, then the sea goes dark and two stars come out.
-def sunset(t):
+def sunset(t, v=0):
     out = []
     for i in range(N):
         d = height(i)
@@ -152,7 +153,7 @@ def sunset(t):
 
 # ── Treasure: a big order (plays after the usual one) ────────────────────
 # Gold glints over the sea, each LED at its own pace.
-def treasure(t):
+def treasure(t, v=0):
     e = env(t, 4.0, 0.5)
     out = []
     for i in range(N):
@@ -165,13 +166,91 @@ def treasure(t):
 
 # ── Swell: spare, for the dashboard ──────────────────────────────────────
 # Rolling bands of sea go round the ring, with pale crests.
-def swell(t):
+def swell(t, v=0):
     e = env(t, 6.0)
     out = []
     for i in range(N):
         v = 0.5 + 0.5 * math.sin(2 * math.pi * (i / N * 2 - t * 0.6))
         c = mix(mix(DEEP, SEA, v), WAKE, clamp((v - 0.85) / 0.15))
         out.append(scale(c, e))
+    return out
+
+
+# ── Payment: counts what a sale made ─────────────────────────────────────
+# A green pulse, then one LED per dollar lights up round the ring ($1 = 1
+# LED, $5 = 5). Past $12 it keeps going round in a new colour each lap:
+# green, then gold, then pale blue, then white (so $30 = a gold ring with
+# 6 blue). It holds so you can count, then fades. v is the dollars.
+GREEN = (60, 210, 110)
+LAPS = (GREEN, SAND, WAKE, WHITE)
+MAX_DOLLARS = 48
+
+
+def payment_steps(v):
+    n = max(1, min(MAX_DOLLARS, int(v)))
+    return n, min(0.15, 3.0 / n)
+
+
+def payment_seconds(v):
+    n, step = payment_steps(v)
+    return 1.3 + n * step + 3.1
+
+
+def payment(t, v=1):
+    n, step = payment_steps(v)
+    d = payment_seconds(v)
+    if t < 1.2:
+        return [scale(GREEN, math.sin(math.pi * t / 1.2) ** 2) for i in range(N)]
+    fade = ease((d - t) / 0.6)
+    out = []
+    for i in range(N):
+        c = OFF
+        k = i + 1  # the dollar that lands on this LED, then every 12 after
+        while k <= n:
+            tk = 1.3 + (k - 1) * step
+            if t < tk:
+                break
+            c = mix(LAPS[(k - 1) // N], WHITE, clamp(1 - (t - tk) / 0.25) * 0.6)
+            k += N
+        out.append(scale(c, fade))
+    return out
+
+
+# ── Bubbles: spare ───────────────────────────────────────────────────────
+# Seafoam bubbles rise up alternate sides and pop white at the top.
+def bubbles(t, v=0):
+    bg = env(t, 5.2, 0.5) * 0.35
+    out = []
+    for i in range(N):
+        d = height(i)
+        c = scale(NAVY, bg)
+        for j in range(8):
+            h = (t - j * 0.45) / 1.4 * 6.5
+            if h < -1 or h > 7:
+                continue
+            if i == 0 or i == N // 2 or (i < N // 2) == (j % 2 == 0):
+                c = add(c, FOAM, clamp(1 - abs(d - h) / 0.8) * clamp(h / 0.8) * 0.8)
+            if i == N // 2:
+                c = add(c, WHITE, clamp(1 - abs(h - 6.3) / 0.5) * 0.8)
+        out.append(c)
+    return out
+
+
+# ── Starlight: spare ─────────────────────────────────────────────────────
+# A night sky: stars fade in and out, and a shooting star goes over the top.
+def starlight(t, v=0):
+    e = env(t, 6.0)
+    out = []
+    for i in range(N):
+        start = hash01(i + 7) * 3.8
+        dur = 1.2 + hash01(i + 30)
+        c = add(scale(DEEP, e), WHITE, math.sin(math.pi * clamp((t - start) / dur)) ** 2 * 0.55)
+        if 2.6 <= t <= 3.9:
+            p = 2.5 + (t - 2.6) / 0.8 * 7  # from LED 2.5 over the top and on
+            behind = (p - i) % N  # tail behind the head, soft edge just ahead of it
+            glow = (1 - behind / 3) ** 2 if behind < 3 else clamp(1 - (N - behind) / 0.6)
+            c = add(c, WHITE, glow * clamp((t - 2.6) / 0.15) * clamp((3.9 - t) / 0.5))
+        out.append(c)
     return out
 
 
@@ -182,6 +261,9 @@ ANIMS = {
     "sunset": (sunset, 7.0),
     "treasure": (treasure, 4.0),
     "swell": (swell, 6.0),
+    "payment": (payment, payment_seconds),
+    "bubbles": (bubbles, 5.2),
+    "starlight": (starlight, 6.0),
 }
 
 
@@ -203,7 +285,7 @@ def trouble(t):
     return [scale((255, 140, 0), b * 0.5) if i == 0 else OFF for i in range(N)]
 
 
-def hello(t):
+def hello(t, v=0):
     """One seafoam lap when the lamp first reaches the site."""
     p = t / 1.2 * 12
     e = env(t, 1.2, 0.2)

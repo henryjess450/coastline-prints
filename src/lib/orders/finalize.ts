@@ -135,7 +135,7 @@ export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts
         await creditInvite(tx, order);
         return order;
       });
-      await lampForSale(cart.shopLines?.length ? (cart.shop === "coastline" ? "coastline" : "lightlab") : "print", checkout.totalCents + checkout.giftCardCents);
+      await lampForSale(cart.shopLines?.length ? (cart.shop === "coastline" ? "coastline" : "lightlab") : "print", checkout.totalCents + checkout.giftCardCents - checkout.shippingCents);
       return { order, created: true };
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
