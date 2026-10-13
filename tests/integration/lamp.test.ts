@@ -76,6 +76,22 @@ describe("order lamp", () => {
     expect(hello).toMatchObject({ events: [], last: await lastId(), brightness: 40, idle: "off" });
   });
 
+  it("hands over new settings at once, and quiet hours turn the glow off", async () => {
+    const key = await newLampKey();
+    const after = await lastId();
+    await saveLampSettings({ idle: "calm", brightness: 30 });
+    setTimeout(() => void saveLampSettings({ idle: "calm", brightness: 70 }), 200);
+    const started = Date.now();
+    const data = await (await ask(key, `&after=${after}`)).json();
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(data).toMatchObject({ events: [], brightness: 70, idle: "calm" });
+
+    const hour = Number(new Intl.DateTimeFormat("en-CA", { hour: "numeric", hourCycle: "h23", timeZone: "America/Vancouver" }).format(new Date()));
+    await saveLampSettings({ idle: "calm", quiet: { on: true, from: hour, to: (hour + 2) % 24 } });
+    expect(await (await ask(key)).json()).toMatchObject({ idle: "off" });
+    expect(await lampForSale("print", 10_00)).toBe("quiet");
+  });
+
   it("answers as soon as something is queued", async () => {
     const key = await newLampKey();
     const after = await lastId();

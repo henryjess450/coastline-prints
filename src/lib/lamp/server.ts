@@ -41,9 +41,12 @@ export async function getLampSettings(): Promise<LampSettings> {
   return parsed.success ? parsed.data : lampSettingsSchema.parse({});
 }
 
+/** Saves and tells a waiting lamp straight away, so brightness and the idle glow change within a second. */
 export async function saveLampSettings(input: unknown) {
   const value = JSON.stringify(lampSettingsSchema.parse(input));
   await db.setting.upsert({ where: { key: SETTINGS_KEY }, create: { key: SETTINGS_KEY, value }, update: { value } });
+  lamp.settingsRev++;
+  lamp.bus.dispatchEvent(new Event("wake"));
 }
 
 // ── The lamp key (the lamp sends it; we only keep its hash) ─────────────
@@ -77,8 +80,12 @@ export async function lampKeyOk(header: string | null) {
 
 export type LampPresence = { seenAt: number; waiting: number; ip: string; rssi: number | null; version: string | null };
 
-const g = globalThis as unknown as { __lamp?: { presence: LampPresence | null; bus: EventTarget } };
-const lamp = (g.__lamp ??= { presence: null, bus: new EventTarget() });
+const g = globalThis as unknown as { __lamp?: { presence: LampPresence | null; bus: EventTarget; settingsRev: number } };
+const lamp = (g.__lamp ??= { presence: null, bus: new EventTarget(), settingsRev: 0 });
+lamp.settingsRev ??= 0;
+
+/** Goes up on every settings save; a waiting request answers early when it changes. */
+export const lampSettingsRev = () => lamp.settingsRev;
 
 export function lampSeen(p: Omit<LampPresence, "seenAt" | "waiting">, waitingDelta = 0) {
   lamp.presence = { ...p, seenAt: Date.now(), waiting: Math.max(0, (lamp.presence?.waiting ?? 0) + waitingDelta) };
@@ -91,17 +98,17 @@ export function lampPresence() {
   return { ...p, online: !!p && (p.waiting > 0 || ms! < 60_000), agoMin: ms == null ? null : Math.round(ms / 60_000) };
 }
 
-/** Resolves after `ms`, or sooner if something is queued for the lamp. */
+/** Resolves after `ms`, or sooner if something is queued or the settings change. */
 export function waitForLamp(ms: number, signal: AbortSignal) {
   return new Promise<void>((resolve) => {
     const done = () => {
       clearTimeout(timer);
-      lamp.bus.removeEventListener("queued", done);
+      lamp.bus.removeEventListener("wake", done);
       signal.removeEventListener("abort", done);
       resolve();
     };
     const timer = setTimeout(done, ms);
-    lamp.bus.addEventListener("queued", done);
+    lamp.bus.addEventListener("wake", done);
     signal.addEventListener("abort", done);
   });
 }
@@ -111,27 +118,34 @@ export function waitForLamp(ms: number, signal: AbortSignal) {
 /** `value` is the sale in whole dollars (Payment counts it). */
 export async function queueLamp(anims: { anim: string; value?: number }[], reason: string) {
   await db.lampEvent.createMany({ data: anims.map((a) => ({ anim: a.anim, value: a.value ?? null, reason })) });
-  lamp.bus.dispatchEvent(new Event("queued"));
+  lamp.bus.dispatchEvent(new Event("wake"));
 }
 
-function inQuietHours(s: LampSettings, now = new Date()) {
+/** Quiet hours: sales don't light the lamp and the idle glow goes dark. */
+export function inQuietHours(s: LampSettings, now = new Date()) {
   if (!s.quiet.on || s.quiet.from === s.quiet.to) return false;
   const h = Number(new Intl.DateTimeFormat("en-CA", { hour: "numeric", hourCycle: "h23", timeZone: pickup.timeZone }).format(now));
   return s.quiet.from < s.quiet.to ? h >= s.quiet.from && h < s.quiet.to : h >= s.quiet.from || h < s.quiet.to;
 }
 
+/** The idle look to send the lamp right now. */
+export const lampIdle = (s: LampSettings, now = new Date()) => (inQuietHours(s, now) ? "off" : s.idle);
+
 /**
  * A sale was paid: light the lamp. `cents` is what it made (gift cards
- * included, shipping left out). Never throws: a lamp problem must not break checkout.
+ * included, shipping left out). Returns what was queued ("quiet" in quiet
+ * hours). Never throws: a lamp problem must not break checkout.
  */
-export async function lampForSale(kind: SaleKind, cents: number) {
+export async function lampForSale(kind: SaleKind, cents: number, reason: string = kind): Promise<string[] | "quiet" | null> {
   try {
     const s = await getLampSettings();
-    if (inQuietHours(s)) return;
+    if (inQuietHours(s)) return "quiet";
     const value = Math.max(1, Math.round(cents / 100));
     const anims = [s.play[kind], s.bigCents > 0 && cents >= s.bigCents && s.bigAnim, s.count && "payment"].filter((a): a is string => !!a);
-    await queueLamp(anims.map((anim) => ({ anim, value })), kind);
+    await queueLamp(anims.map((anim) => ({ anim, value })), reason);
+    return anims;
   } catch (err) {
     logError("lamp", err);
+    return null;
   }
 }

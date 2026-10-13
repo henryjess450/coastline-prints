@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api";
 import { db } from "@/lib/db";
-import { getLampSettings, lampKeyOk, lampSeen, waitForLamp } from "@/lib/lamp/server";
+import { getLampSettings, lampIdle, lampKeyOk, lampSeen, lampSettingsRev, waitForLamp } from "@/lib/lamp/server";
 import { clientIp, rateLimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
@@ -18,7 +18,8 @@ const STALE_MS = 10 * 60_000;
  *
  * ?after=<id> is the last event the lamp has seen; without it (just
  * switched on) we only say where the queue is, so it doesn't replay old
- * orders. Every answer carries the dashboard's brightness and idle look.
+ * orders. Every answer carries the dashboard's brightness and idle look,
+ * and saving the settings answers straight away so they apply at once.
  */
 export async function GET(req: Request) {
   const ip = clientIp(req);
@@ -37,9 +38,10 @@ export async function GET(req: Request) {
     lampSeen(who, 1);
     try {
       const until = Date.now() + HOLD_MS;
+      const rev = lampSettingsRev();
       while (!req.signal.aborted) {
         events = await db.lampEvent.findMany({ where: { id: { gt: after }, createdAt: { gte: new Date(Date.now() - STALE_MS) } }, orderBy: { id: "asc" }, take: 6, select: { id: true, anim: true, value: true } });
-        if (events.length || Date.now() >= until) break;
+        if (events.length || Date.now() >= until || lampSettingsRev() !== rev) break;
         // Woken straight away by queueLamp; the timeout is just a safety net.
         await waitForLamp(Math.min(5_000, until - Date.now()), req.signal);
       }
@@ -52,5 +54,5 @@ export async function GET(req: Request) {
 
   const s = await getLampSettings();
   const last = events.at(-1)?.id ?? (after === null ? newest : Math.max(after, newest));
-  return NextResponse.json({ events, last, brightness: s.brightness, idle: s.idle }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ events, last, brightness: s.brightness, idle: lampIdle(s) }, { headers: { "Cache-Control": "no-store" } });
 }

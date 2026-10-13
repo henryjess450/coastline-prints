@@ -11,6 +11,7 @@ export default function Page() {
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <LampPanel
         settings={lampSettingsSchema.parse({ idle: "calm" })}
+        quietNow={false}
         status={{ online: true, agoMin: 0, rssi: -58, version: "1" }}
         plays={[
           { id: 4, anim: "payment", value: 64, reason: "print", at: "2026-10-12T19:04:00Z" },

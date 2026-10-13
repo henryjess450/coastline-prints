@@ -2,7 +2,7 @@ import { LampPanel } from "@/components/admin/lamp/LampPanel";
 import { requireAdmin } from "@/lib/admin/auth";
 import { db } from "@/lib/db";
 import { appUrl } from "@/lib/email/data";
-import { getLampSettings, lampKeyMadeAt, lampPresence } from "@/lib/lamp/server";
+import { getLampSettings, inQuietHours, lampKeyMadeAt, lampPresence } from "@/lib/lamp/server";
 
 export const metadata = { title: "Lamp" };
 
@@ -14,6 +14,7 @@ export default async function LampPage() {
   return (
     <LampPanel
       settings={settings}
+      quietNow={inQuietHours(settings)}
       status={{ online: p.online, agoMin: p.agoMin, rssi: p.rssi ?? null, version: p.version ?? null }}
       plays={plays.map((e) => ({ id: e.id, anim: e.anim, value: e.value, reason: e.reason, at: e.createdAt.toISOString() }))}
       keyMadeAt={keyMadeAt?.toISOString() ?? null}

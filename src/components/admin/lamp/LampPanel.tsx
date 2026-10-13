@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useState } from "react";
 import type { ActionState } from "@/app/admin/actions";
-import { newLampKeyAction, playLampAction, saveLampSettingsAction, type LampKeyState } from "@/app/admin/lamp-actions";
+import { newLampKeyAction, playLampAction, saveLampSettingsAction, testSaleAction, type LampKeyState } from "@/app/admin/lamp-actions";
 import { Card } from "@/components/ui/Card";
 import { buttonClass } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
@@ -29,12 +29,13 @@ const SALES: { key: keyof Settings["play"]; label: string }[] = [
   { key: "lightlab", label: "LightLab order" },
   { key: "gift", label: "Gift card" },
 ];
-const REASONS: Record<string, string> = { print: "Print order", coastline: "Coastline shop", lightlab: "LightLab", gift: "Gift card", dash: "Played from here" };
+const REASONS: Record<string, string> = { print: "Print order", coastline: "Coastline shop", lightlab: "LightLab", gift: "Gift card", dash: "Played from here", test: "Test sale" };
 
+const hourLabel = (h: number) => new Date(2026, 0, 1, h).toLocaleTimeString("en-CA", { hour: "numeric" });
 const field = "h-11 w-full rounded-xl border-2 border-line bg-surface px-3 text-sm focus:border-accent-line focus:outline-none";
 const animName = (id: string) => LAMP_ANIMS[id as LampAnim]?.name ?? id;
 
-export function LampPanel({ settings, status, plays, keyMadeAt, site }: { settings: Settings; status: LampStatus; plays: LampPlay[]; keyMadeAt: string | null; site: string }) {
+export function LampPanel({ settings, quietNow, status, plays, keyMadeAt, site }: { settings: Settings; quietNow: boolean; status: LampStatus; plays: LampPlay[]; keyMadeAt: string | null; site: string }) {
   const router = useRouter();
   // Keep the online dot and the list of plays fresh.
   useEffect(() => {
@@ -45,15 +46,21 @@ export function LampPanel({ settings, status, plays, keyMadeAt, site }: { settin
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-center gap-5">
-        <LampRing anim={settings.idle === "calm" && status.online ? "calm" : "tide"} size={88} />
+        <LampRing anim={quietNow ? "off" : settings.idle === "calm" && status.online ? "calm" : "tide"} size={88} />
         <div>
           <h1 className="font-display text-3xl font-bold">Order lamp</h1>
           <StatusLine status={status} paired={!!keyMadeAt} />
+          {quietNow && (
+            <p className="mt-1 text-sm text-muted">
+              <span className="font-semibold text-fg">Quiet hours until {hourLabel(settings.quiet.to)}.</span> Orders won&apos;t light the lamp and the glow is off. Play still works.
+            </p>
+          )}
         </div>
       </header>
 
       <PlayCard />
       <SettingsCard settings={settings} />
+      <TestSaleCard />
       <div className="grid gap-6 lg:grid-cols-2">
         <PairCard keyMadeAt={keyMadeAt} site={site} />
         <Card className="p-5 sm:p-6">
@@ -150,7 +157,7 @@ function SettingsCard({ settings }: { settings: Settings }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(saveLampSettingsAction, {});
   const [brightness, setBrightness] = useState(settings.brightness);
   const [quiet, setQuiet] = useState(settings.quiet.on);
-  const hours = Array.from({ length: 24 }, (_, h) => ({ h, label: new Date(2026, 0, 1, h).toLocaleTimeString("en-CA", { hour: "numeric" }) }));
+  const hours = Array.from({ length: 24 }, (_, h) => ({ h, label: hourLabel(h) }));
   const animSelect = (name: string, value: string) => (
     <select name={name} defaultValue={value} className={field}>
       {LAMP_ANIM_IDS.map((id) => (
@@ -207,7 +214,7 @@ function SettingsCard({ settings }: { settings: Settings }) {
         <div className="space-y-3">
           <label className="flex items-center gap-3 text-sm font-medium">
             <input name="quiet.on" type="checkbox" checked={quiet} onChange={(e) => setQuiet(e.target.checked)} className="h-5 w-5 accent-[var(--accent-line)]" />
-            Quiet hours (orders don&apos;t light the lamp; Play here still works)
+            Quiet hours (orders don&apos;t light the lamp and the glow goes off; Play here still works)
           </label>
           <div className={cn("flex flex-wrap items-center gap-2 text-sm", !quiet && "opacity-50")}>
             From
@@ -243,6 +250,33 @@ function SettingsCard({ settings }: { settings: Settings }) {
           {(state.message || state.error) && !pending && <p className={cn("text-sm", state.error ? "text-danger" : "text-success")}>{state.error ?? state.message}</p>}
         </div>
       </form>
+    </Card>
+  );
+}
+
+function TestSaleCard() {
+  const [state, action, pending] = useActionState<ActionState, FormData>(testSaleAction, {});
+  return (
+    <Card className="p-5 sm:p-6">
+      <h2 className="font-display text-lg font-semibold">Try a sale</h2>
+      <p className="mt-1 text-sm text-muted">Plays exactly what a real order would right now, using the settings above (save them first). Nothing is charged or emailed.</p>
+      <form action={action} className="mt-4 flex flex-wrap items-center gap-3">
+        <select name="kind" defaultValue="print" aria-label="Kind of sale" className={field.replace("w-full", "w-56")}>
+          {SALES.map((s) => (
+            <option key={s.key} value={s.key}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+        <label className="flex items-center gap-1.5 text-sm text-muted">
+          $
+          <input name="dollars" type="number" min={1} max={10000} defaultValue={25} aria-label="Sale amount in dollars" className={field.replace("w-full", "w-24")} />
+        </label>
+        <motion.button type="submit" disabled={pending} whileTap={{ scale: 0.95 }} className={buttonClass("secondary")}>
+          Try it
+        </motion.button>
+      </form>
+      {(state.message || state.error) && !pending && <p className={cn("mt-3 text-sm", state.error ? "text-danger" : "text-success")}>{state.error ?? state.message}</p>}
     </Card>
   );
 }

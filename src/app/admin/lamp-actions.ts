@@ -3,8 +3,8 @@ import { revalidatePath } from "next/cache";
 import type { ActionState } from "@/app/admin/actions";
 import { requireAdmin } from "@/lib/admin/auth";
 import { logError } from "@/lib/api";
-import { LAMP_ANIM_IDS, type LampAnim } from "@/lib/lamp/animations";
-import { getLampSettings, lampPresence, newLampKey, queueLamp, saveLampSettings } from "@/lib/lamp/server";
+import { LAMP_ANIMS, LAMP_ANIM_IDS, type LampAnim } from "@/lib/lamp/animations";
+import { getLampSettings, lampForSale, lampPresence, newLampKey, queueLamp, saveLampSettings, type SaleKind } from "@/lib/lamp/server";
 
 /* The order lamp's dashboard controls. Every action checks the admin session first. */
 
@@ -23,6 +23,7 @@ export async function saveLampSettingsAction(_: ActionState, form: FormData): Pr
   await requireAdmin();
   const n = (k: string) => Number(form.get(k));
   const s = (k: string) => String(form.get(k) ?? "");
+  if (form.get("quiet.on") === "on" && form.get("quiet.from") === form.get("quiet.to")) return { error: "Quiet hours need a different start and end time." };
   try {
     const current = await getLampSettings();
     await saveLampSettings({
@@ -40,7 +41,23 @@ export async function saveLampSettingsAction(_: ActionState, form: FormData): Pr
     return { error: "Some of those settings didn't make sense. Check the numbers and try again." };
   }
   revalidatePath("/admin/lamp");
-  return { ok: true, message: "Saved. The lamp picks it up on its next check (within 25 seconds)." };
+  return { ok: true, message: lampPresence().online ? "Saved. The lamp has it now." : "Saved. The lamp gets it when it's back online." };
+}
+
+const SALE_KINDS: SaleKind[] = ["print", "coastline", "lightlab", "gift"];
+
+/** Runs a pretend sale through the same rules as a real one: quiet hours, big orders, Payment. */
+export async function testSaleAction(_: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const kind = String(form.get("kind")) as SaleKind;
+  const dollars = Math.round(Number(form.get("dollars")));
+  if (!SALE_KINDS.includes(kind) || !(dollars >= 1 && dollars <= 10_000)) return { error: "Pick a kind of sale and an amount from $1." };
+  const played = await lampForSale(kind, dollars * 100, "test");
+  if (played === "quiet") return { ok: true, message: "It's quiet hours, so nothing played. A real order now would stay dark too." };
+  if (!played) return { error: "That didn't work. Please try again." };
+  revalidatePath("/admin/lamp");
+  const names = played.map((a) => LAMP_ANIMS[a as LampAnim]?.name ?? a);
+  return { ok: true, message: `Playing ${names.join(", then ")}.${lampPresence().online ? "" : " (The lamp is offline right now.)"}` };
 }
 
 export type LampKeyState = ActionState & { key?: string };
