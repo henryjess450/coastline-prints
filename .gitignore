@@ -55,3 +55,6 @@ next-env.d.ts
 /fonts/*.ttf
 /fonts/*.TTF
 /.env.backup-*
+
+# Order lamp settings (Wi-Fi password, lamp key) written by scripts/lamp/flash.sh
+firmware/lamp/config.py

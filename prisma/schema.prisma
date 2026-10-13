@@ -538,3 +538,14 @@ model RestockRequest {
   @@unique([productId, variantId, email])
   @@index([productId, notifiedAt])
 }
+
+/// Animations queued for the order lamp (ESP32 + LED ring, firmware/lamp), which polls /api/lamp.
+model LampEvent {
+  id        Int      @id @default(autoincrement())
+  anim      String
+  /// Why it played: "print", "coastline", "lightlab", "gift" or "dash".
+  reason    String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}

@@ -3,6 +3,7 @@ import type { Square } from "square";
 import { Prisma } from "@/generated/prisma/client";
 import { logError } from "@/lib/api";
 import { db } from "@/lib/db";
+import { lampForSale } from "@/lib/lamp/server";
 import { sendOffHold } from "@/lib/notify/sendoff";
 import { creditInvite } from "@/lib/rewards/invite";
 import type { ItemQuote, OrderQuote } from "@/lib/pricing/quote";
@@ -134,6 +135,7 @@ export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts
         await creditInvite(tx, order);
         return order;
       });
+      await lampForSale(cart.shopLines?.length ? (cart.shop === "coastline" ? "coastline" : "lightlab") : "print", checkout.totalCents + checkout.giftCardCents);
       return { order, created: true };
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {

@@ -4,6 +4,7 @@ import { logError } from "@/lib/api";
 import { formatCardNumber } from "@/lib/codes/apply";
 import { generateCode, generatePin } from "@/lib/codes/server";
 import { db } from "@/lib/db";
+import { lampForSale } from "@/lib/lamp/server";
 import { appUrl } from "@/lib/email/data";
 import { money } from "@/lib/format";
 import { designOf } from "./designs";
@@ -64,7 +65,10 @@ export async function finalizeGiftPurchase(purchaseId: string, payment: PaymentF
         });
         return updated;
       });
-      if (done) return { purchase: done, created: true };
+      if (done) {
+        await lampForSale("gift", purchase.amountCents);
+        return { purchase: done, created: true };
+      }
       const winner = await db.giftPurchase.findUnique({ where: { id: purchaseId } });
       return winner ? { purchase: winner, created: false } : null;
     } catch (err) {
