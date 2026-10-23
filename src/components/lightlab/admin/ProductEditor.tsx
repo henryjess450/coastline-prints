@@ -10,7 +10,9 @@ import { Button, buttonClass } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 import { money } from "@/lib/format";
 import { shopImageUrl, slugify, type ShopProductDto } from "@/lib/shop/types";
+import type { ProductFileDto } from "@/lib/shop/files";
 import { dollars, parseDollars } from "./money";
+import { ProductFiles } from "./ProductFiles";
 
 type VariantDraft = { key: string; id?: string; name: string; price: string; stock: string; hex: string | null };
 
@@ -19,7 +21,7 @@ let seq = 0;
 const newKey = () => `v${Date.now()}${seq++}`;
 
 /** Add or edit one product, in LightLab or the Coastline shop. */
-export function ProductEditor({ product, categories, shop: newShop = "lightlab" }: { product: ShopProductDto | null; categories: string[]; /** For a new product. */ shop?: ShopId }) {
+export function ProductEditor({ product, categories, files = [], shop: newShop = "lightlab" }: { product: ShopProductDto | null; categories: string[]; /** The owner's print files (admin only). */ files?: ProductFileDto[]; /** For a new product. */ shop?: ShopId }) {
   const router = useRouter();
   const shop = shopConfig(product?.shop ?? newShop);
   const [personalize, setPersonalize] = useState(product?.personalize ?? "");
@@ -127,7 +129,7 @@ export function ProductEditor({ product, categories, shop: newShop = "lightlab" 
   }
 
   function remove() {
-    if (!product || !confirm(`Delete ${product.name}? Past orders keep their details, but it's gone from the shop for good. To take it off the shop for now, switch off "On the shop" instead.`)) return;
+    if (!product || !confirm(`Delete ${product.name}? Past orders keep their details, but it's gone from the shop for good, along with any print files saved with it. To take it off the shop for now, switch off "On the shop" instead.`)) return;
     start(async () => {
       const r = await deleteProductAction(product.id);
       if (r.error) return fail(r.error);
@@ -186,6 +188,10 @@ export function ProductEditor({ product, categories, shop: newShop = "lightlab" 
             onUploaded={(k) => fresh.current.add(k)}
             onError={fail}
           />
+        </Panel>
+
+        <Panel title="Print files" note="Your STL and 3MF files for this product, so you always know where they are. Only you can see these; they're never on the shop.">
+          <ProductFiles productId={product?.id ?? null} initial={files} onError={fail} />
         </Panel>
 
         <Panel title="Options" note="Shade colours, sizes and so on. Each can have its own price and stock; leave them empty to use the product's.">

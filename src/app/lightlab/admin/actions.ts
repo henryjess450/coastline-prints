@@ -154,10 +154,12 @@ export async function discardImagesAction(keys: string[]) {
 /** Past orders keep their line (name, price) but lose the link to the product. */
 export async function deleteProductAction(id: string): Promise<ShopActionState> {
   await requireAdmin();
-  const p = await db.shopProduct.findUnique({ where: { id } });
+  const p = await db.shopProduct.findUnique({ where: { id }, include: { files: { select: { storageKey: true } } } });
   if (!p) return { ok: true };
   await db.shopProduct.delete({ where: { id } });
   await dropImages(JSON.parse(p.images) as string[]);
+  // Its print files go too (the rows cascade with the product).
+  await Promise.all(p.files.map((f) => getStorage().delete(f.storageKey).catch(() => undefined)));
   revalidateShop(p.slug, p.shop);
   return { ok: true, message: `${p.name} deleted.` };
 }

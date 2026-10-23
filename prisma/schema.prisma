@@ -498,8 +498,24 @@ model ShopProduct {
 
   orderItems      OrderItem[]
   restockRequests RestockRequest[]
+  files           ShopProductFile[]
 
   @@index([shop, active, sortOrder])
+}
+
+/// The owner's own print files for a shop product (STL, 3MF...). Admin only, never shown on the shop.
+model ShopProductFile {
+  id         String      @id @default(cuid())
+  productId  String
+  product    ShopProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  fileName   String
+  /// Storage key under shop-files/.
+  storageKey String      @unique
+  sizeBytes  Int
+  note       String      @default("")
+  createdAt  DateTime    @default(now())
+
+  @@index([productId])
 }
 
 /// A market LightLab will be at, shown under "Find us at" on /lightlab. Past dates hide themselves.
