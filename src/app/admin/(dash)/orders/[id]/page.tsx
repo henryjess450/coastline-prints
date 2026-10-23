@@ -2,7 +2,7 @@ import Link from "next/link";
 import { shopImageUrl } from "@/lib/shop/types";
 import { notFound } from "next/navigation";
 import { pickup } from "@config/pickup";
-import { printReceiptAction, retryJobAction } from "@/app/admin/actions";
+import { dismissJobAction, printReceiptAction, retryJobAction } from "@/app/admin/actions";
 import { PrintButton } from "@/components/admin/PrintButton";
 import { LabelPrinter } from "@/components/admin/LabelPrinter";
 import { privateSite } from "@config/private.server";
@@ -233,15 +233,21 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
                   <div>
                     <p>{jobLabel[j.template] ?? j.template}</p>
                     <p className="text-xs text-faint">
-                      {j.status === "SENT" ? `Sent ${j.sentAt ? when(j.sentAt) : ""}` : j.status === "FAILED" ? "Failed" : j.attempts ? `Retrying (try ${j.attempts})` : "Queued"}
+                      {j.status === "SENT" ? `Sent ${j.sentAt ? when(j.sentAt) : ""}` : j.status === "FAILED" ? "Failed" : j.status === "DISMISSED" ? "Failed, dismissed" : j.attempts ? `Retrying (try ${j.attempts})` : "Queued"}
                     </p>
                     {j.status !== "SENT" && j.lastError && <p className="text-xs text-danger">{j.lastError.slice(0, 140)}</p>}
                   </div>
                   {j.status === "FAILED" && (
-                    <form action={retryJobAction}>
-                      <input type="hidden" name="jobId" value={j.id} />
-                      <button className="rounded-full border border-line px-3 py-1 text-xs hover:border-accent-line">Retry</button>
-                    </form>
+                    <div className="flex shrink-0 gap-1.5">
+                      <form action={retryJobAction}>
+                        <input type="hidden" name="jobId" value={j.id} />
+                        <button className="rounded-full border border-line px-3 py-1 text-xs hover:border-accent-line">Retry</button>
+                      </form>
+                      <form action={dismissJobAction}>
+                        <input type="hidden" name="jobId" value={j.id} />
+                        <button className="rounded-full border border-line px-3 py-1 text-xs hover:border-danger hover:text-danger">Dismiss</button>
+                      </form>
+                    </div>
                   )}
                 </li>
               ))}

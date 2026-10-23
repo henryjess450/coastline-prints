@@ -43,8 +43,8 @@ export function AdminNav({ failedEmails, etransferReview = 0 }: { failedEmails: 
           </Link>
         )}
         {failedEmails > 0 && (
-          <Link href="/admin/orders?view=list&status=EMAIL_FAILED" className="rounded-full bg-danger/15 px-3 py-1 font-medium text-danger">
-            {failedEmails} email{failedEmails === 1 ? "" : "s"} failed
+          <Link href="/admin/failed" className="rounded-full bg-danger/15 px-3 py-1 font-medium text-danger">
+            {failedEmails} didn&apos;t send
           </Link>
         )}
         <form action={logoutAction}>

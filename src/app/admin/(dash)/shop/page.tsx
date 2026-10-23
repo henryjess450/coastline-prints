@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ProductTable } from "@/components/lightlab/admin/ProductTable";
-import { buttonClass } from "@/components/ui/Button";
+import { buttonClass } from "@/components/ui/button-class";
 import { requireAdmin } from "@/lib/admin/auth";
 import { db } from "@/lib/db";
 import { listProducts } from "@/lib/shop/products.server";

@@ -115,9 +115,32 @@ export async function retryJobAction(form: FormData) {
   if (!job) return;
   await retryJob(id);
   sendNotificationsSoon("admin-retry");
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   const orderId = (JSON.parse(job.payload) as { orderId?: string }).orderId;
   if (orderId) revalidatePath(`/admin/orders/${orderId}`);
+}
+
+/** Stops showing a failed job (it won't be sent). Kept as DISMISSED for the record. */
+export async function dismissJobAction(form: FormData) {
+  await requireAdmin();
+  const id = String(form.get("jobId") ?? "");
+  const job = await db.outboxJob.findUnique({ where: { id } });
+  if (!job || job.status !== "FAILED") return;
+  await db.outboxJob.update({ where: { id }, data: { status: "DISMISSED" } });
+  revalidatePath("/admin", "layout");
+}
+
+/** Retry or dismiss every failed job at once, from the Didn't send page. */
+export async function failedJobsBulkAction(form: FormData) {
+  await requireAdmin();
+  const what = String(form.get("what") ?? "");
+  if (what === "retry") {
+    await db.outboxJob.updateMany({ where: { status: "FAILED" }, data: { status: "PENDING", nextAttemptAt: new Date(), attempts: 0 } });
+    sendNotificationsSoon("admin-retry");
+  } else if (what === "dismiss") {
+    await db.outboxJob.updateMany({ where: { status: "FAILED" }, data: { status: "DISMISSED" } });
+  }
+  revalidatePath("/admin", "layout");
 }
 
 export async function printReceiptAction(form: FormData) {

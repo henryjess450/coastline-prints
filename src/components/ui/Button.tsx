@@ -1,20 +1,9 @@
 "use client";
 import Link from "next/link";
 import { forwardRef } from "react";
-import { cn } from "@/lib/cn";
+import { buttonClass, type Size, type Variant } from "./button-class";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
-type Size = "sm" | "md" | "lg";
-
-const sizes: Record<Size, string> = {
-  sm: "h-9 px-3.5 text-sm",
-  md: "h-11 px-5 text-sm",
-  lg: "h-14 px-7 text-base",
-};
-
-export function buttonClass(variant: Variant = "primary", size: Size = "md", className?: string) {
-  return cn("btn", `btn-${variant}`, sizes[size], className);
-}
+export { buttonClass };
 
 /** A happy little bounce for success moments (code applied, ready to pay). */
 export function bounce(el: HTMLElement | null) {

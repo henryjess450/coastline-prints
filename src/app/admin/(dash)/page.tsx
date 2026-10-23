@@ -66,8 +66,8 @@ export default async function TodayPage() {
                   </Link>
                 )}
                 {failedEmails > 0 && (
-                  <Link href="/admin/orders?view=list&status=EMAIL_FAILED" className="rounded-full bg-danger/15 px-4 py-2 text-sm font-semibold text-danger hover:bg-danger/25">
-                    {failedEmails === 1 ? "1 email didn't send" : `${failedEmails} emails didn't send`} →
+                  <Link href="/admin/failed" className="rounded-full bg-danger/15 px-4 py-2 text-sm font-semibold text-danger hover:bg-danger/25">
+                    {failedEmails === 1 ? "1 thing didn't send" : `${failedEmails} things didn't send`} →
                   </Link>
                 )}
               </div>

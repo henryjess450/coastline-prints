@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { SeaPage } from "@/components/account/sea/SeaPage";
 import { SeaSection } from "@/components/account/sea/SeaSection";
 import { Board } from "@/components/admin/Board";
@@ -34,16 +35,14 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   if (sp.view !== "list") return <BoardPage />;
   const cfg = await getEffectiveConfig();
   const status = sp.status ?? "ACTIVE";
+  // Old link: failed emails now have their own page, with retry and dismiss.
+  if (status === "EMAIL_FAILED") redirect("/admin/failed");
   const page = Math.max(1, Number(sp.page) || 1);
 
   // Archived orders only show on their own tab.
   const where: Prisma.OrderWhereInput = { archivedAt: status === "ARCHIVED" ? { not: null } : null };
   if (status === "ACTIVE") where.status = { not: "PICKED_UP" };
   else if (ORDER_STATUSES.some((s) => s.id === status)) where.status = status;
-  else if (status === "EMAIL_FAILED") {
-    const failed = await db.outboxJob.findMany({ where: { status: "FAILED" }, select: { dedupeKey: true } });
-    where.id = { in: failed.map((j) => j.dedupeKey?.split(":")[0] ?? "").filter(Boolean) };
-  }
   if (sp.printer) where.items = { some: { printerId: sp.printer } };
   if (sp.q?.trim()) {
     const q = sp.q.trim();
@@ -88,7 +87,6 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
             {t.label} <AnimatedCount value={t.n} className="opacity-70" />
           </Link>
         ))}
-        {status === "EMAIL_FAILED" && <span className="rounded-full border border-danger bg-danger/15 px-3 py-1 text-sm text-danger">Orders with failed emails</span>}
       </div>
       <div className="flex flex-wrap gap-1.5 text-sm">
         <span className="py-1 text-faint">Printer:</span>
