@@ -58,3 +58,4 @@ next-env.d.ts
 
 # Order lamp settings (Wi-Fi password, lamp key) written by scripts/lamp/flash.sh
 firmware/lamp/config.py
+deploy.log
