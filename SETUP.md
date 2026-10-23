@@ -87,6 +87,16 @@ set, the rate is read live from Canada Post twice a day, so a GST change (or a m
 through on its own. Without keys it uses the `tax` fallback in `config/shipping.ts` (5% GST).
 The packing fee isn't taxed.
 
+**Shipping labels** print on Avery 8168 sheets (3½ × 5 in, 4 per sheet). Open a shipped order in
+admin, press **Print shipping label**, pick a design and the free spot on the sheet, then **Make PDF**
+and print it at 100% (Actual size). Put your return address in `.env` (never commit it), lines split with `|`:
+```
+SHIP_FROM_ADDRESS="123 Main St|Victoria BC  V8W 1A1"
+```
+If labels print a little off, print **Alignment test** on plain paper, hold it over a label sheet and
+change `nudgeIn` in `config/labels.ts`. `npx tsx --conditions=react-server scripts/label-samples.mts`
+writes sample labels to `storage/label-samples/`.
+
 Street address suggestions at checkout come from Photon (photon.komoot.io, OpenStreetMap data).
 No key needed; only the typed text is sent, from the server.
 

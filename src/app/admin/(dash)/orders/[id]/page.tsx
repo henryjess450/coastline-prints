@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { pickup } from "@config/pickup";
 import { printReceiptAction, retryJobAction } from "@/app/admin/actions";
 import { PrintButton } from "@/components/admin/PrintButton";
+import { LabelPrinter } from "@/components/admin/LabelPrinter";
+import { privateSite } from "@config/private.server";
 import { OrderItems, type AdminItem } from "@/components/admin/OrderItems";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { NextStepButton } from "@/components/admin/NextStepButton";
@@ -158,6 +160,9 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
                     </li>
                   ))}
                 </ul>
+                <div className="mt-3">
+                  <LabelPrinter orderId={order.id} packages={Math.max(1, shippingBoxesOf(order).length)} returnSet={privateSite.returnAddress.length > 0} />
+                </div>
                 {order.trackingNumber && (
                   <a href={trackingUrl(order.trackingNumber)} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block font-mono text-accent-text hover:underline">
                     {order.trackingNumber}
