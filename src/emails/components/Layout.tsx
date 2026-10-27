@@ -104,13 +104,13 @@ export function ShipToBox({ lines, label = "Shipping to", accent = COASTLINE }: 
 }
 
 /** Highlighted pickup box (receipt and ready emails only). */
-export function AddressBox({ address, when, accent = COASTLINE }: { address: string; when?: string | null; accent?: Accent }) {
+export function AddressBox({ address, when, whenLabel = "Pickup time", accent = COASTLINE }: { address: string; when?: string | null; whenLabel?: string; accent?: Accent }) {
   const colors = { ...base, ...accent };
   return (
     <Section style={{ backgroundColor: colors.brandSoft, borderRadius: 12, padding: "14px 16px", margin: "4px 0 6px" }}>
       {when && (
         <>
-          <Text style={{ margin: 0, fontSize: 12, color: colors.muted }}>Pickup time</Text>
+          <Text style={{ margin: 0, fontSize: 12, color: colors.muted }}>{whenLabel}</Text>
           <Text style={{ margin: "2px 0 10px", fontSize: 17, fontWeight: 700, color: colors.brand }}>{when}</Text>
         </>
       )}

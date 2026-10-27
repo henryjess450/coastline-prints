@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { cartItemSchema } from "@/lib/pricing/cart-schema";
 import { shopLineSchema } from "@/lib/shop/schema";
+import { CUSTOM_TEXT_MAX } from "@/lib/shop/types";
+import { addDays, todayIn } from "@/lib/pickup";
+import { pickup } from "@config/pickup";
 import { uploads } from "@config/site";
 
 /**
@@ -71,6 +74,8 @@ export const posSaleSchema = z.object({
   emailCustomer: z.boolean().default(true),
   /** The paired display, to show the thank-you screen. */
   registerId: z.string().max(40).nullable().default(null),
+  /** Taken with Start order: made later and picked up on this day. Makes their account and emails them and the owner. */
+  order: z.object({ needBy: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).nullable().default(null),
 });
 
 export type PosCartInput = z.input<typeof posCartSchema>;
@@ -120,10 +125,60 @@ export type PosPopup =
   /** A link to scan: Instagram, a Google review... */
   | { id: string; kind: "qr"; title: string; text?: string; url: string }
   /** A note typed by the cashier. */
-  | { id: string; kind: "message"; title: string; text?: string };
+  | { id: string; kind: "message"; title: string; text?: string }
+  /** Start order: "Order for {firstName}", where they fill in their details, colours and the day they need it. */
+  | { id: string; kind: "order"; firstName: string; items: PosOrderItem[]; minDate: string };
 
 /** The customer's answer to a popup, picked up by the register. */
-export type PosReply = { popupId: string; kind: "email" | "account" | "dismiss"; email?: string; name?: string; created?: boolean; at: number };
+export type PosReply = { popupId: string; kind: "email" | "account" | "order" | "dismiss"; email?: string; name?: string; created?: boolean; order?: PosOrderDetails; at: number };
+
+/**
+ * Start order: things made later and picked up (or shipped) on a day at
+ * least a week away. The cashier picks the products and types a first name;
+ * the customer fills in the rest on the display.
+ */
+export const ORDER_LEAD_DAYS = 7;
+
+/** The first day they can ask for ("YYYY-MM-DD", shop time zone). */
+export const orderMinDate = (now = new Date()) => addDays(todayIn(pickup.timeZone, now), ORDER_LEAD_DAYS);
+
+/** A product on the order form: they choose its colour (its options) and any personalisation. */
+export type PosOrderItem = {
+  key: string;
+  productId: string;
+  name: string;
+  image?: string;
+  quantity: number;
+  colours: { id: string; name: string; hex: string | null }[];
+  /** The product's personalisation prompt, e.g. "Name on the lamp". */
+  personalize: string | null;
+};
+
+/** What the customer fills in on the order form. */
+export const posOrderDetailsSchema = z.object({
+  phone: z.string().trim().min(7, "Add your phone number.").max(30).regex(/^[\d\s()+.-]+$/, "That phone number doesn't look right."),
+  email: z.string().trim().toLowerCase().email("That email doesn't look right.").max(200),
+  needBy: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick the day you need it by."),
+  /** Anything else they want changed. */
+  notes: z.string().trim().max(1000).default(""),
+  lines: z
+    .array(z.object({ key: z.string().min(1).max(40), variantId: z.string().max(40).nullable().default(null), customText: z.string().trim().max(CUSTOM_TEXT_MAX).default("") }))
+    .min(1)
+    .max(40),
+});
+export type PosOrderDetails = z.infer<typeof posOrderDetailsSchema>;
+
+/** Checks the answers against the form that was shown. Null when it's all there. */
+export function orderDetailsError(popup: Extract<PosPopup, { kind: "order" }>, d: PosOrderDetails) {
+  if (d.needBy < popup.minDate) return "Pick a day at least a week away.";
+  for (const item of popup.items) {
+    const line = d.lines.find((l) => l.key === item.key);
+    if (!line) return `Choose the options for ${item.name}.`;
+    if (item.colours.length && !item.colours.some((c) => c.id === line.variantId)) return `Choose a colour for ${item.name}.`;
+    if (item.personalize && !line.customText) return `Fill in "${item.personalize}" for ${item.name}.`;
+  }
+  return null;
+}
 
 /** What the customer display shows. Pushed by the cashier, a few times a second at most. */
 export type PosScreen = {
@@ -138,6 +193,9 @@ export type PosScreen = {
   tenderedCents?: number | null;
   /** The email their receipt goes to. */
   email?: string;
+  /** Start order: whose order it is, and the day it's ready ("YYYY-MM-DD"). */
+  orderFor?: string;
+  needBy?: string;
   /** Done stage. */
   orderNumber?: string;
   emailed?: boolean;

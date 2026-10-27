@@ -59,6 +59,8 @@ export type AdminOrderOptions = {
   /** Email the customer their receipt (needs an email on the order). */
   emailCustomer: boolean;
   printTicket: boolean;
+  /** Taken with Start order at the register: the owner gets the new-order email, and the customer's receipt signs them in. */
+  takenOrder?: boolean;
 };
 
 /**
@@ -287,14 +289,16 @@ async function takeStock(tx: Prisma.TransactionClient, line: PricedShopLine, ord
 
 /**
  * What goes out for an order typed in from the admin: no send-off to wait
- * for and no owner email (the owner made it). The customer gets a receipt
+ * for and no owner email (the owner made it), except for orders taken with
+ * Start order, so they land in the inbox like an online one. The customer gets a receipt
  * only when asked, and is saved to Square only when there's an email.
  */
 function adminOrderJobs(orderId: string, email: string, opts: AdminOrderOptions): Prisma.OutboxJobCreateManyInput[] {
-  const job = (kind: string, template: string) => ({ kind, template, payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:${template}` });
+  const job = (kind: string, template: string, extra: object = {}) => ({ kind, template, payload: JSON.stringify({ orderId, ...extra }), dedupeKey: `${orderId}:${template}` });
   return [
     ...(email && process.env.SQUARE_ACCESS_TOKEN ? [job("square", "customer-sync")] : []),
-    ...(email && opts.emailCustomer ? [job("email", "customer-receipt")] : []),
+    ...(email && opts.emailCustomer ? [job("email", "customer-receipt", opts.takenOrder ? { signIn: true } : {})] : []),
+    ...(opts.takenOrder ? [job("email", "owner-new-order")] : []),
     ...(opts.printTicket && process.env.RECEIPT_PRINTER_HOST ? [job("print", "order-receipt")] : []),
     ...(process.env.DISCORD_WEBHOOK_URL ? [job("discord", "discord-new-order")] : []),
   ];

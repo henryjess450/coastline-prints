@@ -1,4 +1,5 @@
 import "server-only";
+import { createSignInLink } from "@/lib/account/link";
 import { logError } from "@/lib/api";
 import { db } from "@/lib/db";
 import { buildEmail, EMAIL_TEMPLATES, type EmailTemplate } from "@/lib/email/build";
@@ -29,7 +30,7 @@ export function backoffMs(attempts: number) {
   return BACKOFF_MIN[Math.min(attempts - 1, BACKOFF_MIN.length - 1)] * 60_000;
 }
 
-type Payload = { orderId: string; productId?: string; variantId?: string; left?: number; requestId?: string; checkoutId?: string; giftId?: string; codeId?: string; customerId?: string; broadcastId?: string; note?: string | null; test?: boolean };
+type Payload = { orderId: string; productId?: string; variantId?: string; left?: number; requestId?: string; checkoutId?: string; giftId?: string; codeId?: string; customerId?: string; broadcastId?: string; note?: string | null; test?: boolean; signIn?: boolean };
 
 let running: Promise<ProcessResult> | null = null;
 export type ProcessResult = { sent: number; failed: number; retrying: number };
@@ -175,7 +176,9 @@ async function deliver(kind: string, template: string, payload: Payload, jobId: 
     return (mailer ?? getMailer()).send(email, jobId);
   }
   if (kind === "email" && (EMAIL_TEMPLATES as readonly string[]).includes(template)) {
-    const email = await buildEmail(template as EmailTemplate, data, { note: payload.note });
+    // Orders taken at the register: the receipt's button signs them in (a fresh link each send).
+    const signInUrl = payload.signIn && data.customerEmail ? await createSignInLink(data.customerEmail, new URL(data.links.confirmation).pathname) : undefined;
+    const email = await buildEmail(template as EmailTemplate, data, { note: payload.note, signInUrl });
     return (mailer ?? getMailer()).send(email, jobId);
   }
   throw new UnknownJobError(`Unknown job ${kind}/${template}`);

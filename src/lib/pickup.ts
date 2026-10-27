@@ -102,9 +102,11 @@ export function isValidPickup(date: string, time: string, cfg: PickupConfig, now
 
 /** "Friday, October 10, 4 to 5 pm" */
 export function formatPickup(date: string | null | undefined, time: string | null | undefined, cfg: PickupConfig) {
-  if (!date || !time) return null;
+  if (!date) return null;
   const dt = new Date(`${date}T12:00:00Z`);
   const day = dayFmt({ weekday: "long", month: "long", day: "numeric" }).format(dt);
+  // Orders taken at the register have a day (when they need it by) but no slot yet.
+  if (!time) return day;
   const [h, m] = time.split(":").map(Number);
   const start = h * 60 + m;
   return `${day}, ${slotLabel(start, start + cfg.slotMinutes)}`;
@@ -112,9 +114,10 @@ export function formatPickup(date: string | null | undefined, time: string | nul
 
 /** Fully explicit parts for printed receipts: "Saturday, October 10, 2026" and "5:00 PM to 6:00 PM". */
 export function pickupParts(date: string | null | undefined, time: string | null | undefined, cfg: PickupConfig) {
-  if (!date || !time) return null;
+  if (!date) return null;
   const dt = new Date(`${date}T12:00:00Z`);
   const day = dayFmt({ weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(dt);
+  if (!time) return { date: day, time: "Time to be arranged" };
   const [h, m] = time.split(":").map(Number);
   const clock = (mins: number) => {
     const hh = Math.floor(mins / 60) % 24;

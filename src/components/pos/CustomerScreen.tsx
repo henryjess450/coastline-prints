@@ -7,11 +7,16 @@ import { OneLineLamps } from "@/components/lightlab/hero/OneLineLamps";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 import { money } from "@/lib/format";
-import type { PosPopup, PosReply, PosScreen } from "@/lib/pos/types";
+import { formatPickup } from "@/lib/pickup";
+import { orderDetailsError, posOrderDetailsSchema, type PosOrderDetails, type PosPopup, type PosReply, type PosScreen } from "@/lib/pos/types";
+import { pickup } from "@config/pickup";
 import { POINTS_PER_DOLLAR } from "@config/rewards";
 import { AnimatedMoney, DrawnCheck, Qr, Thumb } from "./bits";
 
-export type ReplyFn = (answer: { popupId: string; kind: PosReply["kind"]; email?: string; name?: string }) => Promise<string | null>;
+export type ReplyFn = (answer: { popupId: string; kind: PosReply["kind"]; email?: string; name?: string; order?: PosOrderDetails }) => Promise<string | null>;
+
+/** "Saturday, November 7". */
+const dayLabel = (date: string) => formatPickup(date, null, pickup) ?? date;
 
 const PAY_HINT: Record<string, string> = {
   CARD: "Tap, insert or swipe on the card reader.",
@@ -110,7 +115,7 @@ function Cart({ screen, lightlab }: { screen: PosScreen; lightlab: boolean }) {
     <div className="grid min-h-0 flex-1 gap-8 md:grid-cols-[1fr_minmax(340px,0.8fr)]">
       <section className="flex min-h-0 flex-col">
         <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-muted">
-          Your order · <AnimatedCountText n={count} /> item{count === 1 ? "" : "s"}
+          {screen.orderFor ? `Order for ${screen.orderFor}` : "Your order"} · <AnimatedCountText n={count} /> item{count === 1 ? "" : "s"}
         </h2>
         <ul className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
           <AnimatePresence initial={false}>
@@ -163,6 +168,11 @@ function Cart({ screen, lightlab }: { screen: PosScreen; lightlab: boolean }) {
             </motion.div>
           )}
         </AnimatePresence>
+        {screen.needBy && (
+          <motion.p initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl bg-surface-strong p-4 text-lg">
+            Ready for pickup by <span className="font-semibold">{dayLabel(screen.needBy)}</span>
+          </motion.p>
+        )}
         {screen.email && <p className="text-muted">Receipt goes to {screen.email}</p>}
       </section>
     </div>
@@ -180,8 +190,14 @@ function Thanks({ screen, lightlab }: { screen: PosScreen; lightlab: boolean }) 
         <DrawnCheck className="h-full w-full" />
       </motion.div>
       <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="mt-6 font-display text-6xl font-bold tracking-tight">
-        Thank you!
+        {screen.orderFor ? `Thank you, ${screen.orderFor}!` : "Thank you!"}
       </motion.p>
+      {screen.needBy && (
+        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.7 }} className="mt-4 text-2xl">
+          We&apos;ll have it ready by <span className="font-semibold">{dayLabel(screen.needBy)}</span>.
+          <span className="mt-1 block text-lg text-muted">Check your email to sign in and follow your order.</span>
+        </motion.p>
+      )}
       {lightlab && (
         <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }} className="ll-accent mt-3 text-4xl">
           enjoy the glow
@@ -207,7 +223,7 @@ function PopupLayer({ popup, onReply }: { popup: PosPopup | null; onReply?: Repl
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 30, scale: 0.96 }}
             transition={{ type: "spring", stiffness: 320, damping: 26 }}
-            className="relative w-full max-w-xl rounded-[32px] border border-line bg-elev p-8 shadow-2xl"
+            className={cn("relative w-full rounded-[32px] border border-line bg-elev p-8 shadow-2xl", popup.kind === "order" ? "max-h-[94dvh] max-w-3xl overflow-y-auto" : "max-w-xl")}
           >
             <PopupBody popup={popup} onReply={onReply} />
           </motion.div>
@@ -220,7 +236,7 @@ function PopupLayer({ popup, onReply }: { popup: PosPopup | null; onReply?: Repl
 function PopupBody({ popup, onReply }: { popup: PosPopup; onReply?: ReplyFn }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  async function send(kind: PosReply["kind"], fields: { email?: string; name?: string } = {}) {
+  async function send(kind: PosReply["kind"], fields: { email?: string; name?: string; order?: PosOrderDetails } = {}) {
     if (!onReply) return;
     setBusy(true);
     setError(await onReply({ popupId: popup.id, kind, ...fields }));
@@ -300,6 +316,8 @@ function PopupBody({ popup, onReply }: { popup: PosPopup; onReply?: ReplyFn }) {
           {done}
         </div>
       );
+    case "order":
+      return <OrderForm popup={popup} busy={busy} error={error} onSubmit={(order) => send("order", { order })} onCancel={() => send("dismiss")} />;
     case "message":
       return (
         <div className="text-center">
@@ -337,6 +355,132 @@ function EmailForm({ title, note, submit, withName, busy, error, onSubmit, onSki
       </div>
       <p className="text-faint">{note}</p>
     </form>
+  );
+}
+
+/**
+ * Start order: "Order for Sam". They add a phone and email, choose each
+ * item's colour (and personalisation), the day they need it, and anything
+ * they'd like changed. Checked here first, then again on the server.
+ */
+function OrderForm({ popup, busy, error, onSubmit, onCancel }: { popup: Extract<PosPopup, { kind: "order" }>; busy: boolean; error: string | null; onSubmit: (order: PosOrderDetails) => void; onCancel: () => void }) {
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [needBy, setNeedBy] = useState("");
+  const [notes, setNotes] = useState("");
+  const [picks, setPicks] = useState<Record<string, { variantId: string | null; customText: string }>>(() => Object.fromEntries(popup.items.map((i) => [i.key, { variantId: i.colours.length === 1 ? i.colours[0].id : null, customText: "" }])));
+  const [problem, setProblem] = useState<string | null>(null);
+  const field = "h-16 w-full rounded-full border-2 border-line bg-bg px-6 text-xl outline-none transition-colors focus:border-accent-line";
+  const pick = (key: string, patch: Partial<{ variantId: string | null; customText: string }>) => setPicks((p) => ({ ...p, [key]: { ...p[key], ...patch } }));
+  const quick = [7, 14, 21].map((n) => {
+    const [y, m, d] = popup.minDate.split("-").map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d + n - 7)).toISOString().slice(0, 10);
+    return { date, label: n === 7 ? "In a week" : `In ${n / 7} weeks` };
+  });
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const parsed = posOrderDetailsSchema.safeParse({ phone, email, needBy, notes, lines: popup.items.map((i) => ({ key: i.key, ...picks[i.key] })) });
+    if (!parsed.success) return setProblem(parsed.error.issues[0]?.message ?? "Check your details.");
+    const wrong = orderDetailsError(popup, parsed.data);
+    if (wrong) return setProblem(wrong);
+    setProblem(null);
+    onSubmit(parsed.data);
+  }
+
+  const shown = problem ?? error;
+  return (
+    <form onSubmit={submit} className="space-y-7">
+      <div>
+        <p className="text-sm font-semibold uppercase tracking-[0.14em] text-faint">New order</p>
+        <h2 className="mt-1 font-display text-5xl font-bold tracking-tight">
+          Order for{" "}
+          {Array.from(popup.firstName).map((ch, i) => (
+            <motion.span key={i} className="inline-block text-accent-text" initial={{ opacity: 0, y: 14, rotate: -6 }} animate={{ opacity: 1, y: 0, rotate: 0 }} transition={{ delay: 0.15 + i * 0.04, type: "spring", stiffness: 420, damping: 20 }}>
+              {ch === " " ? "\u00a0" : ch}
+            </motion.span>
+          ))}
+        </h2>
+      </div>
+
+      <section className="space-y-3">
+        <FormLabel n={1}>How do we reach you?</FormLabel>
+        <input className={field} type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone number" aria-label="Phone number" maxLength={30} />
+        <input className={field} type="email" inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" aria-label="Email" maxLength={200} />
+        <p className="px-2 text-faint">We&apos;ll make you an account with this email so you can follow your order. No password needed.</p>
+      </section>
+
+      <section className="space-y-3">
+        <FormLabel n={2}>Choose your colours</FormLabel>
+        {popup.items.map((item, idx) => (
+          <motion.div key={item.key} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + idx * 0.06 }} className="rounded-3xl bg-surface p-4">
+            <div className="flex items-center gap-4">
+              <Thumb line={{ kind: "product", image: item.image, name: item.name }} size="lg" />
+              <p className="min-w-0 flex-1 truncate text-xl font-medium">{item.name}</p>
+              <span className="rounded-full bg-surface-strong px-3 py-1 font-mono text-lg">×{item.quantity}</span>
+            </div>
+            {item.colours.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {item.colours.map((c) => {
+                  const on = picks[item.key]?.variantId === c.id;
+                  return (
+                    <motion.button key={c.id} type="button" whileTap={{ scale: 0.92 }} animate={on ? { scale: [1, 1.08, 1] } : { scale: 1 }} transition={{ duration: 0.25 }} onClick={() => pick(item.key, { variantId: c.id })} className={cn("flex min-h-14 items-center gap-2 rounded-full border-2 px-5 text-lg transition-colors", on ? "border-accent-line bg-accent-soft font-semibold" : "border-line bg-bg")}>
+                      {c.hex && <span className="h-6 w-6 shrink-0 rounded-full border border-line" style={{ background: c.hex }} />}
+                      {c.name}
+                    </motion.button>
+                  );
+                })}
+              </div>
+            )}
+            {item.personalize && <input className={cn(field, "mt-3")} value={picks[item.key]?.customText ?? ""} onChange={(e) => pick(item.key, { customText: e.target.value })} placeholder={item.personalize} aria-label={item.personalize} maxLength={24} />}
+          </motion.div>
+        ))}
+      </section>
+
+      <section className="space-y-3">
+        <FormLabel n={3}>When do you need it by?</FormLabel>
+        <div className="flex flex-wrap gap-2">
+          {quick.map((q) => (
+            <motion.button key={q.date} type="button" whileTap={{ scale: 0.92 }} onClick={() => setNeedBy(q.date)} className={cn("min-h-14 rounded-full border-2 px-5 text-lg transition-colors", needBy === q.date ? "border-accent-line bg-accent-soft font-semibold" : "border-line bg-bg")}>
+              {q.label}
+            </motion.button>
+          ))}
+          <input type="date" min={popup.minDate} value={needBy} onChange={(e) => setNeedBy(e.target.value)} aria-label="Pick a day" className="h-14 rounded-full border-2 border-line bg-bg px-5 text-lg outline-none focus:border-accent-line [color-scheme:dark]" />
+        </div>
+        <AnimatePresence mode="wait">
+          {needBy && (
+            <motion.p key={needBy} initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="px-2 text-lg">
+              Ready for pickup by <span className="font-semibold">{dayLabel(needBy)}</span>
+            </motion.p>
+          )}
+        </AnimatePresence>
+        <p className="px-2 text-faint">Pickup is best. Shipping is possible for an extra cost, worked out once it&apos;s printed.</p>
+      </section>
+
+      <section className="space-y-3">
+        <FormLabel n={4}>Anything you&apos;d like changed?</FormLabel>
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={1000} rows={3} placeholder="Size, wording, a colour mix, shipping instead of pickup..." className="w-full rounded-3xl border-2 border-line bg-bg px-6 py-4 text-xl outline-none transition-colors focus:border-accent-line" aria-label="Customizations" />
+      </section>
+
+      <AnimatePresence>{shown && <motion.p key={shown} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: [0, -6, 6, -3, 0] }} className="text-lg text-danger" role="alert">{shown}</motion.p>}</AnimatePresence>
+      <div className="flex gap-3">
+        <Button type="submit" size="lg" className="flex-1" disabled={busy}>
+          {busy ? "One sec..." : "Place my order"}
+        </Button>
+        <Button variant="ghost" size="lg" disabled={busy} onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function FormLabel({ n, children }: { n: number; children: React.ReactNode }) {
+  return (
+    <p className="flex items-center gap-3 text-2xl font-semibold">
+      <span className="grid h-9 w-9 place-items-center rounded-full bg-accent text-lg font-bold text-accent-ink">{n}</span>
+      {children}
+    </p>
   );
 }
 

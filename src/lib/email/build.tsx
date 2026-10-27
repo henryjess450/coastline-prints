@@ -18,7 +18,7 @@ export const EMAIL_TEMPLATES = ["customer-receipt", "owner-new-order", "ready-fo
 export type EmailTemplate = (typeof EMAIL_TEMPLATES)[number];
 
 /** Renders one of the order emails to HTML + plain text, with recipient and subject. */
-export async function buildEmail(template: EmailTemplate, d: OrderEmailData, opts: { note?: string | null } = {}): Promise<OutgoingEmail> {
+export async function buildEmail(template: EmailTemplate, d: OrderEmailData, opts: { note?: string | null; signInUrl?: string } = {}): Promise<OutgoingEmail> {
   let to = d.customerEmail;
   let replyTo: string | undefined = privateSite.ownerEmail;
   let subject: string;
@@ -30,7 +30,7 @@ export async function buildEmail(template: EmailTemplate, d: OrderEmailData, opt
   switch (template) {
     case "customer-receipt":
       subject = `Your ${d.lightlab ? "LightLab" : "Coastline Prints"} order ${d.orderNumber} is confirmed`;
-      node = <CustomerReceipt d={d} />;
+      node = <CustomerReceipt d={d} signInUrl={opts.signInUrl} />;
       break;
     case "owner-new-order":
       to = privateSite.ownerEmail;

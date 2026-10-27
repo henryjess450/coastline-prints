@@ -4,7 +4,7 @@ import type { PosRegister } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { createInvitedAccount } from "@/lib/account/auth";
 import { sendNotificationsSoon } from "@/lib/notify/kick";
-import { PAIR_ALPHABET, PAIR_LENGTH, normalizePairCode, type PosReply, type PosScreen } from "./types";
+import { PAIR_ALPHABET, PAIR_LENGTH, normalizePairCode, orderDetailsError, type PosOrderDetails, type PosReply, type PosScreen } from "./types";
 
 /** The customer display's cookie (its displayToken). */
 export const DISPLAY_COOKIE = "cp_pos";
@@ -69,18 +69,28 @@ export async function joinRewards(email: string, name: string | null) {
  * link; an existing account is just used), or closing it. Only for the popup
  * that's showing, so a stale tap can't answer a newer question.
  */
-export async function replyFromDisplay(r: PosRegister, answer: { popupId: string; kind: PosReply["kind"]; email?: string; name?: string }) {
+export async function replyFromDisplay(r: PosRegister, answer: { popupId: string; kind: PosReply["kind"]; email?: string; name?: string; order?: PosOrderDetails }) {
   const screen = JSON.parse(r.screen) as PosScreen;
   const popup = screen.popup;
   if (!popup || popup.id !== answer.popupId) return null;
   if (answer.kind === "email" && popup.kind !== "email") return null;
   if (answer.kind === "account" && popup.kind !== "account") return null;
+  if (answer.kind === "order") {
+    // Their order details: checked against the form that was showing.
+    if (popup.kind !== "order" || !answer.order) return null;
+    const problem = orderDetailsError(popup, answer.order);
+    if (problem) throw new OrderFormError(problem);
+    answer = { ...answer, email: answer.order.email, name: popup.firstName };
+  }
   const email = answer.email?.trim().toLowerCase() || undefined;
   if (answer.kind !== "dismiss" && !email) return null;
 
   const created = answer.kind === "account" ? await joinRewards(email!, answer.name ?? null) : undefined;
-  const reply: PosReply = { popupId: popup.id, kind: answer.kind, email, name: answer.name?.trim() || undefined, created, at: Date.now() };
+  const reply: PosReply = { popupId: popup.id, kind: answer.kind, email, name: answer.name?.trim() || undefined, created, order: answer.kind === "order" ? answer.order : undefined, at: Date.now() };
   const next: PosScreen = { ...screen, popup: null, ...(email ? { email } : {}) };
   await db.posRegister.update({ where: { id: r.id }, data: { reply: JSON.stringify(reply), screen: JSON.stringify(next), version: { increment: 1 } } });
   return reply;
 }
+
+/** Something's missing on the order form; shown to the customer. */
+export class OrderFormError extends Error {}

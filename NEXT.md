@@ -72,6 +72,46 @@ All must respect `prefers-reduced-motion`.
 - Confirm the Square webhook is set up on the Production side and that a real $1 order
   works end to end (then refund it).
 
+## 4. Take orders at the register (POS "Start order")
+
+Owner's request, 2026-10-26. **Built 2026-10-27** (Start order tile on /admin/pos). For orders taken in person
+(at a market or on the go) that get made and picked up later, rather than handed over now.
+
+The flow:
+
+1. On the register (/admin/pos), a **Start order** button.
+2. Cashier picks the product(s) they want to order.
+3. Cashier types the customer's **first name**.
+4. The customer display (CDS) opens an order form headed **"Order for {first name}"**, where
+   the customer:
+   - enters their **phone number** and **email**,
+   - chooses the **colour** of each item,
+   - picks **when they need it by** (at least a week out),
+   - adds any **customizations** (free text).
+5. On submit:
+   - an email goes to the owner (henryjess450@gmail.com) about the new order,
+   - an email goes to the customer to **confirm their account and their order**,
+   - the customer can **track the order** from that email (their account and order page),
+   - it shows up as a **new order on the admin dashboard** (Orders board and Today).
+
+Owner's answers (2026-10-26):
+
+- **Payment:** paid in full now, by **e-Transfer or cash only. No Square** (no card reader, no
+  Scan to pay) for these orders.
+- **Colours:** whatever options are listed under that product (its variants).
+- **Need-by date:** it **is** the pickup date (at least a week out).
+- **Pickup or ship:** pickup is preferred. Shipping is possible, but it costs extra and the
+  price is decided once the part is printed (so shipping is charged later, not at order time).
+- **Confirmation email:** yes, it signs them straight into their account (a sign-in link,
+  like Join rewards), where they can track the order.
+
+Still open: how the later shipping charge works (e.g. the owner adds it to the order once
+printed and the customer pays it by e-Transfer). For now the form and receipt say to ask, and
+the owner sorts shipping by reply.
+
+Already there to build on: the CDS popups and reply flow (src/lib/pos), Join rewards making an
+account (joinRewards), finalizeCheckout with admin options, the account order page (/orders/[token]).
+
 ## Suggested order
 
 1. Home page rework (with scroll reveals and hero animation).

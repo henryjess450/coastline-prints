@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/Button";
 import { Segmented } from "@/components/ui/Segmented";
 import { cn } from "@/lib/cn";
 import { money } from "@/lib/format";
-import { POS_BRANDS, type CustomLine, type PosBrand, type PosCartInput, type PosLineView, type PosPayment, type PosPopup, type PosQuote, type PosReply, type PosSaleInput, type PosScreen } from "@/lib/pos/types";
+import { formatPickup } from "@/lib/pickup";
+import { orderMinDate, POS_BRANDS, type CustomLine, type PosBrand, type PosCartInput, type PosLineView, type PosOrderItem, type PosPayment, type PosPopup, type PosQuote, type PosReply, type PosSaleInput, type PosScreen } from "@/lib/pos/types";
+import { pickup } from "@config/pickup";
 import { needsVariant, unitPrice, type ShopProductDto } from "@/lib/shop/types";
 import { AnimatedMoney, DrawnCheck, Modal, Qr, Thumb, useForceDark } from "./bits";
 import { CustomerScreen, type ReplyFn } from "./CustomerScreen";
@@ -17,7 +19,9 @@ type ProductLine = { key: string; productId: string; variantId: string | null; q
 type PayKind = PosPayment | "LINK";
 type Done = { orderId: string; orderNumber: string; changeCents: number | null; emailed: boolean; screen: PosScreen };
 type PayLink = { linkId: string; url: string; orderId: string; amountCents: number };
-type Panel = null | "custom" | "print" | "codes" | "customer" | "send" | { product: ShopProductDto };
+type Panel = null | "custom" | "print" | "codes" | "customer" | "send" | "order" | { product: ShopProductDto };
+/** Start order: who it's for, what they're ordering (until they fill in the form), and the day they need it. */
+type TakenOrder = { firstName: string; items: PosOrderItem[]; popupId: string; needBy: string | null };
 export type RegisterLinks = { etransferEmail: string | null; instagram: string; review: string | null; payLinks: boolean };
 
 const store = {
@@ -81,6 +85,12 @@ export function Register({ products, printOptions, links }: { products: Record<P
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState<Done | null>(null);
   const [link, setLink] = useState<PayLink | null>(null);
+  const [order, setOrder] = useState<TakenOrder | null>(null);
+  // For the reply handler, which is set up once.
+  const orderRef = useRef<TakenOrder | null>(null);
+  useEffect(() => {
+    orderRef.current = order;
+  }, [order]);
 
   const say = (text: string) => setToast({ id: Date.now(), text });
   useEffect(() => {
@@ -151,10 +161,10 @@ export function Register({ products, printOptions, links }: { products: Record<P
   // What the customer sees.
   const screen: PosScreen = useMemo(() => {
     if (done) return { ...done.screen, popup };
-    const base = { brand, popup, email: customer.email || undefined };
+    const base = { brand, popup, email: customer.email || undefined, orderFor: order?.firstName, needBy: order?.needBy ?? undefined };
     if (empty || !shownQuote) return { stage: "idle", ...base };
     return { stage: "cart", ...base, lines: shownQuote.lines, fees: shownQuote.fees, discounts: shownQuote.discounts, totalCents: shownQuote.totalCents, payment: pay, tenderedCents: tenderedCents != null && !Number.isNaN(tenderedCents) ? tenderedCents : null };
-  }, [done, empty, shownQuote, brand, pay, tenderedCents, customer.email, popup]);
+  }, [done, empty, shownQuote, brand, pay, tenderedCents, customer.email, popup, order]);
 
   // Push it to the paired display (lightly debounced so typing doesn't flood it).
   const lastPushed = useRef("");
@@ -176,6 +186,26 @@ export function Register({ products, printOptions, links }: { products: Record<P
   /** The customer answered a popup (on the display, or on this iPad turned around). */
   const handleReply = useCallback((r: PosReply) => {
     setPopup((p) => (p?.id === r.popupId ? null : p));
+    const taken = orderRef.current;
+    if (r.kind === "order" && r.order && taken?.popupId === r.popupId) {
+      // Their order form is in: the cart becomes what they chose, ready to take payment.
+      const o = r.order;
+      setLines(
+        taken.items.map((item) => {
+          const pick = o.lines.find((l) => l.key === item.key);
+          return { key: item.key, productId: item.productId, variantId: pick?.variantId ?? null, quantity: item.quantity, customText: pick?.customText ?? "" };
+        }),
+      );
+      setCustomer({ name: taken.firstName, email: o.email, phone: o.phone, notes: o.notes });
+      setOrder({ ...taken, needBy: o.needBy });
+      say(`${taken.firstName}'s order is in. Take payment by cash or e-Transfer.`);
+      return;
+    }
+    if (r.kind === "dismiss" && taken && !taken.needBy && taken.popupId === r.popupId) {
+      setOrder(null);
+      say(`${taken.firstName} cancelled the order form`);
+      return;
+    }
     if (r.email) setCustomer((c) => ({ ...c, email: r.email!, name: c.name || r.name || "" }));
     if (r.kind === "email") say(`Receipt will go to ${r.email}`);
     if (r.kind === "account") say(r.created ? `Welcome ${r.name || r.email}! Account made, sign-in link on its way.` : `${r.email} already has an account. Points go there.`);
@@ -220,7 +250,7 @@ export function Register({ products, printOptions, links }: { products: Record<P
       if (!res.ok) return body.error ?? "That didn't work.";
       handleReply({ popupId: a.popupId, kind: "account", email: a.email, name: a.name, created: body.created, at: Date.now() });
     } else {
-      handleReply({ popupId: a.popupId, kind: a.kind, email: a.email, name: a.name, at: Date.now() });
+      handleReply({ popupId: a.popupId, kind: a.kind, email: a.order?.email ?? a.email, name: a.name, order: a.order, at: Date.now() });
     }
     setFlip(false);
     return null;
@@ -238,6 +268,23 @@ export function Register({ products, printOptions, links }: { products: Record<P
     setPopup(p);
     setPanel(null);
     if (!registerId) setFlip(true);
+  }
+
+  /** Start order: a fresh cart, then the order form on the display (or this iPad turned around). */
+  function startOrder(firstName: string, picks: { product: ShopProductDto; quantity: number }[]) {
+    newSale();
+    const items: PosOrderItem[] = picks.map(({ product: p, quantity }) => ({
+      key: crypto.randomUUID().slice(0, 12),
+      productId: p.id,
+      name: p.name,
+      image: p.images[0],
+      quantity,
+      colours: p.variants.filter((v) => v.stock !== 0).map((v) => ({ id: v.id, name: v.name, hex: v.hex })),
+      personalize: p.personalize,
+    }));
+    const id = popupId();
+    setOrder({ firstName, items, popupId: id, needBy: null });
+    show({ id, kind: "order", firstName, items, minDate: orderMinDate() });
   }
 
   function addProduct(p: ShopProductDto, variantId: string | null = null, customText = "", quantity = 1) {
@@ -265,6 +312,7 @@ export function Register({ products, printOptions, links }: { products: Record<P
     setDone(null);
     setFlip(false);
     setLink(null);
+    setOrder(null);
     setAttemptId(crypto.randomUUID());
     // Fresh stock counts on the tiles after a sale.
     if (done) router.refresh();
@@ -296,6 +344,7 @@ export function Register({ products, printOptions, links }: { products: Record<P
       ...opts,
       emailCustomer: opts.emailCustomer && !!customer.email.trim(),
       registerId,
+      ...(order?.needBy ? { order: { needBy: order.needBy }, handedOver: false, emailCustomer: true } : {}),
     };
     try {
       const res = await fetch("/api/admin/pos/sale", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -304,7 +353,7 @@ export function Register({ products, printOptions, links }: { products: Record<P
         if (out.quote) setQuote(out.quote);
         throw new Error(out.error ?? "Couldn't ring up the sale.");
       }
-      const thanks: PosScreen = { stage: "done", brand, lines: shownQuote.lines, totalCents: shownQuote.totalCents, payment: squarePaymentId ? "LINK" : payment, email: customer.email || undefined, orderNumber: out.orderNumber, emailed: out.emailed, popup: null };
+      const thanks: PosScreen = { stage: "done", brand, lines: shownQuote.lines, totalCents: shownQuote.totalCents, payment: squarePaymentId ? "LINK" : payment, email: customer.email || undefined, orderFor: order?.needBy ? order.firstName : undefined, needBy: order?.needBy ?? undefined, orderNumber: out.orderNumber, emailed: out.emailed, popup: null };
       lastPushed.current = JSON.stringify(thanks); // the server already showed it on the display
       setPopup(null);
       setPay(null);
@@ -397,7 +446,8 @@ export function Register({ products, printOptions, links }: { products: Record<P
       <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
         {/* Tiles */}
         <div className="space-y-4">
-          <div className={cn("grid gap-3", brand === "coastline" ? "grid-cols-2 sm:grid-cols-5" : "grid-cols-2 sm:grid-cols-4")}>
+          <div className={cn("grid gap-3", brand === "coastline" ? "grid-cols-2 sm:grid-cols-6" : "grid-cols-2 sm:grid-cols-5")}>
+            <ActionTile icon="📝" label={order ? `Order: ${order.firstName}` : "Start order"} active={!!order} onClick={() => setPanel("order")} />
             <ActionTile icon="＋" label="Custom item" onClick={() => setPanel("custom")} />
             {brand === "coastline" && <ActionTile icon="⬡" label="Print from file" badge={files.length || undefined} onClick={() => setPanel("print")} />}
             <ActionTile icon="🎟" label="Code or gift card" badge={codes.length || undefined} onClick={() => setPanel("codes")} />
@@ -456,16 +506,35 @@ export function Register({ products, printOptions, links }: { products: Record<P
           <div className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-3xl border border-line bg-elev">
             <div className="flex items-center justify-between px-5 pt-4">
               <h2 className="font-display text-lg font-semibold">
-                Sale {itemCount > 0 && <span className="text-muted">· {itemCount}</span>}
+                {order ? `Order for ${order.firstName}` : "Sale"} {itemCount > 0 && <span className="text-muted">· {itemCount}</span>}
               </h2>
-              {!empty && (
+              {(!empty || order) && (
                 <button type="button" onClick={newSale} className="text-sm text-muted hover:text-danger">
                   Clear
                 </button>
               )}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-              {empty ? (
+              {order && !order.needBy ? (
+                <div className="grid place-items-center gap-3 py-12 text-center text-muted">
+                  <motion.span animate={{ rotate: [0, -8, 8, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="text-4xl">
+                    📝
+                  </motion.span>
+                  <p className="text-sm">Waiting for {order.firstName} to fill in the order form.</p>
+                  <div className="flex gap-2">
+                    {!registerId && (
+                      <Button size="sm" variant="secondary" onClick={() => setFlip(true)}>
+                        Turn it around
+                      </Button>
+                    )}
+                    {popup?.id !== order.popupId && (
+                      <Button size="sm" variant="secondary" onClick={() => show({ id: order.popupId, kind: "order", firstName: order.firstName, items: order.items, minDate: orderMinDate() })}>
+                        Show the form again
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ) : empty ? (
                 <div className="grid place-items-center py-14 text-center text-muted">
                   <motion.span animate={{ y: [0, -6, 0] }} transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }} className="text-4xl">
                     🛍
@@ -500,17 +569,19 @@ export function Register({ products, printOptions, links }: { products: Record<P
                   <span className="font-semibold">Total</span>
                   <AnimatedMoney cents={shownQuote.totalCents} className="font-display text-4xl font-bold" />
                 </div>
-                {(customer.email || customer.name) && <p className="mt-1 truncate text-xs text-faint">For {[customer.name, customer.email].filter(Boolean).join(" · ")}</p>}
+                {(customer.email || customer.name) && <p className="mt-1 truncate text-xs text-faint">For {[customer.name, customer.email, customer.phone].filter(Boolean).join(" · ")}</p>}
+                {order?.needBy && <p className="mt-1 text-xs text-accent-text">Ready by {formatPickup(order.needBy, null, pickup)} · paid now, made later</p>}
+                {order?.needBy && customer.notes && <p className="mt-1 line-clamp-2 text-xs text-muted">“{customer.notes}”</p>}
               </div>
             )}
 
             <div className="grid grid-cols-3 gap-2 border-t border-line p-3">
-              {PAY_TILES.filter((t) => t.id !== "LINK" || links.payLinks).map((t) => (
+              {PAY_TILES.filter((t) => (order ? t.id === "CASH" || t.id === "ETRANSFER" : t.id !== "LINK" || links.payLinks)).map((t) => (
                 <motion.button
                   key={t.id}
                   type="button"
                   whileTap={{ scale: 0.92 }}
-                  disabled={total == null || (t.id === "LINK" && (total ?? 0) < 100)}
+                  disabled={total == null || (t.id === "LINK" && (total ?? 0) < 100) || (!!order && !order.needBy)}
                   onClick={() => openPay(t.id)}
                   title={t.hint}
                   className="flex flex-col items-center gap-1 rounded-2xl border border-line bg-surface px-2 py-3 text-sm font-semibold transition-colors hover:border-accent-line hover:bg-surface-strong disabled:opacity-35"
@@ -573,6 +644,19 @@ export function Register({ products, printOptions, links }: { products: Record<P
         </div>
       </Modal>
 
+      <Modal open={panel === "order"} onClose={() => setPanel(null)} title="Start an order" wide>
+        <StartOrder
+          products={shopProducts}
+          current={order}
+          hasDisplay={!!registerId}
+          onStart={startOrder}
+          onCancel={() => {
+            newSale();
+            setPanel(null);
+          }}
+        />
+      </Modal>
+
       <Modal open={panel === "send"} onClose={() => setPanel(null)} title="Send to the display" wide>
         <SendPanel brand={brand} popup={popup} links={links} onSend={show} onClear={() => setPopup(null)} hasDisplay={!!registerId} />
       </Modal>
@@ -589,7 +673,7 @@ export function Register({ products, printOptions, links }: { products: Record<P
         )}
       </Modal>
 
-      <Modal open={!!pay && !done} onClose={saving ? undefined : closePay} title={PAY_TILES.find((t) => t.id === pay)?.label} footer={pay && pay !== "LINK" ? <PayFooter opts={opts} setOpts={setOpts} hasEmail={!!customer.email.trim()} /> : undefined}>
+      <Modal open={!!pay && !done} onClose={saving ? undefined : closePay} title={PAY_TILES.find((t) => t.id === pay)?.label} footer={pay && pay !== "LINK" && !order ? <PayFooter opts={opts} setOpts={setOpts} hasEmail={!!customer.email.trim()} /> : undefined}>
         {total != null && pay && (
           <div className="space-y-4">
             <div className="flex items-baseline justify-between">
@@ -744,6 +828,78 @@ function TicketRow({ line, onQty, onRemove }: { line: PosLineView; onQty: (q: nu
       </div>
       <span className="w-16 text-right font-mono text-sm">{line.cents == null ? "..." : money(line.cents)}</span>
     </motion.li>
+  );
+}
+
+/**
+ * Start order, the cashier's half: what they're ordering and their first
+ * name. The customer chooses colours and the rest on the display.
+ */
+function StartOrder({ products, current, hasDisplay, onStart, onCancel }: { products: ShopProductDto[]; current: TakenOrder | null; hasDisplay: boolean; onStart: (firstName: string, picks: { product: ShopProductDto; quantity: number }[]) => void; onCancel: () => void }) {
+  const [qty, setQty] = useState<Record<string, number>>({});
+  const [name, setName] = useState("");
+  const picks = products.filter((p) => qty[p.id]).map((p) => ({ product: p, quantity: qty[p.id] }));
+  const bump = (id: string, by: number) => setQty((q) => ({ ...q, [id]: Math.max(0, Math.min(20, (q[id] ?? 0) + by)) }));
+  if (!products.length) return <p className="pb-4 text-muted">No products in this shop yet. Add some in the shop admin first.</p>;
+  return (
+    <div className="space-y-5 pb-2">
+      {current && (
+        <div className="flex items-center justify-between gap-3 rounded-2xl bg-accent-soft p-3 text-sm">
+          <span>
+            Taking an order for <strong>{current.firstName}</strong>. Starting a new one clears it.
+          </span>
+          <Button size="sm" variant="ghost" onClick={onCancel}>
+            Cancel it
+          </Button>
+        </div>
+      )}
+      <div>
+        <p className="mb-2 text-sm font-semibold text-muted">1. What are they ordering?</p>
+        <div className="grid max-h-[46dvh] grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
+          {products.map((p) => {
+            const n = qty[p.id] ?? 0;
+            const soldOut = p.stock === 0 || (p.variants.length > 0 && p.variants.every((v) => v.stock === 0));
+            return (
+              <div key={p.id} className={cn("overflow-hidden rounded-2xl border bg-surface transition-colors", n ? "border-accent-line" : "border-line", soldOut && "opacity-35")}>
+                <motion.button type="button" whileTap={{ scale: 0.95 }} disabled={soldOut} onClick={() => bump(p.id, 1)} className="flex w-full items-center gap-2 p-2 text-left">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {p.images[0] ? <img src={p.images[0]} alt="" className="h-12 w-12 shrink-0 rounded-xl object-cover" /> : <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-surface-strong font-display text-xl text-faint">{p.name.charAt(0)}</span>}
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold">{p.name}</span>
+                    <span className="text-xs text-muted">
+                      {money(p.priceCents)}
+                      {p.variants.length > 0 && ` · ${p.variants.length} colours`}
+                    </span>
+                  </span>
+                </motion.button>
+                <AnimatePresence>
+                  {n > 0 && (
+                    <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} className="flex items-center justify-between overflow-hidden border-t border-line px-2">
+                      <button type="button" className="h-9 w-9 text-lg" onClick={() => bump(p.id, -1)} aria-label="One less">
+                        −
+                      </button>
+                      <motion.span key={n} initial={{ scale: 1.4 }} animate={{ scale: 1 }} className="font-semibold tabular-nums">
+                        {n}
+                      </motion.span>
+                      <button type="button" className="h-9 w-9 text-lg" onClick={() => bump(p.id, 1)} aria-label="One more">
+                        +
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <Field label="2. Their first name">
+        <input className={input} value={name} maxLength={40} autoComplete="off" autoCapitalize="words" onChange={(e) => setName(e.target.value)} placeholder="Sam" />
+      </Field>
+      <Button size="lg" className="w-full" disabled={!picks.length || !name.trim()} onClick={() => onStart(name.trim().split(/\s+/)[0], picks)}>
+        {hasDisplay ? "Send the order form to the display" : "Turn around for them to fill in"}
+      </Button>
+      <p className="text-xs text-faint">They add their phone, email, colours, the day they need it (at least a week out) and any changes. Then you take payment by cash or e-Transfer.</p>
+    </div>
   );
 }
 
@@ -1048,7 +1204,8 @@ function SaleDone({ done, onNew, onShowThanks }: { done: Done; onNew: () => void
   return (
     <div className="py-2 text-center">
       <DrawnCheck className="mx-auto h-20 w-20 text-success" />
-      <p className="mt-3 font-display text-3xl font-bold">Sale complete</p>
+      <p className="mt-3 font-display text-3xl font-bold">{done.screen.needBy ? "Order placed" : "Sale complete"}</p>
+      {done.screen.needBy && <p className="mt-1 text-sm text-muted">Ready by {formatPickup(done.screen.needBy, null, pickup)}. It&apos;s on the Orders board.</p>}
       <p className="mt-1 text-muted">
         <Link href={`/admin/orders/${done.orderId}`} className="font-mono text-accent-text hover:underline">
           {done.orderNumber}

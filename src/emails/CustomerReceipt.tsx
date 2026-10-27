@@ -4,7 +4,8 @@ import type { OrderEmailData } from "@/lib/email/data";
 import { accentFor, AddressBox, colors, EmailLayout, H1, Label, P, PillButton, ShipToBox } from "./components/Layout";
 import { ItemTable } from "./ItemTable";
 
-export function CustomerReceipt({ d }: { d: OrderEmailData }) {
+/** `signInUrl`: an order taken at the register, where we also made their account. One tap signs them in. */
+export function CustomerReceipt({ d, signInUrl }: { d: OrderEmailData; signInUrl?: string }) {
   const first = d.customerName.split(/\s+/)[0];
   const accent = accentFor(d.lightlab);
   const steps = [
@@ -57,18 +58,30 @@ export function CustomerReceipt({ d }: { d: OrderEmailData }) {
         <>
           <Label accent={accent}>Pickup</Label>
           <P muted>
-            {d.pickupWhen
+            {signInUrl
+              ? "Your order will be ready by the day below. We'll email you when it's ready to pick up, and to set a time. If you'd rather have it shipped, just reply: we'll tell you the cost once it's printed."
+              : d.pickupWhen
               ? "Here's the pickup time you chose. We'll email you to confirm once your order is ready. If the time stops working for you, just reply to this email."
               : "This order is for local pickup. Please wait for the \"ready for pickup\" email before coming by."}
           </P>
-          <AddressBox accent={accent} address={d.pickupAddress ?? ""} when={d.pickupWhen} />
+          <AddressBox accent={accent} address={d.pickupAddress ?? ""} when={d.pickupWhen} whenLabel={signInUrl ? "Ready by" : undefined} />
           <Text style={{ margin: "0 0 20px", fontSize: 12, color: colors.faint }}>Please keep this address private.</Text>
         </>
       )}
 
-      <Section style={{ margin: "8px 0 4px" }}>
-        <PillButton accent={accent} href={d.links.status}>Track your order</PillButton>
-      </Section>
+      {signInUrl ? (
+        <>
+          <Label accent={accent}>Your account</Label>
+          <P muted>We set up an account with this email so you can follow your order, collect reward points and save gift cards. The button signs you straight in, no password needed.</P>
+          <Section style={{ margin: "8px 0 4px" }}>
+            <PillButton accent={accent} href={signInUrl}>Sign in and track your order</PillButton>
+          </Section>
+        </>
+      ) : (
+        <Section style={{ margin: "8px 0 4px" }}>
+          <PillButton accent={accent} href={d.links.status}>Track your order</PillButton>
+        </Section>
+      )}
       <P muted>
         Questions? Just reply to this email. Your order details are also at{" "}
         <Link href={d.links.confirmation} style={accent.link}>
