@@ -5,7 +5,9 @@ import { lookupCodes, toCodeInfo } from "@/lib/codes/server";
 import { getEffectiveConfig } from "@/lib/config/effective";
 import type { CartSnapshot } from "@/lib/orders/finalize";
 import { CartError, priceCart } from "@/lib/pricing/server-quote";
+import { db } from "@/lib/db";
 import { priceShopCart } from "@/lib/shop/price.server";
+import { shopImageUrl } from "@/lib/shop/types";
 import type { PosCartInput, PosLineView, PosQuote } from "./types";
 import { posCartSchema } from "./types";
 
@@ -39,13 +41,23 @@ export async function pricePos(raw: PosCartInput): Promise<PricedPos> {
   }
   if (shop && shop.shop !== cart.brand) return empty(`Those products are from the other shop. Switch the register to ${shop.shop === "lightlab" ? "LightLab" : "Coastline Prints"}.`);
 
+  // Each product's cover photo, for the thumbnails on the register and display.
+  const covers = new Map(
+    shop
+      ? (await db.shopProduct.findMany({ where: { id: { in: shop.shopLines.map((l) => l.productId) } }, select: { id: true, images: true } })).map((p) => {
+          const first = (JSON.parse(p.images) as string[])[0];
+          return [p.id, first ? shopImageUrl(first) : undefined];
+        })
+      : [],
+  );
+  const hexOf = (material: string, colorId: string) => config.materials.find((m) => m.id === material)?.colors.find((c) => c.id === colorId)?.hex;
   const lines: PosLineView[] = [
     ...(prints?.lines ?? []).map((l, i) => {
       const q = prints!.items[i];
-      return { key: `print-${i}`, name: l.fileName, detail: `${l.material} · ${l.colorName}`, quantity: l.quantity, cents: q.ok ? q.lineCents : null, error: q.ok ? undefined : q.error };
+      return { key: `print-${i}`, kind: "print" as const, name: l.fileName, detail: `${l.material} · ${l.colorName}`, quantity: l.quantity, cents: q.ok ? q.lineCents : null, error: q.ok ? undefined : q.error, swatch: hexOf(l.material, l.colorId) };
     }),
-    ...(shop?.shopLines ?? []).map((l, i) => ({ key: `product-${i}`, name: l.name, detail: [l.variantName, l.customText && `"${l.customText}"`].filter(Boolean).join(" · ") || undefined, quantity: l.quantity, cents: l.lineCents })),
-    ...cart.custom.map((c, i) => ({ key: `custom-${i}`, name: c.name, quantity: c.quantity, cents: c.unitCents * c.quantity })),
+    ...(shop?.shopLines ?? []).map((l, i) => ({ key: `product-${i}`, kind: "product" as const, name: l.name, detail: [l.variantName, l.customText && `"${l.customText}"`].filter(Boolean).join(" · ") || undefined, quantity: l.quantity, cents: l.lineCents, image: covers.get(l.productId) })),
+    ...cart.custom.map((c, i) => ({ key: `custom-${i}`, kind: "custom" as const, name: c.name, quantity: c.quantity, cents: c.unitCents * c.quantity })),
   ];
   const customCents = cart.custom.reduce((s, c) => s + c.unitCents * c.quantity, 0);
   const fees = [...(prints?.baseFeeCents ? [{ label: "Order fee", cents: prints.baseFeeCents }] : []), ...(prints?.minimumAdjCents ? [{ label: "Minimum order top-up", cents: prints.minimumAdjCents }] : [])];

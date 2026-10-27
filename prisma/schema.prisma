@@ -582,6 +582,8 @@ model PosRegister {
   screen        String    @default("{\"stage\":\"idle\"}")
   /// Typed by the customer on the display, picked up by the cashier.
   customerEmail String?
+  /// JSON PosReply: the customer's answer to the last popup (email, account sign-up, closed it).
+  reply         String?
   /// Bumped on every change, so both sides poll cheaply.
   version       Int       @default(0)
   lastSeenAt    DateTime  @default(now())

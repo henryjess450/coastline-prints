@@ -1,7 +1,9 @@
 import { Register } from "@/components/pos/Register";
 import { requireAdmin } from "@/lib/admin/auth";
 import { getEffectiveConfig } from "@/lib/config/effective";
+import { payLinksAvailable } from "@/lib/pos/paylink.server";
 import { listProducts } from "@/lib/shop/products.server";
+import { reviews, seo } from "@config/site";
 
 export const metadata = { title: "Register" };
 
@@ -12,6 +14,7 @@ export default async function RegisterPage() {
   return (
     <Register
       products={{ lightlab, coastline }}
+      links={{ etransferEmail: process.env.ETRANSFER_EMAIL || null, instagram: seo.instagram, review: reviews.googleUrl || null, payLinks: payLinksAvailable() }}
       printOptions={{
         materials: cfg.materials.map((m) => ({ id: m.id, name: m.name, colors: m.colors.filter((c) => c.available).map((c) => ({ id: c.id, name: c.name, hex: c.hex })) })),
         qualities: cfg.qualityPresets.map((q) => ({ id: q.id, name: q.name })),

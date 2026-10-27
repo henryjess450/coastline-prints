@@ -5,7 +5,8 @@ import { db } from "@/lib/db";
 import { money } from "@/lib/format";
 import { sendNotificationsSoon } from "@/lib/notify/kick";
 import { changeOrderStatus } from "@/lib/orders/admin";
-import { finalizeCheckout } from "@/lib/orders/finalize";
+import { finalizeCheckout, paymentFacts, type PaymentFacts } from "@/lib/orders/finalize";
+import { getSquare } from "@/lib/square/client";
 import { ADMIN_PAYMENT_PREFIX } from "@/lib/orders/manual";
 import { pricePos, publicQuote } from "./price.server";
 import { pushScreen } from "./register.server";
@@ -37,6 +38,16 @@ export async function ringUpSale(raw: PosSaleInput) {
   if (priced.totalCents !== sale.expectedTotalCents) throw new PosSaleError(`The total changed to ${money(priced.totalCents)}. Check it with the customer.`, publicQuote(priced));
   if (sale.payment === "CASH" && sale.tenderedCents != null && sale.tenderedCents < priced.totalCents) throw new PosSaleError("That's less cash than the total.");
 
+  // Paid by Square link: the payment must be real, complete, for this total, and not already on an order.
+  let squarePayment: PaymentFacts | null = null;
+  if (sale.squarePaymentId) {
+    if (await db.order.findUnique({ where: { squarePaymentId: sale.squarePaymentId } })) throw new PosSaleError("That Square payment is already on another order.");
+    const { payment } = await getSquare().payments.get({ paymentId: sale.squarePaymentId });
+    squarePayment = payment ? paymentFacts(payment) : null;
+    if (!squarePayment || squarePayment.status !== "COMPLETED") throw new PosSaleError("Square hasn't finished that payment yet.");
+    if (squarePayment.amountCents !== priced.totalCents) throw new PosSaleError(`Square took ${money(squarePayment.amountCents)}, but the total is ${money(priced.totalCents)}. Check the sale.`);
+  }
+
   const change = sale.payment === "CASH" && sale.tenderedCents != null ? sale.tenderedCents - priced.totalCents : null;
   const email = sale.customer.email;
   const checkout = await db.checkout.create({
@@ -50,7 +61,7 @@ export async function ringUpSale(raw: PosSaleInput) {
       discountCents: priced.discountCents,
       giftCardCents: priced.giftCardCents,
       appliedCodes: JSON.stringify(priced.applied),
-      paymentMethod: sale.payment,
+      paymentMethod: squarePayment ? "CARD" : sale.payment,
       customerName: sale.customer.name || "Walk-in customer",
       customerEmail: email,
       customerPhone: sale.customer.phone,
@@ -73,8 +84,8 @@ export async function ringUpSale(raw: PosSaleInput) {
   try {
     result = await finalizeCheckout(
       checkout.id,
-      { id: `${ADMIN_PAYMENT_PREFIX}${checkout.id}`, status: "COMPLETED", amountCents: checkout.totalCents, currency: checkout.currency },
-      { note: ["Rung up at the register", sale.source, paid].filter(Boolean).join(" · "), emailCustomer: sale.emailCustomer, printTicket: sale.printTicket },
+      squarePayment ?? { id: `${ADMIN_PAYMENT_PREFIX}${checkout.id}`, status: "COMPLETED", amountCents: checkout.totalCents, currency: checkout.currency },
+      { note: ["Rung up at the register", sale.source, squarePayment ? "Paid by Square link" : paid].filter(Boolean).join(" · "), emailCustomer: sale.emailCustomer, printTicket: sale.printTicket },
     );
   } catch (err) {
     await releaseCodes(checkout.id);
@@ -99,11 +110,13 @@ export async function ringUpSale(raw: PosSaleInput) {
       fees: priced.fees,
       discounts: priced.discounts,
       totalCents: priced.totalCents,
-      payment: sale.payment,
+      payment: squarePayment ? "LINK" : sale.payment,
       tenderedCents: sale.tenderedCents,
+      email: email || undefined,
       orderNumber: result.order.orderNumber,
       emailed,
-    }).catch((e) => logError("pos:screen", e));
+      popup: null,
+    }, { clearReply: true }).catch((e) => logError("pos:screen", e));
   }
   return { order: result.order, emailed, changeCents: change };
 }

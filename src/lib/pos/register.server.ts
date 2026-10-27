@@ -2,7 +2,9 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import type { PosRegister } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
-import { PAIR_ALPHABET, PAIR_LENGTH, normalizePairCode, type PosScreen } from "./types";
+import { createInvitedAccount } from "@/lib/account/auth";
+import { sendNotificationsSoon } from "@/lib/notify/kick";
+import { PAIR_ALPHABET, PAIR_LENGTH, normalizePairCode, type PosReply, type PosScreen } from "./types";
 
 /** The customer display's cookie (its displayToken). */
 export const DISPLAY_COOKIE = "cp_pos";
@@ -43,19 +45,42 @@ export async function pairByCode(raw: string) {
   if (code.length !== PAIR_LENGTH) return null;
   const r = await db.posRegister.findUnique({ where: { pairCode: code } });
   if (!r) return null;
-  return db.posRegister.update({ where: { id: r.id }, data: { pairCode: null, pairedAt: new Date(), screen: JSON.stringify({ stage: "idle" }), customerEmail: null, version: { increment: 1 } } });
+  return db.posRegister.update({ where: { id: r.id }, data: { pairCode: null, pairedAt: new Date(), screen: JSON.stringify({ stage: "idle" }), reply: null, version: { increment: 1 } } });
 }
 
-/** What the display should show now. A fresh cart clears the last customer's email. */
-export async function pushScreen(id: string, screen: PosScreen, opts: { clearEmail?: boolean } = {}) {
-  const { count } = await db.posRegister.updateMany({ where: { id, pairedAt: { not: null } }, data: { screen: JSON.stringify(screen), version: { increment: 1 }, ...(opts.clearEmail ? { customerEmail: null } : {}) } });
+/** What the display should show now. A fresh sale clears the last customer's answer. */
+export async function pushScreen(id: string, screen: PosScreen, opts: { clearReply?: boolean } = {}) {
+  const { count } = await db.posRegister.updateMany({ where: { id, pairedAt: { not: null } }, data: { screen: JSON.stringify(screen), version: { increment: 1 }, ...(opts.clearReply ? { reply: null } : {}) } });
   return count > 0;
 }
 
-/** The customer typed their email (or "" for no thanks). Only while the display is asking. */
-export async function emailFromDisplay(r: PosRegister, email: string) {
-  const screen = JSON.parse(r.screen) as PosScreen;
-  if (screen.stage !== "email") return false;
-  await db.posRegister.update({ where: { id: r.id }, data: { customerEmail: email, screen: JSON.stringify({ ...screen, stage: "cart", email }), version: { increment: 1 } } });
+/** Joins Coastline Rewards at the register: a new account, emailed a sign-in link. False if they already had one. */
+export async function joinRewards(email: string, name: string | null) {
+  const customer = await createInvitedAccount(email, name?.trim() || null);
+  if (!customer) return false;
+  await db.outboxJob.create({ data: { kind: "email", template: "account-invite", payload: JSON.stringify({ orderId: "", customerId: customer.id, note: null }), dedupeKey: `invite:${customer.id}` } });
+  sendNotificationsSoon("pos-account");
   return true;
+}
+
+/**
+ * The customer answered the popup on the display: an email for the receipt,
+ * joining Coastline Rewards (makes the account and emails them a sign-in
+ * link; an existing account is just used), or closing it. Only for the popup
+ * that's showing, so a stale tap can't answer a newer question.
+ */
+export async function replyFromDisplay(r: PosRegister, answer: { popupId: string; kind: PosReply["kind"]; email?: string; name?: string }) {
+  const screen = JSON.parse(r.screen) as PosScreen;
+  const popup = screen.popup;
+  if (!popup || popup.id !== answer.popupId) return null;
+  if (answer.kind === "email" && popup.kind !== "email") return null;
+  if (answer.kind === "account" && popup.kind !== "account") return null;
+  const email = answer.email?.trim().toLowerCase() || undefined;
+  if (answer.kind !== "dismiss" && !email) return null;
+
+  const created = answer.kind === "account" ? await joinRewards(email!, answer.name ?? null) : undefined;
+  const reply: PosReply = { popupId: popup.id, kind: answer.kind, email, name: answer.name?.trim() || undefined, created, at: Date.now() };
+  const next: PosScreen = { ...screen, popup: null, ...(email ? { email } : {}) };
+  await db.posRegister.update({ where: { id: r.id }, data: { reply: JSON.stringify(reply), screen: JSON.stringify(next), version: { increment: 1 } } });
+  return reply;
 }

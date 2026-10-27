@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import type { PosScreen } from "@/lib/pos/types";
-import { CustomerScreen } from "./CustomerScreen";
+import { useForceDark } from "./bits";
+import { CustomerScreen, type ReplyFn } from "./CustomerScreen";
 
 type State = { paired: boolean; pairCode: string | null; screen: PosScreen; version: number };
 
@@ -17,6 +18,7 @@ export function PosDisplay() {
   const [state, setState] = useState<State | null>(null);
   const [offline, setOffline] = useState(false);
   const version = useRef(-1);
+  useForceDark();
 
   const load = useCallback(async () => {
     try {
@@ -64,14 +66,14 @@ export function PosDisplay() {
     };
   }, []);
 
-  async function sendEmail(email: string) {
-    const res = await fetch("/api/pos/display/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+  const reply: ReplyFn = async (answer) => {
+    const res = await fetch("/api/pos/display/reply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(answer) });
     if (res.ok) {
       await load();
       return null;
     }
     return ((await res.json().catch(() => ({}))) as { error?: string }).error ?? "That didn't work. Try again.";
-  }
+  };
 
   const dot = <span title={offline ? "Can't reach the register" : "Connected"} className={cn("h-2.5 w-2.5 rounded-full", offline ? "bg-danger" : "bg-success/60")} />;
 
@@ -87,5 +89,5 @@ export function PosDisplay() {
       </div>
     );
   }
-  return <CustomerScreen screen={state.screen} onEmail={sendEmail} corner={dot} />;
+  return <CustomerScreen screen={state.screen} onReply={reply} corner={dot} />;
 }
