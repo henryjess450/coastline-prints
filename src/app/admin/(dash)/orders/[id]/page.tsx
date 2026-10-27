@@ -2,7 +2,8 @@ import Link from "next/link";
 import { shopImageUrl } from "@/lib/shop/types";
 import { notFound } from "next/navigation";
 import { pickup } from "@config/pickup";
-import { dismissJobAction, printReceiptAction, retryJobAction } from "@/app/admin/actions";
+import { dismissJobAction, markPaidAction, printReceiptAction, retryJobAction } from "@/app/admin/actions";
+import { isAdminOrder, MANUAL_PAYMENTS, manualPaymentLabel } from "@/lib/orders/manual";
 import { PrintButton } from "@/components/admin/PrintButton";
 import { LabelPrinter } from "@/components/admin/LabelPrinter";
 import { privateSite } from "@config/private.server";
@@ -129,16 +130,22 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
                 ★ {returningLabel(order.customerOrderCount)}
               </Link>
             )}
-            <p>
-              <a className="text-accent-text hover:underline" href={`mailto:${order.customerEmail}?subject=${encodeURIComponent(`Your order ${order.orderNumber}`)}`}>
-                {order.customerEmail}
-              </a>
-            </p>
-            <p>
-              <a className="text-accent-text hover:underline" href={`tel:${order.customerPhone.replace(/[^\d+]/g, "")}`}>
-                {order.customerPhone}
-              </a>
-            </p>
+            {order.customerEmail ? (
+              <p>
+                <a className="text-accent-text hover:underline" href={`mailto:${order.customerEmail}?subject=${encodeURIComponent(`Your order ${order.orderNumber}`)}`}>
+                  {order.customerEmail}
+                </a>
+              </p>
+            ) : (
+              <p className="text-faint">No email</p>
+            )}
+            {order.customerPhone && (
+              <p>
+                <a className="text-accent-text hover:underline" href={`tel:${order.customerPhone.replace(/[^\d+]/g, "")}`}>
+                  {order.customerPhone}
+                </a>
+              </p>
+            )}
             {order.fulfillment === "SHIP" ? (
               <>
                 <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-faint">Ship to</h3>
@@ -194,12 +201,26 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
                 <Row key={a.code} label={a.kind === "GIFT_CARD" ? `Gift card ${a.code}` : a.label} value={`−${money(a.amountCents)}`} />
               ))}
               {order.etransferDiscountCents > 0 && <Row label="e-Transfer discount" value={`−${money(order.etransferDiscountCents)}`} />}
-              <Row label="Total paid" value={money(order.totalCents)} strong />
+              <Row label={order.paymentMethod === "UNPAID" ? "Total to collect" : "Total paid"} value={money(order.totalCents)} strong />
               {order.cardLast4 && <Row label="Card" value={`${order.cardBrand ?? "Card"} •••• ${order.cardLast4}`} />}
               {order.paymentMethod === "ETRANSFER" && <Row label="Paid by" value="Interac e-Transfer" />}
+              {isAdminOrder(order) && order.paymentMethod === "CARD" && <Row label="Paid by" value="Card (in person)" />}
+              {manualPaymentLabel(order.paymentMethod) && <Row label="Paid by" value={manualPaymentLabel(order.paymentMethod)!} />}
               {order.source && <Row label="Came from" value={order.firstSource && order.firstSource !== order.source ? `${order.source} (first found you: ${order.firstSource})` : order.source} />}
             </dl>
-            <p className="mt-2 break-all font-mono text-xs text-faint">{order.squarePaymentId.startsWith("nopay_")
+            {order.paymentMethod === "UNPAID" && (
+              <form action={markPaidAction} className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-warning/10 p-3">
+                <input type="hidden" name="orderId" value={order.id} />
+                <span className="font-medium text-warning">Not paid yet.</span>
+                <select name="method" aria-label="How they paid" className="h-9 rounded-full border border-line bg-surface px-3 text-sm">
+                  {MANUAL_PAYMENTS.filter((p) => p.id !== "UNPAID").map((p) => (
+                    <option key={p.id} value={p.id}>{p.label}</option>
+                  ))}
+                </select>
+                <button type="submit" className="h-9 rounded-full bg-accent px-4 text-sm font-medium text-accent-ink">Mark paid</button>
+              </form>
+            )}
+            <p className="mt-2 break-all font-mono text-xs text-faint">{isAdminOrder(order) ? "Typed in by you from the admin (nothing charged here)" : order.squarePaymentId.startsWith("nopay_")
                 ? "No card payment (covered by gift card)"
                 : order.paymentMethod === "ETRANSFER"
                   ? order.squarePaymentId.startsWith("etr_manual_")
@@ -210,6 +231,8 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
               <a href={`https://app.squareup.com/dashboard/customers/directory/customer/${order.squareCustomerId}`} target="_blank" rel="noopener noreferrer" className="mt-1 block text-accent-text hover:underline">
                 Customer in Square
               </a>
+            ) : !order.customerEmail ? (
+              <p className="mt-1 text-xs text-faint">No email, so not saved to Square.</p>
             ) : (
               <p className="mt-1 text-xs text-faint">Not linked to a Square customer yet (retrying in the background).</p>
             )}

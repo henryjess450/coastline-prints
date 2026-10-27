@@ -1,4 +1,5 @@
 import "server-only";
+import { isAdminOrder, manualPaymentLabel } from "@/lib/orders/manual";
 import { pickup } from "@config/pickup";
 import { privateSite } from "@config/private.server";
 import { db } from "@/lib/db";
@@ -109,7 +110,7 @@ export async function loadOrderEmailData(orderId: string): Promise<OrderEmailDat
     totalCents: order.totalCents,
     totalGrams: order.items.reduce((g, i) => g + i.gramsEach * i.quantity, 0),
     totalHoursLabel: hours(totalHours),
-    card: order.paymentMethod === "ETRANSFER" ? "Interac e-Transfer" : order.cardLast4 ? `${brand(order.cardBrand)} ending ${order.cardLast4}` : order.totalCents === 0 ? "Gift card" : null,
+    card: manualPaymentLabel(order.paymentMethod) ?? (order.paymentMethod === "ETRANSFER" ? "Interac e-Transfer" : order.cardLast4 ? `${brand(order.cardBrand)} ending ${order.cardLast4}` : isAdminOrder(order) ? (order.paymentMethod === "CARD" ? "Card (in person)" : null) : order.totalCents === 0 ? "Gift card" : null),
     fulfillment: ship ? "SHIP" : "PICKUP",
     pickupAddress: ship ? null : privateSite.pickupAddress,
     shippingCents: order.shippingCents,

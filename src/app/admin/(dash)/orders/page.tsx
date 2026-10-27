@@ -10,6 +10,7 @@ import { PrintButton } from "@/components/admin/PrintButton";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { AnimatedCount } from "@/components/motion/AnimatedCount";
 import { Card } from "@/components/ui/Card";
+import { buttonClass } from "@/components/ui/button-class";
 import { requireAdmin } from "@/lib/admin/auth";
 import { getEffectiveConfig } from "@/lib/config/effective";
 import { db } from "@/lib/db";
@@ -72,6 +73,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
         <div className="flex flex-wrap items-center gap-4">
           <h1 className="font-display text-3xl font-bold">Orders</h1>
           <ViewToggle view="list" />
+          <NewOrderLink />
         </div>
         <form className="flex w-full gap-2 sm:w-auto" action="/admin/orders">
           <input type="hidden" name="view" value="list" />
@@ -182,6 +184,15 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   );
 }
 
+/** Type in an order from Marketplace, a market stall, a DM... */
+function NewOrderLink() {
+  return (
+    <Link href="/admin/orders/new" className={buttonClass("primary", "sm")}>
+      + New order
+    </Link>
+  );
+}
+
 /** Board or list. */
 function ViewToggle({ view }: { view: "board" | "list" }) {
   return (
@@ -210,6 +221,7 @@ async function BoardPage() {
             <div className="flex flex-wrap items-center gap-4">
               <h1 className="font-display text-4xl font-bold tracking-tight">Orders</h1>
               <ViewToggle view="board" />
+              <NewOrderLink />
             </div>
             <p className="mt-2 text-muted">{open === 1 ? "1 order on the go." : `${open} orders on the go.`} Tap the button on a card to move it to the next column.</p>
           </section>

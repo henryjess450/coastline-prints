@@ -1,4 +1,5 @@
 import "server-only";
+import { isAdminOrder, manualPaymentLabel } from "@/lib/orders/manual";
 import { pickup } from "@config/pickup";
 import { legal, site } from "@config/site";
 import type { AppliedCode } from "@/lib/codes/apply";
@@ -72,7 +73,7 @@ export async function loadInvoice(where: { id: string } | { viewToken: string })
       ...codes.filter((c) => c.kind === "GIFT_CARD").map((c) => ({ label: c.label, cents: c.amountCents, minus: true })),
     ],
     totalCents: o.totalCents,
-    paidBy: o.paymentMethod === "ETRANSFER" ? "Interac e-Transfer" : o.cardLast4 ? `${titleCase(o.cardBrand ?? "Card")} ending ${o.cardLast4}` : o.totalCents === 0 ? "Gift card" : "Card",
+    paidBy: manualPaymentLabel(o.paymentMethod) ?? (o.paymentMethod === "ETRANSFER" ? "Interac e-Transfer" : o.cardLast4 ? `${titleCase(o.cardBrand ?? "Card")} ending ${o.cardLast4}` : o.totalCents === 0 && !isAdminOrder(o) ? "Gift card" : "Card"),
     giftCardCents: o.giftCardCents,
     url: `${appUrl()}/orders/${o.viewToken}`,
   };

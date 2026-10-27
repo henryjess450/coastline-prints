@@ -1,4 +1,5 @@
 import "server-only";
+import { isAdminOrder, manualPaymentLabel } from "@/lib/orders/manual";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { ImageResponse } from "next/og";
@@ -79,9 +80,9 @@ export async function loadReceiptData(orderId: string): Promise<ReceiptData | nu
     ],
     returning: returningLabel(o.customerOrderCount),
     totalCents: o.totalCents,
-    card: o.paymentMethod === "ETRANSFER" ? "Interac e-Transfer" : o.cardLast4 ? `${(o.cardBrand ?? "Card").replace(/_/g, " ")} ending ${o.cardLast4}` : null,
+    card: manualPaymentLabel(o.paymentMethod) ?? (o.paymentMethod === "ETRANSFER" ? "Interac e-Transfer" : o.cardLast4 ? `${(o.cardBrand ?? "Card").replace(/_/g, " ")} ending ${o.cardLast4}` : isAdminOrder(o) && o.paymentMethod === "CARD" ? "Card (in person)" : null),
     invoiceUrl: `${appUrl()}/orders/${o.viewToken}/invoice`,
-    paymentId: o.squarePaymentId.startsWith("nopay_") ? "none (gift card)" : o.paymentMethod === "ETRANSFER" ? "e-Transfer" : o.squarePaymentId,
+    paymentId: isAdminOrder(o) ? "entered by hand" : o.squarePaymentId.startsWith("nopay_") ? "none (gift card)" : o.paymentMethod === "ETRANSFER" ? "e-Transfer" : o.squarePaymentId,
   };
 }
 

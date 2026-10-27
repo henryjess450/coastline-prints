@@ -59,7 +59,8 @@ export default async function SourcesPage({ searchParams }: { searchParams: Prom
   const day = (d: Date) => d.toLocaleDateString("en-CA", { month: "short", day: "numeric", timeZone: "America/Vancouver" });
   const detail = (raw: string | null) => {
     try {
-      return touchDetail((JSON.parse(raw ?? "{}") as { last: Touch | null }).last);
+      const d = JSON.parse(raw ?? "{}") as { last: Touch | null; manual?: boolean };
+      return d.manual ? "Typed in by you from the admin" : touchDetail(d.last);
     } catch {
       return "";
     }

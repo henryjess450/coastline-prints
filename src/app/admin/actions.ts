@@ -61,6 +61,17 @@ export async function updateStatusAction(_: ActionState, form: FormData): Promis
   }
 }
 
+/** A typed-in order that was "Not paid yet": record how it was paid once the money comes in. */
+export async function markPaidAction(form: FormData) {
+  await requireAdmin();
+  const orderId = String(form.get("orderId") ?? "");
+  const method = String(form.get("method") ?? "");
+  if (!["CASH", "ETRANSFER", "CARD", "OTHER"].includes(method)) return;
+  const { count } = await db.order.updateMany({ where: { id: orderId, paymentMethod: "UNPAID" }, data: { paymentMethod: method } });
+  if (count) await db.checkout.updateMany({ where: { order: { id: orderId } }, data: { paymentMethod: method } });
+  revalidateOrders(orderId);
+}
+
 /** The one-tap "next step" button on order cards and the order page. */
 export async function nextStepAction(_: ActionState, form: FormData): Promise<ActionState> {
   await requireAdmin();

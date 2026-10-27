@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { manualPaymentLabel } from "@/lib/orders/manual";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { pickup } from "@config/pickup";
@@ -139,6 +140,7 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
           <Row label="Total paid (CAD)" value={money(order.totalCents)} strong />
           {order.cardLast4 && <Row label="Paid with" value={`${formatBrand(order.cardBrand)} •••• ${order.cardLast4}`} />}
           {order.paymentMethod === "ETRANSFER" && <Row label="Paid with" value="Interac e-Transfer" />}
+          {manualPaymentLabel(order.paymentMethod) && <Row label="Paid with" value={manualPaymentLabel(order.paymentMethod)!} />}
         </dl>
         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm">
           <a href={`/orders/${order.viewToken}/invoice`} className="font-medium text-accent-text underline underline-offset-4">

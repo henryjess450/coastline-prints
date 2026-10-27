@@ -30,7 +30,8 @@ export async function changeOrderStatus(orderId: string, to: string, opts: { not
 
     const ready = status === "READY_FOR_PICKUP";
     // Picked up is the end of the line; no need to email about it unless asked.
-    const notify = !opts.silent && (ready || !!opts.notify);
+    // Orders typed in from the admin may have no email: nobody to tell.
+    const notify = !opts.silent && !!order.customerEmail && (ready || !!opts.notify);
 
     const shipped = ready && order.fulfillment === "SHIP";
     const tracking = opts.trackingNumber?.replace(/\s+/g, "").toUpperCase().slice(0, 40) || null;
@@ -50,7 +51,7 @@ export async function changeOrderStatus(orderId: string, to: string, opts: { not
         },
       });
     }
-    if (status === "PICKED_UP") {
+    if (status === "PICKED_UP" && order.customerEmail) {
       await createFirstOrderReward(tx, order);
       await earnPoints(tx, order); // Coastline Rewards: 2 points per $1, once the order is collected
       if (!opts.silent) await queueReviewRequest(tx, order); // "how did it go?" a day later, once per customer

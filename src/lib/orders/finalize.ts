@@ -18,7 +18,9 @@ export type CartSnapshot = {
   lines: PricedCart["lines"];
   /** Shop products (an order has prints or products, not both). */
   shopLines?: PricedShopLine[];
-  /** Which shop the products are from. Missing on older LightLab checkouts. */
+  /** One-off lines rung up at the register (POS), at the price typed in. */
+  customLines?: { name: string; unitCents: number; quantity: number; lineCents: number }[];
+  /** Which shop the products (or register sale) are from. Missing on older LightLab checkouts. */
   shop?: ShopId;
   quote: Pick<OrderQuote, "items" | "baseFeeCents" | "subtotalCents" | "minimumAdjCents" | "totalCents"> & { shipping?: ShippingOption | null };
 };
@@ -50,6 +52,15 @@ export function paymentFacts(p: Square.Payment): PaymentFacts {
 
 export class PaymentMismatchError extends Error {}
 
+/** An order the owner typed in from the admin (see orders/manual.ts). */
+export type AdminOrderOptions = {
+  /** Shown in the order's history, e.g. "Added by you (Facebook Marketplace)". */
+  note: string;
+  /** Email the customer their receipt (needs an email on the order). */
+  emailCustomer: boolean;
+  printTicket: boolean;
+};
+
 /**
  * Creates the Order for a paid checkout, exactly once.
  *
@@ -57,7 +68,7 @@ export class PaymentMismatchError extends Error {}
  * webhook. The unique constraint on Order.checkoutId means two concurrent
  * calls can't both create an order: the loser gets the existing one back.
  */
-export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts) {
+export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts, admin?: AdminOrderOptions) {
   const existing = await db.order.findUnique({ where: { checkoutId } });
   if (existing) return { order: existing, created: false };
 
@@ -79,13 +90,15 @@ export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts
   }
 
   const cart = JSON.parse(checkout.cart) as CartSnapshot;
+  // Products or custom register lines are sold as their shop (LL- for LightLab); prints are always Coastline.
+  const shopSale = !cart.lines.length && !!(cart.shopLines?.length || cart.customLines?.length);
 
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
       const order = await db.$transaction(async (tx) => {
         const order = await tx.order.create({
           data: {
-            orderNumber: newOrderNumber(new Date(), cart.shopLines?.length ? shopConfig(cart.shop).orderPrefix : "CP"),
+            orderNumber: newOrderNumber(new Date(), shopSale ? shopConfig(cart.shop).orderPrefix : "CP"),
             viewToken: newViewToken(),
             checkoutId,
             status: "PAID",
@@ -111,7 +124,8 @@ export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts
             giftCardCents: checkout.giftCardCents,
             appliedCodes: checkout.appliedCodes,
             squareCustomerId: checkout.squareCustomerId,
-            customerOrderCount: (await tx.order.count({ where: { customerEmail: checkout.customerEmail } })) + 1,
+            // Typed-in orders may have no email: don't count every one of those as the same returning customer.
+            customerOrderCount: checkout.customerEmail ? (await tx.order.count({ where: { customerEmail: checkout.customerEmail } })) + 1 : 1,
             source: checkout.source,
             firstSource: checkout.firstSource,
             sourceDetail: checkout.sourceDetail,
@@ -123,19 +137,19 @@ export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts
             receiptUrl: payment.receiptUrl,
             cardBrand: payment.cardBrand,
             cardLast4: payment.last4,
-            items: { create: [...cart.lines.map((line, i) => orderItemData(line, cart.quote.items[i])), ...(cart.shopLines ?? []).map((l) => shopItemData(l, cart.shop))] },
-            events: { create: { fromStatus: null, toStatus: "PAID", note: "Payment completed" } },
+            items: { create: [...cart.lines.map((line, i) => orderItemData(line, cart.quote.items[i])), ...(cart.shopLines ?? []).map((l) => shopItemData(l, cart.shop)), ...(cart.customLines ?? []).map((l) => customItemData(l, cart.shop))] },
+            events: { create: { fromStatus: null, toStatus: "PAID", note: admin?.note ?? "Payment completed" } },
           },
         });
         await tx.checkout.update({ where: { id: checkoutId }, data: { status: "COMPLETED", squarePaymentId: payment.id } });
         for (const line of cart.shopLines ?? []) await takeStock(tx, line, order.id, cart.shop);
         await tx.codeRedemption.updateMany({ where: { checkoutId, status: "RESERVED" }, data: { status: "USED" } });
-        await tx.outboxJob.createMany({ data: notificationJobs(order.id, !checkout.squareCustomerId) });
+        await tx.outboxJob.createMany({ data: admin ? adminOrderJobs(order.id, checkout.customerEmail, admin) : notificationJobs(order.id, !checkout.squareCustomerId) });
         // Ordered with a friend's invite code: the friend gets their points now.
         await creditInvite(tx, order);
         return order;
       });
-      await lampForSale(cart.shopLines?.length ? (cart.shop === "coastline" ? "coastline" : "lightlab") : "print", checkout.totalCents + checkout.giftCardCents - checkout.shippingCents);
+      await lampForSale(shopSale ? (cart.shop === "coastline" ? "coastline" : "lightlab") : "print", checkout.totalCents + checkout.giftCardCents - checkout.shippingCents);
       return { order, created: true };
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
@@ -213,6 +227,34 @@ function shopItemData(line: PricedShopLine, shopId?: ShopId) {
   };
 }
 
+/** A one-off register line ("Custom keychain"): shown like a shop item of that shop. */
+function customItemData(line: NonNullable<CartSnapshot["customLines"]>[number], shopId?: ShopId) {
+  const shop = shopConfig(shopId);
+  return {
+    fileName: line.name,
+    unitFactor: 1,
+    scaleX: 1,
+    scaleY: 1,
+    scaleZ: 1,
+    orientation: 0,
+    sizeX: 0,
+    sizeY: 0,
+    sizeZ: 0,
+    material: "Custom",
+    colorId: "",
+    colorName: "",
+    quality: "",
+    infill: "",
+    quantity: line.quantity,
+    printerId: shop.itemPrinterId,
+    printerName: shop.itemPrinter,
+    gramsEach: 0,
+    hoursEach: 0,
+    unitCents: line.unitCents,
+    lineCents: line.lineCents,
+  };
+}
+
 /** Sold: take them off the shelf (the option's count if it has one, else the product's). Never below zero. */
 async function takeStock(tx: Prisma.TransactionClient, line: PricedShopLine, orderId: string, shopId?: ShopId) {
   const { lowStockAt } = shopConfig(shopId);
@@ -241,6 +283,21 @@ async function takeStock(tx: Prisma.TransactionClient, line: PricedShopLine, ord
     // Two lines can share one stock count: keep a single alert with the latest count.
     await tx.outboxJob.upsert({ where: { dedupeKey }, create: { kind: "email", template: "lightlab-stock-alert", payload, dedupeKey }, update: { payload } });
   }
+}
+
+/**
+ * What goes out for an order typed in from the admin: no send-off to wait
+ * for and no owner email (the owner made it). The customer gets a receipt
+ * only when asked, and is saved to Square only when there's an email.
+ */
+function adminOrderJobs(orderId: string, email: string, opts: AdminOrderOptions): Prisma.OutboxJobCreateManyInput[] {
+  const job = (kind: string, template: string) => ({ kind, template, payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:${template}` });
+  return [
+    ...(email && process.env.SQUARE_ACCESS_TOKEN ? [job("square", "customer-sync")] : []),
+    ...(email && opts.emailCustomer ? [job("email", "customer-receipt")] : []),
+    ...(opts.printTicket && process.env.RECEIPT_PRINTER_HOST ? [job("print", "order-receipt")] : []),
+    ...(process.env.DISCORD_WEBHOOK_URL ? [job("discord", "discord-new-order")] : []),
+  ];
 }
 
 /** Queued in the same transaction as the order, so a mail outage can't lose them (sent in Phase 4). */
