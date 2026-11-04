@@ -1,6 +1,7 @@
 #!/bin/bash
-# Builds "Coastline Printer.app" (the market stand's print bridge as a Mac app)
-# and puts it on the Desktop.  bash mac/coastline-printer/build.sh [destination folder]
+# Builds "Coastline Printer.app" (the market stand's print bridge as a native
+# Mac app, App.swift) and puts it on the Desktop. Needs Xcode or its command
+# line tools.  bash mac/coastline-printer/build.sh [destination folder]
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
@@ -20,12 +21,13 @@ for s in 16 32 128 256 512; do
 done
 iconutil -c icns "$WORK/AppIcon.iconset" -o "$WORK/AppIcon.icns"
 
+swiftc -O -parse-as-library -target "$(uname -m)-apple-macos13.0" "$HERE/App.swift" -o "$WORK/Coastline Printer"
+
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$HERE/launcher.sh" "$APP/Contents/MacOS/Coastline Printer"
-cp "$HERE/run.sh" "$APP/Contents/Resources/run.sh"
+cp "$WORK/Coastline Printer" "$APP/Contents/MacOS/Coastline Printer"
+cp "$ROOT/public/print-bridge/print-bridge.mjs" "$APP/Contents/Resources/print-bridge.mjs"
 cp "$WORK/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
-chmod +x "$APP/Contents/MacOS/Coastline Printer" "$APP/Contents/Resources/run.sh"
 cat > "$APP/Contents/Info.plist" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -37,10 +39,11 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
   <key>CFBundleExecutable</key><string>Coastline Printer</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleShortVersionString</key><string>2.0</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
-  <key>NSAppleEventsUsageDescription</key><string>Coastline Printer opens a Terminal window to show what's printing.</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>LSApplicationCategoryType</key><string>public.app-category.business</string>
 </dict>
 </plist>
 EOF

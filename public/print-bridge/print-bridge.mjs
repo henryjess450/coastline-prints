@@ -12,13 +12,14 @@
  *   BRIDGE_KEY=pb_... node print-bridge.mjs
  *
  * Optional: SERVER (default https://coastlineprints.ca), PRINTER_HOST (else
- * it finds the Star printer on the local networks), PRINTER_PORT (9100).
+ * it finds the Star printer on the local networks), PRINTER_PORT (9100),
+ * BRIDGE_JSON=1 (one JSON event per line, for the Coastline Printer Mac app).
  * No packages needed.
  */
 import net from "node:net";
 import os from "node:os";
 
-const VERSION = "1.0";
+const VERSION = "1.1";
 const KEY = process.env.BRIDGE_KEY ?? process.argv[2];
 const SERVER = (process.env.SERVER ?? "https://coastlineprints.ca").replace(/\/$/, "");
 const PORT = Number(process.env.PRINTER_PORT ?? 9100);
@@ -27,7 +28,10 @@ if (!KEY?.startsWith("pb_")) {
   process.exit(1);
 }
 
-const log = (...a) => console.log(new Date().toLocaleTimeString(), ...a);
+const JSON_OUT = process.env.BRIDGE_JSON === "1";
+const log = (...a) => !JSON_OUT && console.log(new Date().toLocaleTimeString(), ...a);
+/** For the Mac app: what happened, as one JSON line. */
+const event = (type, data = {}) => JSON_OUT && console.log(JSON.stringify({ type, at: Date.now(), ...data }));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── Finding the printer ──────────────────────────────────────────────────
@@ -80,6 +84,7 @@ function candidates() {
 }
 
 let printerHost = process.env.PRINTER_HOST || null;
+let checkedOnce = false;
 
 async function findPrinter() {
   if (process.env.PRINTER_HOST) return (await probe(process.env.PRINTER_HOST, 2500)) ? process.env.PRINTER_HOST : null;
@@ -91,7 +96,11 @@ async function findPrinter() {
     const hits = await Promise.all(batch.map((h) => probe(h).then((ok) => (ok ? h : null))));
     found = hits.find(Boolean) ?? null;
   }
-  if (found !== printerHost) log(found ? `Found the printer at ${found}` : "Can't find the printer yet");
+  if (found !== printerHost || !checkedOnce) {
+    log(found ? `Found the printer at ${found}` : "Can't find the printer yet");
+    event("printer", { host: found });
+  }
+  checkedOnce = true;
   printerHost = found;
   return found;
 }
@@ -132,7 +141,9 @@ async function report(id, ok, error) {
 
 let lastCheck = 0;
 let failures = 0;
+let online = false;
 log(`Print bridge ${VERSION} → ${SERVER}`);
+event("start", { version: VERSION, server: SERVER });
 
 for (;;) {
   // Look for the printer at start and every 30 s, so the site can show whether it's there.
@@ -141,35 +152,45 @@ for (;;) {
     await findPrinter();
   }
   try {
-    const q = new URLSearchParams({ v: VERSION, printer: printerHost ? "ok" : "missing", host: printerHost ?? "" });
+    // Until it has heard back, ask without waiting, so it knows straight away that it's online.
+    const q = new URLSearchParams({ v: VERSION, printer: printerHost ? "ok" : "missing", host: printerHost ?? "", wait: online ? "1" : "0" });
     const res = await fetch(`${SERVER}/api/print-bridge?${q}`, { headers: { Authorization: `Bearer ${KEY}` }, signal: AbortSignal.timeout(40_000) });
     if (res.status === 401) {
       log("The site doesn't know this bridge key. Make a new one on Admin > Receipts.");
+      event("badkey");
       await sleep(60_000);
       continue;
     }
     if (!res.ok) throw new Error(`Site answered ${res.status}`);
     if (failures) log("Back online");
+    if (failures || !online) event("online");
+    online = true;
     failures = 0;
     const { job } = await res.json();
     if (!job) continue;
     log(`Printing ${job.label}`);
+    event("printing", { id: job.id, label: job.label });
     const host = printerHost ?? (await findPrinter());
     if (!host) {
       await report(job.id, false, "The bridge can't find the printer. Check the ethernet cable and that it's on.");
+      event("failed", { id: job.id, label: job.label, error: "Can't find the printer" });
       continue;
     }
     try {
       await send(host, Buffer.from(job.data, "base64"));
       await report(job.id, true);
       log("Printed");
+      event("printed", { id: job.id, label: job.label });
     } catch (err) {
       printerHost = null;
       await report(job.id, false, err.message);
       log(err.message);
+      event("failed", { id: job.id, label: job.label, error: err.message });
     }
   } catch (err) {
     failures++;
+    if (failures === 1) event("offline", { error: err.message });
+    online = false;
     if (failures === 1 || failures % 10 === 0) log(`Can't reach ${SERVER} (${err.message}). Is the hotspot on?`);
     await sleep(Math.min(30_000, 2000 * failures));
   }
