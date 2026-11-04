@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- macOS icon grid: 824 px rounded square on a 1024 canvas, with a soft drop shadow. -->
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+    <clipPath id="tile"><rect x="100" y="100" width="824" height="824" rx="186"/></clipPath>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="#0e4471" filter="url(#shadow)"/>
+  <g clip-path="url(#tile)">
+    <!-- The sea along the bottom of the tile -->
+    <path d="M100 800c60-46 120-46 180 0s120 46 180 0 120-46 180 0 120 46 180 0 60-46 104-30V924H100z" fill="#86bbea" opacity="0.35"/>
+    <!-- A receipt rising out of the printer slot, with a torn edge -->
+    <rect x="250" y="704" width="524" height="44" rx="22" fill="#082c4b"/>
+    <path d="M330 726V250h364v476z" fill="#ffffff"/>
+    <path d="M330 250l30-26 30 26 30-26 30 26 30-26 30 26 30-26 30 26 30-26 30 26 30-26 34 26z" fill="#ffffff"/>
+    <!-- The Coastline mark printed on it -->
+    <circle cx="590" cy="350" r="44" fill="#e9c46a"/>
+    <path d="M366 470c34-30 68-30 102 0s68 30 102 0 68-30 102 0" stroke="#0e4471" stroke-width="30" fill="none" stroke-linecap="round"/>
+    <path d="M404 544c28-24 56-24 84 0s56 24 84 0 56-24 84 0" stroke="#86bbea" stroke-width="26" fill="none" stroke-linecap="round"/>
+    <!-- Lines of the receipt -->
+    <path d="M384 620h256M384 670h170" stroke="#c9d6e3" stroke-width="20" stroke-linecap="round"/>
+  </g>
+</svg>
