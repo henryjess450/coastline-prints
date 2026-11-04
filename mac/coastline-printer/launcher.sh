@@ -3,10 +3,10 @@
 RES="$(cd "$(dirname "$0")/../Resources" && pwd)"
 /usr/bin/osascript - "$RES/run.sh" <<'EOF'
 on run argv
-  set script to quoted form of (item 1 of argv)
+  set runPath to quoted form of (item 1 of argv)
   tell application "Terminal"
     activate
-    set t to do script "bash " & script & "; exit"
+    set t to do script "bash " & runPath & "; exit"
     set background color of t to {3598, 17476, 29041}
     set normal text color of t to {65535, 65535, 65535}
     set bold text color of t to {65535, 65535, 65535}
