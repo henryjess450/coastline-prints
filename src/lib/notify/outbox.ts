@@ -8,7 +8,8 @@ import { getMailer, PermanentEmailError, type Mailer } from "@/lib/email/transpo
 import { buildGiftEmail } from "@/lib/giftcards/emails";
 import { buildRewardEmail } from "@/lib/codes/reward-email";
 import { GIFT_EMAIL_TEMPLATES, loadGiftData, type GiftEmailTemplate } from "@/lib/giftcards/server";
-import { printCodeSlip, printOrderReceipt, printScanStub } from "@/lib/receipt/print";
+import { printCodeSlip, printOrderReceipt, printScanStub, printStandSlip } from "@/lib/receipt/print";
+import { STAND_SLIPS, type StandSlip } from "@/lib/receipt/stand";
 import { quietUntil } from "@/lib/receipt/quiet";
 import { findOrCreateSquareCustomer, updateSquareCustomer } from "@/lib/square/customers";
 import { profileFor } from "@/lib/account/profile";
@@ -30,7 +31,7 @@ export function backoffMs(attempts: number) {
   return BACKOFF_MIN[Math.min(attempts - 1, BACKOFF_MIN.length - 1)] * 60_000;
 }
 
-type Payload = { orderId: string; productId?: string; variantId?: string; left?: number; requestId?: string; checkoutId?: string; giftId?: string; codeId?: string; customerId?: string; broadcastId?: string; note?: string | null; test?: boolean; signIn?: boolean };
+type Payload = { orderId: string; productId?: string; variantId?: string; left?: number; requestId?: string; checkoutId?: string; giftId?: string; codeId?: string; customerId?: string; broadcastId?: string; note?: string | null; test?: boolean; signIn?: boolean; slip?: string; marketId?: string | null };
 
 let running: Promise<ProcessResult> | null = null;
 export type ProcessResult = { sent: number; failed: number; retrying: number };
@@ -127,6 +128,10 @@ async function deliver(kind: string, template: string, payload: Payload, jobId: 
   if (kind === "print") {
     if (template === "code-slip") return printCodeSlip(payload.codeId!);
     if (template === "scan-stub") return printScanStub(payload.orderId, payload.note ?? "");
+    if (template === "stand-slip") {
+      if (!STAND_SLIPS.includes(payload.slip as StandSlip)) throw new UnknownJobError(`Unknown slip ${payload.slip}`);
+      return printStandSlip(payload.orderId, payload.slip as StandSlip, payload.marketId);
+    }
     if (template !== "order-receipt") throw new UnknownJobError(`Unknown print template ${template}`);
     return printOrderReceipt(payload.orderId, { test: payload.test });
   }

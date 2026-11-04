@@ -17,6 +17,7 @@ const links = [
   { href: "/admin/sources", label: "Sources" },
   { href: "/admin/codes", label: "Codes" },
   { href: "/admin/etransfers", label: "e-Transfers" },
+  { href: "/admin/receipts", label: "Receipts" },
   { href: "/admin/lamp", label: "Lamp" },
   { href: "/admin/settings", label: "Settings" },
 ];

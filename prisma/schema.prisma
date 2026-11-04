@@ -590,3 +590,21 @@ model PosRegister {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
+
+/// A ticket or receipt waiting for the print bridge (bridge/print-bridge.mjs),
+/// which plugs into the printer away from home, e.g. at a market stand.
+model PrintJob {
+  id        String    @id @default(cuid())
+  /// What it is, for the admin list: "Receipt R-1042", "Test print"...
+  label     String
+  /// Printer-ready bytes (Star raster or ESC/POS).
+  bytes     Bytes
+  /// QUEUED → SENT (bridge took it) → PRINTED, or FAILED / CANCELLED.
+  status    String    @default("QUEUED")
+  error     String?
+  createdAt DateTime  @default(now())
+  takenAt   DateTime?
+  doneAt    DateTime?
+
+  @@index([status, createdAt])
+}

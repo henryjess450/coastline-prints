@@ -71,6 +71,10 @@ export const posSaleSchema = z.object({
   /** They walk away with it (marks the order picked up). Off for prints that still need printing. */
   handedOver: z.boolean().default(true),
   printTicket: z.boolean().default(false),
+  /** LightLab stand slips for the customer (receipt, gift receipt, order ticket), themed for the market. */
+  slips: z.array(z.enum(["receipt", "gift", "claim"])).max(3).default([]),
+  /** The market the stand is at today (Admin > Receipts), for the slips' theme. */
+  marketId: z.string().max(40).nullable().default(null),
   emailCustomer: z.boolean().default(true),
   /** The paired display, to show the thank-you screen. */
   registerId: z.string().max(40).nullable().default(null),

@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/admin/auth";
 import { getEffectiveConfig } from "@/lib/config/effective";
 import { payLinksAvailable } from "@/lib/pos/paylink.server";
 import { listProducts } from "@/lib/shop/products.server";
+import { getPrintSettings } from "@/lib/receipt/settings";
 import { reviews, seo } from "@config/site";
 
 export const metadata = { title: "Register" };
@@ -10,10 +11,11 @@ export const metadata = { title: "Register" };
 /** The in-person register for LightLab and Coastline Prints. The customer display lives at /pos. */
 export default async function RegisterPage() {
   await requireAdmin();
-  const [cfg, lightlab, coastline] = await Promise.all([getEffectiveConfig(), listProducts({ shop: "lightlab" }), listProducts({ shop: "coastline" })]);
+  const [cfg, lightlab, coastline, printing] = await Promise.all([getEffectiveConfig(), listProducts({ shop: "lightlab" }), listProducts({ shop: "coastline" }), getPrintSettings()]);
   return (
     <Register
       products={{ lightlab, coastline }}
+      markets={printing.markets.map((m) => ({ id: m.id, name: m.name }))}
       links={{ etransferEmail: process.env.ETRANSFER_EMAIL || null, instagram: seo.instagram, review: reviews.googleUrl || null, payLinks: payLinksAvailable() }}
       printOptions={{
         materials: cfg.materials.map((m) => ({ id: m.id, name: m.name, colors: m.colors.filter((c) => c.available).map((c) => ({ id: c.id, name: c.name, hex: c.hex })) })),

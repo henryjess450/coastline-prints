@@ -99,6 +99,7 @@ export async function ringUpSale(raw: PosSaleInput) {
         emailCustomer: sale.order ? true : sale.emailCustomer,
         printTicket: sale.printTicket,
         takenOrder: !!sale.order,
+        slips: [...new Set(sale.slips)].map((slip) => ({ slip, marketId: sale.marketId })),
       },
     );
   } catch (err) {

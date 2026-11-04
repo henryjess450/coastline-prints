@@ -61,6 +61,8 @@ export type AdminOrderOptions = {
   printTicket: boolean;
   /** Taken with Start order at the register: the owner gets the new-order email, and the customer's receipt signs them in. */
   takenOrder?: boolean;
+  /** LightLab stand slips for the customer, themed for this market (see receipt/stand). */
+  slips?: { slip: "receipt" | "gift" | "claim"; marketId: string | null }[];
 };
 
 /**
@@ -299,7 +301,8 @@ function adminOrderJobs(orderId: string, email: string, opts: AdminOrderOptions)
     ...(email && process.env.SQUARE_ACCESS_TOKEN ? [job("square", "customer-sync")] : []),
     ...(email && opts.emailCustomer ? [job("email", "customer-receipt", opts.takenOrder ? { signIn: true } : {})] : []),
     ...(opts.takenOrder ? [job("email", "owner-new-order")] : []),
-    ...(opts.printTicket && process.env.RECEIPT_PRINTER_HOST ? [job("print", "order-receipt")] : []),
+    ...(opts.printTicket ? [job("print", "order-receipt")] : []),
+    ...(opts.slips ?? []).map((s) => ({ ...job("print", "stand-slip", s), dedupeKey: `${orderId}:stand-slip:${s.slip}` })),
     ...(process.env.DISCORD_WEBHOOK_URL ? [job("discord", "discord-new-order")] : []),
   ];
 }

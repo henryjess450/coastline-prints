@@ -10,6 +10,7 @@ export function PrintButton({
   className,
   children,
   label,
+  extra,
 }: {
   action: (form: FormData) => Promise<void>;
   name: string;
@@ -17,6 +18,8 @@ export function PrintButton({
   className?: string;
   children: React.ReactNode;
   label?: string;
+  /** More hidden fields to send. */
+  extra?: Record<string, string>;
 }) {
   return (
     <form
@@ -26,6 +29,9 @@ export function PrintButton({
       }}
     >
       <input type="hidden" name={name} value={value} />
+      {Object.entries(extra ?? {}).map(([k, v]) => (
+        <input key={k} type="hidden" name={k} value={v} />
+      ))}
       <Submit className={className} label={label}>
         {children}
       </Submit>

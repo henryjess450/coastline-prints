@@ -5,6 +5,9 @@ import { pickup } from "@config/pickup";
 import { dismissJobAction, markPaidAction, printReceiptAction, retryJobAction } from "@/app/admin/actions";
 import { isAdminOrder, MANUAL_PAYMENTS, manualPaymentLabel } from "@/lib/orders/manual";
 import { PrintButton } from "@/components/admin/PrintButton";
+import { printStandSlipAction } from "@/app/admin/receipt-actions";
+import { isLightLabOrder } from "@/lib/shop/brand";
+import { receiptPrinterConfigured } from "@/lib/receipt/print";
 import { LabelPrinter } from "@/components/admin/LabelPrinter";
 import { privateSite } from "@config/private.server";
 import { OrderItems, type AdminItem } from "@/components/admin/OrderItems";
@@ -277,9 +280,19 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
             </ul>
             <div className="mt-4">
               <PrintButton action={printReceiptAction} name="orderId" value={order.id} className="w-full rounded-full border border-line px-4 py-2 text-sm font-medium hover:border-accent-line">
-                {process.env.RECEIPT_PRINTER_HOST ? "Print receipt" : "Print receipt (printer not set up)"}
+                {(await receiptPrinterConfigured()) ? "Print shop ticket" : "Print shop ticket (printer not set up)"}
               </PrintButton>
             </div>
+            {isLightLabOrder(order.items) && (
+              // The customer's slips from the LightLab stand, themed like at the market (Admin > Receipts).
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {([["receipt", "Receipt"], ["gift", "Gift receipt"], ...(order.pickupDate ? [["claim", "Order ticket"]] : [])] as [string, string][]).map(([slip, label]) => (
+                  <PrintButton key={slip} action={printStandSlipAction} name="orderId" value={order.id} extra={{ slip }} className="w-full rounded-full border border-line px-3 py-2 text-sm font-medium hover:border-accent-line">
+                    {label}
+                  </PrintButton>
+                ))}
+              </div>
+            )}
           </Card>
 
           <Card className="p-5 text-sm">

@@ -22,6 +22,10 @@ type PayLink = { linkId: string; url: string; orderId: string; amountCents: numb
 type Panel = null | "custom" | "print" | "codes" | "customer" | "send" | "order" | { product: ShopProductDto };
 /** Start order: who it's for, what they're ordering (until they fill in the form), and the day they need it. */
 type TakenOrder = { firstName: string; items: PosOrderItem[]; popupId: string; needBy: string | null };
+/** Markets the LightLab stand sells at (Admin > Receipts); the one picked themes the printed slips. */
+export type RegisterMarket = { id: string; name: string };
+type Slip = "receipt" | "gift" | "claim";
+
 export type RegisterLinks = { etransferEmail: string | null; instagram: string; review: string | null; payLinks: boolean };
 
 const store = {
@@ -59,12 +63,15 @@ const PAY_TILES: { id: PayKind; label: string; hint: string; icon: string }[] = 
  * email box, joining rewards, a Square QR to pay, e-Transfer details, links
  * to scan and notes.
  */
-export function Register({ products, printOptions, links }: { products: Record<PosBrand, ShopProductDto[]>; printOptions: PrintOptions; links: RegisterLinks }) {
+export function Register({ products, printOptions, links, markets }: { products: Record<PosBrand, ShopProductDto[]>; printOptions: PrintOptions; links: RegisterLinks; markets: RegisterMarket[] }) {
   useForceDark();
   const router = useRouter();
   const [brand, setBrandState] = useState<PosBrand>("lightlab");
   const [source, setSource] = useState<string>(POS_BRANDS[0].source);
   const [registerId, setRegisterId] = useState<string | null>(null);
+  const [marketId, setMarketId] = useState<string | null>(null);
+  /** Slips the cashier last chose for a sale; kept on this device. */
+  const [saleSlips, setSaleSlips] = useState<Slip[]>([]);
   const [online, setOnline] = useState(true);
   const [flip, setFlip] = useState(false);
   const [panel, setPanel] = useState<Panel>(null);
@@ -88,6 +95,8 @@ export function Register({ products, printOptions, links }: { products: Record<P
   const [order, setOrder] = useState<TakenOrder | null>(null);
   // For the reply handler, which is set up once.
   const orderRef = useRef<TakenOrder | null>(null);
+  /** The cashier switched off this order's ticket. */
+  const claimOff = useRef(false);
   useEffect(() => {
     orderRef.current = order;
   }, [order]);
@@ -106,8 +115,11 @@ export function Register({ products, printOptions, links }: { products: Record<P
     setBrandState(b);
     setSource(store.get(`source:${b}`) ?? POS_BRANDS.find((x) => x.id === b)!.source);
     setRegisterId(store.get("register"));
+    const m = store.get("market");
+    setMarketId(m && markets.some((x) => x.id === m) ? m : null);
+    setSaleSlips((store.get("slips") ?? "").split(",").filter((x): x is Slip => x === "receipt" || x === "gift"));
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- once, on load
 
   const shopProducts = products[brand];
   const productOf = useCallback((id: string) => shopProducts.find((p) => p.id === id), [shopProducts]);
@@ -121,6 +133,21 @@ export function Register({ products, printOptions, links }: { products: Record<P
     // The other shop's products and prints don't carry over.
     setLines([]);
     if (b === "lightlab") setFiles([]);
+  }
+
+  /** Today's market: themes the LightLab slips, and sales are recorded as coming from it. */
+  function pickMarket(id: string) {
+    const m = markets.find((x) => x.id === id) ?? null;
+    store.set("market", m?.id ?? "");
+    setMarketId(m?.id ?? null);
+    const src = m?.name ?? POS_BRANDS.find((x) => x.id === "lightlab")!.source;
+    store.set("source:lightlab", src);
+    if (brand === "lightlab") setSource(src);
+  }
+
+  function setSlips(next: Slip[]) {
+    setSaleSlips(next);
+    store.set("slips", next.filter((x) => x !== "claim").join(","));
   }
 
   const cart: PosCartInput = useMemo(
@@ -313,6 +340,7 @@ export function Register({ products, printOptions, links }: { products: Record<P
     setFlip(false);
     setLink(null);
     setOrder(null);
+    claimOff.current = false;
     setAttemptId(crypto.randomUUID());
     // Fresh stock counts on the tiles after a sale.
     if (done) router.refresh();
@@ -344,6 +372,9 @@ export function Register({ products, printOptions, links }: { products: Record<P
       ...opts,
       emailCustomer: opts.emailCustomer && !!customer.email.trim(),
       registerId,
+      // Stand slips are LightLab's; an order gets its order ticket unless it was switched off.
+      slips: brand !== "lightlab" ? [] : order?.needBy ? [...(claimOff.current ? [] : (["claim"] as Slip[])), ...saleSlips.filter((x) => x === "gift")] : saleSlips,
+      marketId: brand === "lightlab" ? marketId : null,
       ...(order?.needBy ? { order: { needBy: order.needBy }, handedOver: false, emailCustomer: true } : {}),
     };
     try {
@@ -439,6 +470,19 @@ export function Register({ products, printOptions, links }: { products: Record<P
           <div className="w-64">
             <Segmented label="Selling as" value={brand} onChange={setBrand} options={POS_BRANDS.map((b) => ({ value: b.id, label: b.name }))} />
           </div>
+          {brand === "lightlab" && markets.length > 0 && (
+            <label className="flex items-center gap-2 text-sm text-muted">
+              Market
+              <select className="rounded-full border border-line bg-surface px-3 py-1.5 text-fg" value={marketId ?? ""} onChange={(e) => pickMarket(e.target.value)}>
+                <option value="">None</option>
+                {markets.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
         <DisplayControl registerId={registerId} online={online} onPaired={(id) => { store.set("register", id); setRegisterId(id); lastPushed.current = ""; say("Display paired"); }} onUnpair={() => unpair()} onFlip={() => setFlip(true)} />
       </div>
@@ -673,7 +717,7 @@ export function Register({ products, printOptions, links }: { products: Record<P
         )}
       </Modal>
 
-      <Modal open={!!pay && !done} onClose={saving ? undefined : closePay} title={PAY_TILES.find((t) => t.id === pay)?.label} footer={pay && pay !== "LINK" && !order ? <PayFooter opts={opts} setOpts={setOpts} hasEmail={!!customer.email.trim()} /> : undefined}>
+      <Modal open={!!pay && !done} onClose={saving ? undefined : closePay} title={PAY_TILES.find((t) => t.id === pay)?.label} footer={pay && pay !== "LINK" ? <PayFooter opts={opts} setOpts={setOpts} hasEmail={!!customer.email.trim()} isOrder={!!order} slips={brand === "lightlab" ? { on: saleSlips, set: setSlips, claimOff } : null} /> : undefined}>
         {total != null && pay && (
           <div className="space-y-4">
             <div className="flex items-baseline justify-between">
@@ -1184,17 +1228,42 @@ function CashTender({ totalCents, value, onChange }: { totalCents: number; value
   );
 }
 
-function PayFooter({ opts, setOpts, hasEmail }: { opts: { handedOver: boolean; printTicket: boolean; emailCustomer: boolean }; setOpts: (o: { handedOver: boolean; printTicket: boolean; emailCustomer: boolean }) => void; hasEmail: boolean }) {
+type SlipChips = { on: Slip[]; set: (s: Slip[]) => void; claimOff: React.RefObject<boolean> };
+
+function PayFooter({ opts, setOpts, hasEmail, isOrder, slips }: { opts: { handedOver: boolean; printTicket: boolean; emailCustomer: boolean }; setOpts: (o: { handedOver: boolean; printTicket: boolean; emailCustomer: boolean }) => void; hasEmail: boolean; isOrder: boolean; slips: SlipChips | null }) {
+  const [, rerender] = useState(0);
   const chip = (on: boolean, label: string, flip: () => void, disabled = false) => (
     <button type="button" disabled={disabled} onClick={flip} className={cn("rounded-full border px-3 py-1.5 text-sm transition-colors disabled:opacity-35", on && !disabled ? "border-accent-line bg-accent-soft text-fg" : "border-line text-muted")}>
       {on && !disabled ? "✓ " : ""}
       {label}
     </button>
   );
+  const slipChip = (s: Slip, label: string) => {
+    if (!slips) return null;
+    // An order's ticket is on unless switched off for this sale.
+    const on = s === "claim" ? !slips.claimOff.current : slips.on.includes(s);
+    return chip(on, label, () => {
+      if (s === "claim") {
+        slips.claimOff.current = on;
+        rerender((n) => n + 1);
+      } else slips.set(on ? slips.on.filter((x) => x !== s) : [...slips.on, s]);
+    });
+  };
+  // Start order: the customer's order ticket and gift receipt only; the rest is decided by the order.
+  if (isOrder) {
+    return slips ? (
+      <div className="flex flex-wrap gap-2">
+        {slipChip("claim", "🎟 Order ticket")}
+        {slipChip("gift", "🎁 Gift receipt")}
+      </div>
+    ) : null;
+  }
   return (
     <div className="flex flex-wrap gap-2">
+      {slipChip("receipt", "🧾 Receipt")}
+      {slipChip("gift", "🎁 Gift receipt")}
       {chip(opts.handedOver, "They take it now", () => setOpts({ ...opts, handedOver: !opts.handedOver }))}
-      {chip(opts.printTicket, "Print ticket", () => setOpts({ ...opts, printTicket: !opts.printTicket }))}
+      {chip(opts.printTicket, slips ? "Shop ticket" : "Print ticket", () => setOpts({ ...opts, printTicket: !opts.printTicket }))}
       {chip(opts.emailCustomer, hasEmail ? "Email receipt" : "Email receipt (no email)", () => setOpts({ ...opts, emailCustomer: !opts.emailCustomer }), !hasEmail)}
     </div>
   );
