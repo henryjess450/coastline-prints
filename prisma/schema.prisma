@@ -63,6 +63,8 @@ model Checkout {
   notes                  String?
   pickupDate             String? // "YYYY-MM-DD", shop time zone
   pickupTime             String? // "HH:MM" slot start
+  /// Picking up at a LightLab market day (Market.id) instead of the home pickup.
+  pickupMarketId         String?
   /// PICKUP or SHIP (Canada Post bubble mailer or flat rate box).
   fulfillment            String    @default("PICKUP")
   /// Shipping charged: postage plus packing fee. 0 for pickup.
@@ -114,6 +116,8 @@ model Order {
   notes                  String?
   pickupDate             String? // "YYYY-MM-DD", shop time zone
   pickupTime             String? // "HH:MM" slot start
+  /// Picking up at a LightLab market day (Market.id) instead of the home pickup.
+  pickupMarketId         String?
   /// PICKUP or SHIP (Canada Post bubble mailer or flat rate box).
   fulfillment            String    @default("PICKUP")
   /// Shipping charged: postage plus packing fee. 0 for pickup.
@@ -162,6 +166,7 @@ model Order {
   @@index([customerEmail])
   @@index([createdAt])
   @@index([source])
+  @@index([pickupMarketId])
 }
 
 model OrderItem {

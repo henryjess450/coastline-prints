@@ -17,12 +17,19 @@ import { CustomerScreen, type ReplyFn } from "./CustomerScreen";
 
 type ProductLine = { key: string; productId: string; variantId: string | null; quantity: number; customText: string };
 type PayKind = PosPayment | "LINK";
-type Done = { orderId: string; orderNumber: string; changeCents: number | null; emailed: boolean; screen: PosScreen };
+type Done = { orderId: string; orderNumber: string; changeCents: number | null; emailed: boolean; screen: PosScreen; /** Saved on this iPad to send when back online. */ offline?: boolean };
+
+/** A sale rung up with no internet, kept on this iPad until the site takes it. */
+type QueuedSale = { body: PosSaleInput; label: string; totalCents: number; at: string; /** Why the site refused it (it's kept so nothing is lost). */ error?: string };
+
+/** A sale or quote request with no answer in this long counts as offline. */
+const OFFLINE_AFTER_MS = 8000;
+const isNetworkError = (e: unknown) => e instanceof TypeError || (e as Error)?.name === "AbortError" || (e as Error)?.name === "TimeoutError";
 type PayLink = { linkId: string; url: string; orderId: string; amountCents: number };
 type Panel = null | "custom" | "print" | "codes" | "customer" | "send" | "order" | { product: ShopProductDto };
 /** Start order: who it's for, what they're ordering (until they fill in the form), and the day they need it. */
 type TakenOrder = { firstName: string; items: PosOrderItem[]; popupId: string; needBy: string | null };
-/** Markets the LightLab stand sells at (Admin > Receipts); the one picked themes the printed slips. */
+/** Markets the LightLab stand sells at: today's market days, then the receipt designs. `id` is the market's name. */
 export type RegisterMarket = { id: string; name: string };
 type Slip = "receipt" | "gift" | "claim";
 
@@ -87,6 +94,13 @@ export function Register({ products, printOptions, links, markets }: { products:
   const [tendered, setTendered] = useState("");
   const [opts, setOpts] = useState({ handedOver: true, printTicket: false, emailCustomer: true });
   const [quote, setQuote] = useState<PosQuote | null>(null);
+  /** No internet: the register prices lamps and custom items itself and keeps sales here until it's back. */
+  const [offline, setOffline] = useState(false);
+  const [queue, setQueueState] = useState<QueuedSale[]>([]);
+  const setQueue = useCallback((next: QueuedSale[]) => {
+    setQueueState(next);
+    store.set("offline-queue", next.length ? JSON.stringify(next) : null);
+  }, []);
   const [attemptId, setAttemptId] = useState(() => crypto.randomUUID());
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -115,6 +129,9 @@ export function Register({ products, printOptions, links, markets }: { products:
     setBrandState(b);
     setSource(store.get(`source:${b}`) ?? POS_BRANDS.find((x) => x.id === b)!.source);
     setRegisterId(store.get("register"));
+    try {
+      setQueueState(JSON.parse(store.get("offline-queue") ?? "[]"));
+    } catch {}
     const m = store.get("market");
     setMarketId(m && markets.some((x) => x.id === m) ? m : null);
     setSaleSlips((store.get("slips") ?? "").split(",").filter((x): x is Slip => x === "receipt" || x === "gift"));
@@ -140,7 +157,7 @@ export function Register({ products, printOptions, links, markets }: { products:
     const m = markets.find((x) => x.id === id) ?? null;
     store.set("market", m?.id ?? "");
     setMarketId(m?.id ?? null);
-    const src = m?.name ?? POS_BRANDS.find((x) => x.id === "lightlab")!.source;
+    const src = m?.id ?? POS_BRANDS.find((x) => x.id === "lightlab")!.source;
     store.set("source:lightlab", src);
     if (brand === "lightlab") setSource(src);
   }
@@ -163,24 +180,35 @@ export function Register({ products, printOptions, links, markets }: { products:
   );
   const empty = !files.length && !lines.length && !custom.length;
 
-  // Server price, a moment after each change.
+  // Server price, a moment after each change. With no answer, the register prices it itself (offline).
   useEffect(() => {
     if (empty) return;
     const ctl = new AbortController();
+    let timedOut = false;
+    const limit = setTimeout(() => {
+      timedOut = true;
+      ctl.abort();
+    }, OFFLINE_AFTER_MS);
     const t = setTimeout(async () => {
       try {
         const res = await fetch("/api/admin/pos/quote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cart), signal: ctl.signal });
         const body = await res.json();
+        setOffline(false);
         setQuote(res.ok ? body : { ok: false, error: body.error ?? "Couldn't price the cart.", lines: [], fees: [], discounts: [], rejected: [], totalCents: 0 });
       } catch (e) {
-        if ((e as Error).name !== "AbortError") setQuote({ ok: false, error: "Can't reach the server.", lines: [], fees: [], discounts: [], rejected: [], totalCents: 0 });
+        if ((e as Error).name === "AbortError" && !timedOut) return;
+        setOffline(true);
+        setQuote(offlineQuote(cart, shopProducts));
+      } finally {
+        clearTimeout(limit);
       }
     }, 220);
     return () => {
       clearTimeout(t);
+      clearTimeout(limit);
       ctl.abort();
     };
-  }, [cart, empty]);
+  }, [cart, empty, shopProducts]);
   const shownQuote = empty ? null : quote;
   const total = shownQuote?.ok ? shownQuote.totalCents : null;
   const tenderedCents = pay === "CASH" ? dollars(tendered) : null;
@@ -374,11 +402,38 @@ export function Register({ products, printOptions, links, markets }: { products:
       registerId,
       // Stand slips are LightLab's; an order gets its order ticket unless it was switched off.
       slips: brand !== "lightlab" ? [] : order?.needBy ? [...(claimOff.current ? [] : (["claim"] as Slip[])), ...saleSlips.filter((x) => x === "gift")] : saleSlips,
-      marketId: brand === "lightlab" ? marketId : null,
+      // The receipt design is found by the market's name (the sale's source).
+      marketId: null,
       ...(order?.needBy ? { order: { needBy: order.needBy }, handedOver: false, emailCustomer: true } : {}),
     };
+    // Offline: keep it on this iPad and send it when the internet's back.
+    const saveOffline = () => {
+      const kept: PosSaleInput = { ...body, registerId: null, offline: { at: new Date().toISOString(), totalCents: shownQuote.totalCents } };
+      setQueue([...queue, { body: kept, label: shownQuote.lines.map((l) => `${l.quantity} × ${l.name}`).join(", "), totalCents: shownQuote.totalCents, at: kept.offline!.at }]);
+      const change = payment === "CASH" && tenderedCents != null ? tenderedCents - shownQuote.totalCents : null;
+      const thanks: PosScreen = { stage: "done", brand, lines: shownQuote.lines, totalCents: shownQuote.totalCents, payment, email: customer.email || undefined, popup: null };
+      setPopup(null);
+      setPay(null);
+      setDone({ orderId: "", orderNumber: "Saved on this iPad", changeCents: change, emailed: false, screen: thanks, offline: true });
+    };
+    if (offline || shownQuote.offline) {
+      saveOffline();
+      setSaving(false);
+      return;
+    }
     try {
-      const res = await fetch("/api/admin/pos/sale", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      let res: Response;
+      try {
+        res = await fetch("/api/admin/pos/sale", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(20_000) });
+      } catch (e) {
+        // No answer at all: it may not have reached the site. Keep it here; the same attemptId means it can never be rung up twice.
+        if (isNetworkError(e) && !squarePaymentId && !files.length && !codes.length) {
+          setOffline(true);
+          saveOffline();
+          return;
+        }
+        throw e;
+      }
       const out = await res.json();
       if (!res.ok) {
         if (out.quote) setQuote(out.quote);
@@ -396,6 +451,59 @@ export function Register({ products, printOptions, links, markets }: { products:
       setSaving(false);
     }
   }
+
+  // Send sales kept offline, oldest first, whenever the internet might be back.
+  const syncing = useRef(false);
+  const sync = useCallback(async () => {
+    if (syncing.current) return;
+    const pending = (() => {
+      try {
+        return JSON.parse(store.get("offline-queue") ?? "[]") as QueuedSale[];
+      } catch {
+        return [];
+      }
+    })();
+    if (!pending.some((q) => !q.error)) return;
+    syncing.current = true;
+    let left = [...pending];
+    let sent = 0;
+    try {
+      for (const q of pending) {
+        if (q.error) continue;
+        try {
+          const res = await fetch("/api/admin/pos/sale", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(q.body), signal: AbortSignal.timeout(20_000) });
+          const out = await res.json().catch(() => ({}));
+          if (res.ok) {
+            left = left.filter((x) => x !== q);
+            sent++;
+          } else if (res.status >= 400 && res.status < 500 && res.status !== 401 && res.status !== 429) {
+            // The site said no: keep it, with why, for the cashier to look at.
+            left = left.map((x) => (x === q ? { ...x, error: out.error ?? "The site couldn't record this sale." } : x));
+          } else break;
+        } catch {
+          setOffline(true);
+          break;
+        }
+      }
+    } finally {
+      syncing.current = false;
+      setQueue(left);
+      if (sent) {
+        setOffline(false);
+        say(`${sent} offline sale${sent === 1 ? "" : "s"} sent`);
+      }
+    }
+  }, [setQueue]);
+  useEffect(() => {
+    if (!queue.some((q) => !q.error)) return;
+    void sync();
+    const id = setInterval(() => void sync(), 15_000);
+    window.addEventListener("online", sync);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("online", sync);
+    };
+  }, [queue, sync]);
 
   // ----- Payment popups -----
   async function openPay(kind: PayKind) {
@@ -486,6 +594,8 @@ export function Register({ products, printOptions, links, markets }: { products:
         </div>
         <DisplayControl registerId={registerId} online={online} onPaired={(id) => { store.set("register", id); setRegisterId(id); lastPushed.current = ""; say("Display paired"); }} onUnpair={() => unpair()} onFlip={() => setFlip(true)} />
       </div>
+
+      <OfflineBanner offline={offline} queue={queue} onSend={() => void sync()} onDrop={(i) => setQueue(queue.filter((_, j) => j !== i))} onRetry={(i) => setQueue(queue.map((q, j) => (j === i ? { ...q, error: undefined } : q)))} />
 
       <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
         {/* Tiles */}
@@ -620,7 +730,7 @@ export function Register({ products, printOptions, links, markets }: { products:
             )}
 
             <div className="grid grid-cols-3 gap-2 border-t border-line p-3">
-              {PAY_TILES.filter((t) => (order ? t.id === "CASH" || t.id === "ETRANSFER" : t.id !== "LINK" || links.payLinks)).map((t) => (
+              {PAY_TILES.filter((t) => (order ? t.id === "CASH" || t.id === "ETRANSFER" : t.id !== "LINK" || (links.payLinks && !offline))).map((t) => (
                 <motion.button
                   key={t.id}
                   type="button"
@@ -1274,11 +1384,16 @@ function SaleDone({ done, onNew, onShowThanks }: { done: Done; onNew: () => void
     <div className="py-2 text-center">
       <DrawnCheck className="mx-auto h-20 w-20 text-success" />
       <p className="mt-3 font-display text-3xl font-bold">{done.screen.needBy ? "Order placed" : "Sale complete"}</p>
+      {done.offline && <p className="mt-1 text-sm text-warning">No internet, so it&apos;s saved on this iPad. It&apos;s sent (with its receipts) as soon as you&apos;re back online.</p>}
       {done.screen.needBy && <p className="mt-1 text-sm text-muted">Ready by {formatPickup(done.screen.needBy, null, pickup)}. It&apos;s on the Orders board.</p>}
       <p className="mt-1 text-muted">
-        <Link href={`/admin/orders/${done.orderId}`} className="font-mono text-accent-text hover:underline">
-          {done.orderNumber}
-        </Link>
+        {done.offline ? (
+          <span className="font-mono">{done.orderNumber}</span>
+        ) : (
+          <Link href={`/admin/orders/${done.orderId}`} className="font-mono text-accent-text hover:underline">
+            {done.orderNumber}
+          </Link>
+        )}
         {done.emailed && " · receipt emailed"}
       </p>
       {done.changeCents != null && (
@@ -1334,5 +1449,71 @@ function Row({ label, value, good }: { label: string; value: string; good?: bool
       <span>{label}</span>
       <span className="break-all text-right font-mono">{value}</span>
     </div>
+  );
+}
+
+/**
+ * The register's own price for a cart while offline: lamps at their listed
+ * price and custom items as typed. Prints and codes need the site.
+ */
+function offlineQuote(cart: PosCartInput, products: ShopProductDto[]): PosQuote {
+  const base = { fees: [], discounts: [], rejected: [], offline: true };
+  if (cart.items?.length) return { ...base, ok: false, error: "No internet: prints need the site to price them.", lines: [], totalCents: 0 };
+  if (cart.codes?.length) return { ...base, ok: false, error: "No internet: coupons and gift cards need the site. Remove them to sell offline.", lines: [], totalCents: 0 };
+  const lines: PosLineView[] = [];
+  for (const [i, l] of (cart.products ?? []).entries()) {
+    const p = products.find((x) => x.id === l.productId);
+    if (!p) return { ...base, ok: false, error: "No internet, and a product in the cart isn't on this register. Reload once you're back online.", lines: [], totalCents: 0 };
+    const v = p.variants.find((x) => x.id === l.variantId);
+    const unit = v?.priceCents ?? p.priceCents;
+    const qty = l.quantity ?? 1;
+    lines.push({ key: `product-${i}`, kind: "product", name: p.name, detail: [v?.name, l.customText && `"${l.customText}"`].filter(Boolean).join(" · ") || undefined, quantity: qty, cents: unit * qty, image: p.images[0] });
+  }
+  for (const [i, c] of (cart.custom ?? []).entries()) lines.push({ key: `custom-${i}`, kind: "custom", name: c.name, quantity: c.quantity ?? 1, cents: c.unitCents * (c.quantity ?? 1) });
+  return { ...base, ok: true, lines, totalCents: lines.reduce((n, l) => n + (l.cents ?? 0), 0) };
+}
+
+/** Shows when the register is offline or has sales waiting to send, and any the site refused. */
+function OfflineBanner({ offline, queue, onSend, onDrop, onRetry }: { offline: boolean; queue: QueuedSale[]; onSend: () => void; onDrop: (i: number) => void; onRetry: (i: number) => void }) {
+  const waiting = queue.filter((q) => !q.error);
+  const refused = queue.map((q, i) => ({ q, i })).filter(({ q }) => q.error);
+  if (!offline && !queue.length) return null;
+  return (
+    <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className={cn("rounded-2xl border p-4", offline ? "border-warning/50 bg-warning/10" : "border-accent-line bg-accent-soft")}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="font-semibold">{offline ? "No internet. Keep selling!" : "Back online"}</p>
+          <p className="text-sm text-muted">
+            {offline ? "Lamps and custom items ring up as normal and are saved on this iPad. Cash, card reader and e-Transfer work; Scan to pay, prints and codes need the internet. Don't reload this page until you're back online. " : ""}
+            {waiting.length ? `${waiting.length} sale${waiting.length === 1 ? "" : "s"} (${money(waiting.reduce((n, q) => n + q.totalCents, 0))}) waiting to send.` : offline ? "Nothing waiting yet." : "Everything's sent."}
+          </p>
+        </div>
+        {waiting.length > 0 && (
+          <Button variant="secondary" size="sm" onClick={onSend}>
+            Send now
+          </Button>
+        )}
+      </div>
+      {refused.length > 0 && (
+        <ul className="mt-3 space-y-2">
+          {refused.map(({ q, i }) => (
+            <li key={q.at} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-danger/10 p-3 text-sm">
+              <span>
+                <span className="font-semibold">{money(q.totalCents)}</span> · {q.label}
+                <span className="block text-danger">{q.error}</span>
+              </span>
+              <span className="flex gap-2">
+                <Button variant="secondary" size="sm" onClick={() => onRetry(i)}>
+                  Try again
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => confirm("Remove this sale from the iPad? Ring it up again by hand if it was real.") && onDrop(i)}>
+                  Remove
+                </Button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </motion.div>
   );
 }

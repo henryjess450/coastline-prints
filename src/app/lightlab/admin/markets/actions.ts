@@ -4,6 +4,9 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/admin/auth";
 import { logError } from "@/lib/api";
 import { db } from "@/lib/db";
+import { printImage } from "@/lib/receipt/print";
+import { renderPackingSlipPng } from "@/lib/receipt/packing-slip";
+import { packingList, saveKit } from "@/lib/shop/packing.server";
 
 export type MarketState = { ok?: boolean; error?: string; message?: string };
 
@@ -55,4 +58,26 @@ export async function deleteMarketAction(id: string): Promise<MarketState> {
   await db.market.deleteMany({ where: { id } });
   refresh();
   return { ok: true, message: "Market removed." };
+}
+
+/** The stand kit on every packing list: one thing per line. */
+export async function saveKitAction(text: string): Promise<MarketState> {
+  await requireAdmin();
+  await saveKit(text.split("\n"));
+  revalidatePath("/lightlab/admin/markets", "layout");
+  return { ok: true, message: "Kit list saved." };
+}
+
+/** Prints a market day's packing list on the receipt printer. */
+export async function printPackingListAction(marketId: string): Promise<MarketState> {
+  await requireAdmin();
+  const list = await packingList(marketId);
+  if (!list) return { error: "That market isn't there any more." };
+  try {
+    await printImage(await renderPackingSlipPng(list), `Packing list ${list.market.name}`);
+    return { ok: true, message: "Sent to the printer." };
+  } catch (err) {
+    logError("lightlab:packing-print", err);
+    return { error: err instanceof Error ? err.message : "Couldn't print it." };
+  }
 }

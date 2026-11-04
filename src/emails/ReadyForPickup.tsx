@@ -14,7 +14,9 @@ export function ReadyForPickup({ d, pickupWindowDays }: { d: OrderEmailData; pic
       <Label accent={accent}>Pickup details</Label>
       <AddressBox accent={accent} address={d.pickupAddress ?? ""} when={d.pickupWhen} />
       <P muted>
-        {d.pickupWhen
+        {d.atMarket
+          ? "We'll bring it to the LightLab stand at the market. See you there! Please bring your order number."
+          : d.pickupWhen
           ? "See you then! If that time no longer works, reply to this email and we'll find another one. Please bring your order number."
           : "Reply to this email to arrange a pickup time. Please bring your order number."}
       </P>

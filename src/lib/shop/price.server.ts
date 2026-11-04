@@ -15,14 +15,15 @@ import { inStock, needsVariant, poolKey, unitPrice, variantOf, type PricedShopLi
  * fee or minimum: products are sold at their listed price. Shipping packs each
  * product's boxed size. A cart holds one shop's products, never both.
  */
-export async function priceShopCart(lines: ShopLineInput[], cfg?: AppConfig) {
+/** `ignoreStock`: a register sale made offline, already handed over, so it's recorded even if the count says otherwise. */
+export async function priceShopCart(lines: ShopLineInput[], cfg?: AppConfig, opts: { ignoreStock?: boolean } = {}) {
   const config = cfg ?? (await getEffectiveConfig());
   const rows = await db.shopProduct.findMany({ where: { id: { in: [...new Set(lines.map((l) => l.productId))] } } });
   const shop = shopConfig(rows[0]?.shop).id as ShopId;
   if (rows.some((r) => r.shop !== shop)) throw new CartError("Your cart mixes products from two shops. Please check out each one on its own.");
   // Stock held for other people's checkouts in progress (e.g. waiting for an e-Transfer) isn't for sale.
   const raw = rows.map(toProductDto);
-  const held = await heldStock(raw);
+  const held = opts.ignoreStock ? new Map() : await heldStock(raw);
   const byId = new Map(raw.map((p) => [p.id, withHolds(p, held)]));
 
   // Lines drawing on the same stock count (same option, or options sharing the product's count) add up.
@@ -40,7 +41,7 @@ export async function priceShopCart(lines: ShopLineInput[], cfg?: AppConfig) {
     const total = (wanted.get(key) ?? 0) + line.quantity;
     wanted.set(key, total);
     const left = inStock(p, variant?.id ?? null);
-    if (left != null && total > left) {
+    if (left != null && total > left && !opts.ignoreStock) {
       throw new CartError(left <= 0 ? `${p.name}${variant ? ` (${variant.name})` : ""} just sold out.` : `Only ${left} of ${p.name}${variant ? ` (${variant.name})` : ""} left. Please lower the quantity.`);
     }
     const unitCents = unitPrice(p, variant?.id ?? null);

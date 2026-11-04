@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { pickup } from "@config/pickup";
 import { privateSite } from "@config/private.server";
+import { pickupPlaceFor } from "@/lib/shop/market-pickup.server";
 import { site } from "@config/site";
 import { Reveal } from "@/components/home/Reveal";
 import { Celebration } from "@/components/motion/Celebration";
@@ -32,7 +33,8 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
   if (!order) notFound();
 
   const firstName = order.customerName.split(/\s+/)[0];
-  const pickupWhen = formatPickup(order.pickupDate, order.pickupTime, pickup);
+  const place = order.fulfillment === "SHIP" ? null : await pickupPlaceFor(order);
+  const pickupWhen = place?.market?.when ?? formatPickup(order.pickupDate, order.pickupTime, pickup);
   const statusHref = `/status?order=${encodeURIComponent(order.orderNumber)}`;
   const shipTo = shippingAddressLines(order);
   const tracked = isTracked(order);
@@ -82,7 +84,7 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
         ) : (
         <Card flat highlight className="p-6 sm:p-8">
           <h2 className="font-display text-lg font-semibold">Pickup</h2>
-          <p className="mt-2 text-sm text-muted">{site.fulfillmentLabel}. We&apos;ll email you when your order is ready, before your pickup time.</p>
+          <p className="mt-2 text-sm text-muted">{place?.market ? "At the LightLab stand at the market. We'll email you when your order is packed." : `${site.fulfillmentLabel}. We'll email you when your order is ready, before your pickup time.`}</p>
           {pickupWhen && (
             <div className="mt-3 rounded-xl bg-accent-soft px-4 py-3">
               <span className="block text-xs text-faint">Your pickup time</span>
@@ -90,10 +92,10 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
             </div>
           )}
           <address className="mt-2 rounded-xl bg-accent-soft px-4 py-3 not-italic">
-            <span className="block text-xs text-faint">Pickup address</span>
-            <span className="font-semibold text-fg">{privateSite.pickupAddress}</span>
+            <span className="block text-xs text-faint">{place?.market ? "Where" : "Pickup address"}</span>
+            <span className="font-semibold text-fg">{place?.address ?? privateSite.pickupAddress}</span>
           </address>
-          <p className="mt-2 text-xs text-faint">Please keep this address private. Need a different time? Reply to your receipt email.</p>
+          <p className="mt-2 text-xs text-faint">{place?.market ? "Can't make it? Reply to your receipt email." : "Please keep this address private. Need a different time? Reply to your receipt email."}</p>
         </Card>
         )}
 

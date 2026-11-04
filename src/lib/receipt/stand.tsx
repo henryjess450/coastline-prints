@@ -101,7 +101,7 @@ export function sampleSlipData(slip: StandSlip): StandSlipData {
 // ── Drawing ──────────────────────────────────────────────────────────────
 
 const fontDir = () => path.resolve(/* turbopackIgnore: true */ process.cwd(), "assets/fonts");
-function fonts() {
+export function standFonts() {
   const dir = fontDir();
   return [
     { name: "Gabarito", data: readFileSync(path.join(dir, "gabarito-latin-400-normal.woff")), weight: 400 as const, style: "normal" as const },
@@ -111,7 +111,7 @@ function fonts() {
 }
 
 let logoCache: string | null = null;
-function logo() {
+export function standLogo() {
   logoCache ??= `data:image/png;base64,${readFileSync(path.resolve(/* turbopackIgnore: true */ process.cwd(), "public/brand/lightlab-logo.png")).toString("base64")}`;
   return logoCache;
 }
@@ -140,7 +140,7 @@ export async function renderStandSlipPng(slip: StandSlip, d: StandSlipData, them
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%", height: "100%", background: "white", color: "black", fontFamily: "Gabarito", fontSize: 24, lineHeight: 1.2 }}>
       <ArtImg art={top} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={logo()} width={300} height={118} alt={lightlab.name} style={{ marginTop: top ? 10 : 0 }} />
+      <img src={standLogo()} width={300} height={118} alt={lightlab.name} style={{ marginTop: top ? 10 : 0 }} />
 
       {theme.market && (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", alignSelf: "stretch", marginTop: 10 }}>
@@ -240,6 +240,6 @@ export async function renderStandSlipPng(slip: StandSlip, d: StandSlipData, them
     </div>
   );
 
-  const res = new ImageResponse(tree, { width: RECEIPT_WIDTH, height: Math.min(4000, height), fonts: fonts() });
+  const res = new ImageResponse(tree, { width: RECEIPT_WIDTH, height: Math.min(4000, height), fonts: standFonts() });
   return Buffer.from(await res.arrayBuffer());
 }

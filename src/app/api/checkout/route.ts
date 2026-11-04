@@ -21,6 +21,7 @@ import { etransferSettings, newPaymentCode } from "@/lib/payments/etransfer.serv
 import type { ShippingOption } from "@/lib/shipping/pack";
 import { clientIp, rateLimit } from "@/lib/ratelimit";
 import { isValidPickup } from "@/lib/pickup";
+import { marketForPickup } from "@/lib/shop/market-pickup.server";
 import { friendlyPaymentError, GENERIC_PAYMENT_ERROR } from "@/lib/square/errors";
 import { getSquare, squareLocationId, squarePublicConfig } from "@/lib/square/client";
 import { findOrCreateWithTimeout } from "@/lib/square/customers";
@@ -69,6 +70,15 @@ export async function POST(req: Request) {
     if (!isValidPickup(fulfillment.date, fulfillment.time, pickupConfig)) {
       return apiError(400, "That pickup time is no longer available. Please choose another.", { code: "PICKUP_UNAVAILABLE" });
     }
+  }
+
+  // Picking up at a market day: LightLab products only, and the market has to be tomorrow or later.
+  const market = !previous && fulfillment.method === "market" ? await marketForPickup(fulfillment.marketId) : null;
+  if (!previous && fulfillment.method === "market") {
+    if (!customer.pickupAcknowledged) return apiError(400, "Please confirm you'll pick up your order.");
+    const notLightLab = shop ? await db.shopProduct.count({ where: { id: { in: products.map((p) => p.productId) }, shop: { not: "lightlab" } } }) : 1;
+    if (notLightLab) return apiError(400, "Market pickup is for LightLab orders.");
+    if (!market) return apiError(400, "That market day isn't available for pickup any more. Please choose another.", { code: "PICKUP_UNAVAILABLE" });
   }
 
   let checkoutId = previous?.id;
@@ -149,6 +159,8 @@ export async function POST(req: Request) {
         notes: customer.notes || null,
         ...(fulfillment.method === "pickup"
           ? { fulfillment: "PICKUP", pickupDate: fulfillment.date, pickupTime: fulfillment.time }
+          : fulfillment.method === "market"
+          ? { fulfillment: "PICKUP", pickupDate: market!.date, pickupTime: market!.startTime, pickupMarketId: market!.id }
           : {
               fulfillment: "SHIP",
               shippingCents,

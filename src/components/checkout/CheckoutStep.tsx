@@ -22,7 +22,8 @@ import { PickupPicker, type PickupChoice } from "./PickupPicker";
 import { CodeBox } from "./CodeBox";
 import { INVITE_KEY } from "@/components/account/SaveInvite";
 import { Field, inputClass } from "./fields";
-import { AddressForm, BoxSummary, emptyAddress, MethodToggle, ShipOptions, type AddressDraft, type AddressErrors, type DeliveryMethod } from "./Delivery";
+import { AddressForm, BoxSummary, emptyAddress, MarketPicker, MethodToggle, ShipOptions, type AddressDraft, type AddressErrors, type DeliveryMethod } from "./Delivery";
+import type { MarketDto } from "@/lib/shop/markets";
 import { withParcel, type ShippingMethod, type ShippingOption } from "@/lib/shipping/pack";
 import { useAccount } from "@/components/account/use-account";
 import { applyCodes, codeEntry, type CodeInfo, type SaleInfo } from "@/lib/codes/apply";
@@ -59,6 +60,7 @@ export function CheckoutStep({
   square,
   etransfer,
   onBack,
+  markets = [],
 }: {
   items?: CartItem[];
   shop?: { lines: ShopCartLine[]; id?: ShopId };
@@ -66,6 +68,8 @@ export function CheckoutStep({
   square: SquareConfig | null;
   etransfer: EtransferPublic;
   onBack: () => void;
+  /** LightLab: market days the order can be picked up at instead. */
+  markets?: MarketDto[];
 }) {
   const cfg = useConfig();
   const router = useRouter();
@@ -111,6 +115,9 @@ export function CheckoutStep({
   const [pickup, setPickup] = useState<PickupChoice>(null);
   const [pickupError, setPickupError] = useState<string>();
   const [method, setMethod] = useState<DeliveryMethod>("pickup");
+  const [marketId, setMarketId] = useState<string | null>(null);
+  const [marketError, setMarketError] = useState<string>();
+  const market = markets.find((m) => m.id === marketId) ?? null;
   const [addressErrors, setAddressErrors] = useState<AddressErrors>({});
   useEffect(() => {
     typedAddress.current = address;
@@ -171,7 +178,7 @@ export function CheckoutStep({
   const etransferOff = byEtransfer && !covered ? etransferDiscount(discount.totalCents, etransfer.discountPercent) : 0;
   const total = discount.totalCents - etransferOff;
   const [waiting, setWaiting] = useState<EtransferDetails | null>(null);
-  const canPay = (covered || (byEtransfer ? true : !!square)) && !!quote?.ok && cartQuote.confirmed && !busy && (method === "pickup" || ships);
+  const canPay = (covered || (byEtransfer ? true : !!square)) && !!quote?.ok && cartQuote.confirmed && !busy && (method === "pickup" || method === "market" || ships);
 
   // The pay button hops once when everything is ready.
   const payButton = useRef<HTMLButtonElement>(null);
@@ -207,7 +214,7 @@ export function CheckoutStep({
         next[k] ??= issue.message;
       }
     }
-    if (method === "pickup" && !contact.pickupAcknowledged) next.pickupAcknowledged = "Please confirm you'll pick up your order.";
+    if ((method === "pickup" || method === "market") && !contact.pickupAcknowledged) next.pickupAcknowledged = "Please confirm you'll pick up your order.";
     setErrors(next);
     if (Object.keys(next).length) {
       document.getElementById(`co-${Object.keys(next)[0]}`)?.focus();
@@ -215,6 +222,14 @@ export function CheckoutStep({
     }
     const customer = r.data!;
 
+    if (method === "market") {
+      setMarketError(market ? undefined : "Please choose a market day.");
+      if (!market) {
+        document.getElementById("co-pickup")?.scrollIntoView({ behavior: "smooth", block: "center" });
+        return null;
+      }
+      return { customer, fulfillment: { method: "market" as const, marketId: market.id } };
+    }
     if (method === "pickup") {
       const pickupOk = !!pickup?.date && !!pickup.time;
       setPickupError(pickupOk ? undefined : "Please choose a pickup day and time.");
@@ -492,6 +507,11 @@ export function CheckoutStep({
                 I&apos;ll <strong className="text-fg">pick up this order</strong>. The pickup address is shown after payment and in my receipt email.
               </Check>
             )}
+            {method === "market" && (
+              <Check id="co-pickupAcknowledged" checked={contact.pickupAcknowledged} onChange={(v) => set("pickupAcknowledged", v)} error={errors.pickupAcknowledged}>
+                I&apos;ll <strong className="text-fg">pick up this order at the market</strong> I choose below.
+              </Check>
+            )}
             <Check id="co-termsAccepted" checked={contact.termsAccepted} onChange={(v) => set("termsAccepted", v)} error={errors.termsAccepted}>
               I agree to the{" "}
               <Link href="/terms" target="_blank" className="text-accent-text underline underline-offset-4">
@@ -509,11 +529,11 @@ export function CheckoutStep({
         <Card flat id="co-pickup" className="p-6 sm:p-8">
           <h2 className="font-display text-xl font-bold">Pickup or shipping</h2>
           <div className="mt-4">
-            <MethodToggle value={ships ? "ship" : "pickup"} onChange={chooseMethod} shipping={shippingQuote} />
+            <MethodToggle value={ships ? "ship" : method === "market" ? "market" : "pickup"} onChange={chooseMethod} shipping={shippingQuote} markets={markets} />
           </div>
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
-              key={ships ? "ship" : "pickup"}
+              key={ships ? "ship" : method === "market" ? "market" : "pickup"}
               className="mt-6"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -528,6 +548,16 @@ export function CheckoutStep({
                   <AddressForm value={address} onChange={setAddr} errors={addressErrors} flash={addressFlash} />
                   <p className="text-xs text-faint">{shop ? "We pack your order in a few days" : "Prints take about 2 to 5 days"}, then Canada Post takes a few business days depending on where you are. {shipOption.tracked ? "We email you the tracking number when it ships." : "We email you when it ships."}</p>
                 </div>
+              ) : method === "market" ? (
+                <MarketPicker
+                  markets={markets}
+                  value={marketId}
+                  onChange={(id) => {
+                    setMarketId(id);
+                    setMarketError(undefined);
+                  }}
+                  error={marketError}
+                />
               ) : (
                 <PickupPicker
                   value={pickup}
@@ -672,7 +702,7 @@ export function CheckoutStep({
               </div>
             )}
             <div className="flex justify-between">
-              <dt className="text-muted">{ships ? (shipOption?.method === "mailer" ? "Shipping (bubble mailer)" : shipOption?.method === "parcel" ? "Shipping (tracked mailer)" : "Shipping (tracked box)") : site.fulfillmentLabel}</dt>
+              <dt className="text-muted">{ships ? (shipOption?.method === "mailer" ? "Shipping (bubble mailer)" : shipOption?.method === "parcel" ? "Shipping (tracked mailer)" : "Shipping (tracked box)") : method === "market" ? (market ? `Pickup at ${market.name}` : "Market pickup") : site.fulfillmentLabel}</dt>
               <dd className="font-mono">{ships ? money(shippingCents) : "Free"}</dd>
             </div>
             <AnimatePresence initial={false}>

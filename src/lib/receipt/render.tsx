@@ -50,6 +50,8 @@ export async function loadReceiptData(orderId: string): Promise<ReceiptData | nu
   const o = await db.order.findUnique({ where: { id: orderId }, include: { items: true } });
   if (!o) return null;
   const parts = pickupParts(o.pickupDate, o.pickupTime, pickup);
+  // Picked up at a LightLab market day: say which market, so it gets packed for it.
+  const market = o.pickupMarketId ? await db.market.findUnique({ where: { id: o.pickupMarketId }, select: { name: true } }) : null;
   return {
     brand: isLightLabOrder(o.items) ? "lightlab" : "coastline",
     orderNumber: o.orderNumber,
@@ -58,7 +60,7 @@ export async function loadReceiptData(orderId: string): Promise<ReceiptData | nu
     customerEmail: o.customerEmail,
     customerPhone: o.customerPhone,
     pickupDate: parts?.date ?? null,
-    pickupTime: parts?.time ?? null,
+    pickupTime: market ? `At ${market.name}` : (parts?.time ?? null),
     ship: o.fulfillment === "SHIP" ? { lines: shippingAddressLines(o) ?? [], boxes: shippingBoxesOf(o).map((b) => `${b.name} box: ${b.pieces} ${b.pieces === 1 ? "piece" : "pieces"}`) } : null,
     shippingCents: o.shippingCents,
     notes: o.notes,

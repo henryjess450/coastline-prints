@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api";
-import { bridgeKeyOk, bridgeSeen, takeNextJob, waitForBridge, type BridgeReport } from "@/lib/receipt/bridge";
+import { bridgeKeyOk, bridgeSeen, PRINTER_PROBLEMS, takeNextJob, waitForBridge, type BridgeReport } from "@/lib/receipt/bridge";
 import { clientIp, rateLimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
@@ -12,7 +12,8 @@ const HOLD_MS = 25_000;
  * The print bridge asks here for the next thing to print
  * (bridge/print-bridge.mjs). The request stays open until a job is queued
  * or HOLD_MS passes, so a receipt prints within a second of the sale.
- * ?printer=ok|missing&host=<ip>&v=<version> says how the bridge is doing.
+ * ?printer=ok|missing&host=<ip>&status=<problems>&v=<version> says how the
+ * bridge is doing; with &take=0 it only reports (no job is handed out).
  */
 export async function GET(req: Request) {
   const ip = clientIp(req);
@@ -26,7 +27,13 @@ export async function GET(req: Request) {
     version: url.searchParams.get("v")?.slice(0, 20) ?? null,
     printer: printer === "ok" || printer === "missing" ? printer : null,
     printerHost: url.searchParams.get("host")?.slice(0, 60) ?? null,
+    problems: (url.searchParams.get("status") ?? "").split(",").filter((p) => p in PRINTER_PROBLEMS),
   };
+
+  if (url.searchParams.get("take") === "0") {
+    bridgeSeen(report);
+    return NextResponse.json({ job: null }, { headers: { "Cache-Control": "no-store" } });
+  }
 
   bridgeSeen(report, 1);
   let job = null;

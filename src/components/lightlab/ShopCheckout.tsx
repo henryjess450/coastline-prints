@@ -7,9 +7,10 @@ import { buttonClass } from "@/components/ui/Button";
 import type { EtransferPublic } from "@/lib/payments/etransfer";
 import { shopConfig, type ShopId } from "@config/shops";
 import { cartFor, useShopCartHydrated, useShopQuote } from "@/lib/shop/cart";
+import type { MarketDto } from "@/lib/shop/markets";
 import { PartnerBadge } from "./PartnerBadge";
 
-export function ShopCheckout({ square, etransfer, shop = "lightlab" }: { square: SquareConfig | null; etransfer: EtransferPublic; shop?: ShopId }) {
+export function ShopCheckout({ square, etransfer, shop = "lightlab", markets = [] }: { square: SquareConfig | null; etransfer: EtransferPublic; shop?: ShopId; markets?: MarketDto[] }) {
   const router = useRouter();
   const useCart = cartFor(shop);
   const { base } = shopConfig(shop);
@@ -46,7 +47,7 @@ export function ShopCheckout({ square, etransfer, shop = "lightlab" }: { square:
               </button>
             </p>
           )}
-          <CheckoutStep shop={{ lines, id: shop }} cartQuote={quote} square={square} etransfer={etransfer} onBack={() => (window.history.length > 1 ? router.back() : router.push(base))} />
+          <CheckoutStep shop={{ lines, id: shop }} cartQuote={quote} square={square} etransfer={etransfer} markets={markets} onBack={() => (window.history.length > 1 ? router.back() : router.push(base))} />
         </>
       )}
     </div>

@@ -76,6 +76,12 @@ export const posSaleSchema = z.object({
   /** The market the stand is at today (Admin > Receipts), for the slips' theme. */
   marketId: z.string().max(40).nullable().default(null),
   emailCustomer: z.boolean().default(true),
+  /**
+   * Rung up while the iPad was offline and sent once it was back: when it
+   * happened and the total the customer paid. It's recorded even if stock or
+   * prices changed since (the lamp is already gone).
+   */
+  offline: z.object({ at: z.string().datetime(), totalCents: z.number().int().min(0) }).nullable().default(null),
   /** The paired display, to show the thank-you screen. */
   registerId: z.string().max(40).nullable().default(null),
   /** Taken with Start order: made later and picked up on this day. Makes their account and emails them and the owner. */
@@ -111,6 +117,8 @@ export type PosQuote = {
   /** Codes that couldn't be used, and why. */
   rejected: { code: string; reason: string }[];
   totalCents: number;
+  /** Priced by the register itself while offline. */
+  offline?: boolean;
 };
 
 /**

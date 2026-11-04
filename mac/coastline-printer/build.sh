@@ -1,11 +1,12 @@
 #!/bin/bash
 # Builds "Coastline Printer.app" (the market stand's print bridge as a native
-# Mac app, App.swift) and puts it on the Desktop. Needs Xcode or its command
-# line tools.  bash mac/coastline-printer/build.sh [destination folder]
+# Mac app, App.swift), installs it in /Applications (so it can start at
+# login) and puts a shortcut to it on the Desktop. Needs Xcode or its
+# command line tools.  bash mac/coastline-printer/build.sh [destination folder]
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-DEST="${1:-$HOME/Desktop}"
+DEST="${1:-/Applications}"
 APP="$DEST/Coastline Printer.app"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -21,7 +22,7 @@ for s in 16 32 128 256 512; do
 done
 iconutil -c icns "$WORK/AppIcon.iconset" -o "$WORK/AppIcon.icns"
 
-swiftc -O -parse-as-library -target "$(uname -m)-apple-macos13.0" "$HERE/App.swift" -o "$WORK/Coastline Printer"
+swiftc -O -parse-as-library -target "$(uname -m)-apple-macos14.0" "$HERE/App.swift" -o "$WORK/Coastline Printer"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -41,7 +42,7 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>2.0</string>
   <key>CFBundleVersion</key><string>1</string>
-  <key>LSMinimumSystemVersion</key><string>12.0</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>LSApplicationCategoryType</key><string>public.app-category.business</string>
 </dict>
@@ -51,3 +52,11 @@ EOF
 codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
 touch "$APP"
 echo "Built $APP"
+
+# The Desktop shortcut (replaces a copy of the app built there by older versions of this script).
+if [ "$DEST" = "/Applications" ]; then
+  DESK="$HOME/Desktop/Coastline Printer.app"
+  if [ -d "$DESK" ] && [ ! -L "$DESK" ]; then rm -rf "$DESK"; fi
+  ln -sfn "$APP" "$DESK"
+  echo "Shortcut on the Desktop"
+fi

@@ -11,7 +11,7 @@ import { cn } from "@/lib/cn";
 import { MARKET_ART, RECEIPT_SEASONS, SEASON_MESSAGES, type Market, type PrintSettings } from "@/lib/receipt/themes";
 import type { SeasonId } from "@config/seasons";
 
-type Bridge = { online: boolean; agoMin: number | null; printer: "ok" | "missing" | null; printerHost: string | null; version: string | null; keyMadeAt: string | null };
+type Bridge = { online: boolean; agoMin: number | null; printer: "ok" | "missing" | null; printerHost: string | null; problems: string[]; version: string | null; keyMadeAt: string | null };
 type Job = { id: string; label: string; status: string; error: string | null; /** Already formatted in shop time. */ createdAt: string };
 type Slip = "receipt" | "gift" | "claim";
 
@@ -25,7 +25,7 @@ const SLIPS: { value: Slip; label: string }[] = [
 const STATUS: Record<string, string> = { QUEUED: "Waiting", SENT: "Printing", PRINTED: "Printed", FAILED: "Didn't print", CANCELLED: "Cancelled" };
 const seasonName = (id: string) => RECEIPT_SEASONS.find((s) => s.id === id)?.name ?? id;
 
-export function ReceiptsPanel({ settings: saved, seasonNow, bridge, destination, homePrinter, jobs, site }: { settings: PrintSettings; seasonNow: SeasonId; bridge: Bridge; destination: "bridge" | "home"; homePrinter: string | null; jobs: Job[]; site: string }) {
+export function ReceiptsPanel({ settings: saved, seasonNow, bridge, destination, homePrinter, jobs, site, missingMarkets }: { settings: PrintSettings; seasonNow: SeasonId; bridge: Bridge; destination: "bridge" | "home"; homePrinter: string | null; jobs: Job[]; site: string; missingMarkets: string[] }) {
   const router = useRouter();
   const [settings, setSettings] = useState(saved);
   const [saving, startSave] = useTransition();
@@ -71,7 +71,7 @@ export function ReceiptsPanel({ settings: saved, seasonNow, bridge, destination,
             }}
           />
           <SeasonCard settings={settings} setSettings={setSettings} seasonNow={seasonNow} />
-          <MarketsCard markets={settings.markets} footer={settings.footer} setMarkets={(markets) => setSettings({ ...settings, markets })} setFooter={(footer) => setSettings({ ...settings, footer })} />
+          <MarketsCard missing={missingMarkets.filter((n) => !settings.markets.some((m) => m.name.toLowerCase() === n.toLowerCase()))} markets={settings.markets} footer={settings.footer} setMarkets={(markets) => setSettings({ ...settings, markets })} setFooter={(footer) => setSettings({ ...settings, footer })} />
           <div className="sticky bottom-4 z-10 flex items-center justify-end gap-3">
             {dirty && <span className="rounded-full bg-surface px-3 py-1 text-sm text-muted shadow">Unsaved changes</span>}
             {dirty && (
@@ -112,6 +112,12 @@ function PrinterCard({ bridge, route, homePrinter, onRoute }: { bridge: Bridge; 
             {bridge.printer === "ok" ? `It can reach the printer${bridge.printerHost ? ` at ${bridge.printerHost}` : ""}` : "It can't find the printer. Check the ethernet cable and that the printer is on."}
           </li>
         )}
+        {bridge.problems.map((p) => (
+          <li key={p} className="flex items-center gap-2 font-semibold text-warning">
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-warning" aria-hidden />
+            {p}
+          </li>
+        ))}
         <li className="flex items-center gap-2">
           <Dot on={!!homePrinter} />
           {homePrinter ? `Home printer at ${homePrinter}` : "No home printer (RECEIPT_PRINTER_HOST isn't set)"}
@@ -179,12 +185,24 @@ const slug = (name: string, taken: string[]) => {
   return id;
 };
 
-function MarketsCard({ markets, footer, setMarkets, setFooter }: { markets: Market[]; footer: string; setMarkets: (m: Market[]) => void; setFooter: (f: string) => void }) {
+function MarketsCard({ markets, missing, footer, setMarkets, setFooter }: { markets: Market[]; missing: string[]; footer: string; setMarkets: (m: Market[]) => void; setFooter: (f: string) => void }) {
   const update = (i: number, patch: Partial<Market>) => setMarkets(markets.map((m, j) => (j === i ? { ...m, ...patch } : m)));
   return (
     <Card className="p-5 sm:p-6">
       <h2 className="font-display text-lg font-semibold">Markets</h2>
-      <p className="mt-1 text-sm text-muted">Pick today&apos;s market on the register (next to Selling as). Its name, drawing and message go on the receipt, and the sale shows under that market on Sources.</p>
+      <p className="mt-1 text-sm text-muted">Pick today&apos;s market on the register (next to Selling as). Its name, drawing and message go on the receipt, and the sale shows under that market on Sources. A design is matched to your market dates (LightLab admin) by name.</p>
+      {missing.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl bg-accent-soft p-3 text-sm">
+          <span>Market dates with no design yet: {missing.join(", ")}</span>
+          <button
+            type="button"
+            className={buttonClass("secondary", "sm")}
+            onClick={() => setMarkets([...markets, ...missing.map((name, i) => ({ id: slug(name, [...markets.map((m) => m.id), ...missing.slice(0, i).map((n) => slug(n, []))]), name: name.slice(0, 40), place: "", message: "", art: "harbour" as const }))])}
+          >
+            Add {missing.length === 1 ? "it" : "them"}
+          </button>
+        </div>
+      )}
       <ul className="mt-4 space-y-4">
         {markets.map((m, i) => (
           <li key={m.id} className="rounded-2xl border-2 border-line p-3">

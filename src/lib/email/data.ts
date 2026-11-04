@@ -1,7 +1,7 @@
+import { pickupPlaceFor } from "@/lib/shop/market-pickup.server";
 import "server-only";
 import { isAdminOrder, manualPaymentLabel } from "@/lib/orders/manual";
 import { pickup } from "@config/pickup";
-import { privateSite } from "@config/private.server";
 import { db } from "@/lib/db";
 import { hours, returningLabel } from "@/lib/format";
 import type { AppliedCode } from "@/lib/codes/apply";
@@ -52,6 +52,8 @@ export type OrderEmailData = {
   fulfillment: "PICKUP" | "SHIP";
   /** Null for shipped orders: they must never be sent the pickup address. */
   pickupAddress: string | null;
+  /** Picked up at a LightLab market day: pickupAddress is the market, and it isn't private. */
+  atMarket?: boolean;
   shippingCents: number;
   /** The customer's address as lines, for shipped orders. */
   shipTo: string[] | null;
@@ -74,6 +76,7 @@ export async function loadOrderEmailData(orderId: string): Promise<OrderEmailDat
   if (!order) return null;
   const base = appUrl();
   const ship = order.fulfillment === "SHIP";
+  const place = ship ? null : await pickupPlaceFor(order);
   const totalHours = order.items.reduce((h, i) => h + i.hoursEach * i.quantity, 0);
   return {
     lightlab: isLightLabOrder(order.items),
@@ -112,13 +115,14 @@ export async function loadOrderEmailData(orderId: string): Promise<OrderEmailDat
     totalHoursLabel: hours(totalHours),
     card: manualPaymentLabel(order.paymentMethod) ?? (order.paymentMethod === "ETRANSFER" ? "Interac e-Transfer" : order.cardLast4 ? `${brand(order.cardBrand)} ending ${order.cardLast4}` : isAdminOrder(order) ? (order.paymentMethod === "CARD" ? "Card (in person)" : null) : order.totalCents === 0 ? "Gift card" : null),
     fulfillment: ship ? "SHIP" : "PICKUP",
-    pickupAddress: ship ? null : privateSite.pickupAddress,
+    pickupAddress: place?.address ?? null,
+    atMarket: !!place?.market,
     shippingCents: order.shippingCents,
     shipTo: shippingAddressLines(order),
     shippingLabel: ship ? shippingSummary(order) : null,
     tracked: ship && isTracked(order),
     tracking: ship && order.trackingNumber ? { number: order.trackingNumber, url: trackingUrl(order.trackingNumber) } : null,
-    pickupWhen: formatPickup(order.pickupDate, order.pickupTime, pickup),
+    pickupWhen: place?.market?.when ?? formatPickup(order.pickupDate, order.pickupTime, pickup),
     links: {
       confirmation: `${base}/orders/${order.viewToken}`,
       status: `${base}/status?order=${encodeURIComponent(order.orderNumber)}`,

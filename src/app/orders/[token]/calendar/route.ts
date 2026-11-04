@@ -1,5 +1,5 @@
 import { pickup } from "@config/pickup";
-import { privateSite } from "@config/private.server";
+import { pickupPlaceFor } from "@/lib/shop/market-pickup.server";
 import { site } from "@config/site";
 import { db } from "@/lib/db";
 
@@ -28,8 +28,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
   const order = await db.order.findUnique({ where: { viewToken: token } });
   if (!order || order.fulfillment === "SHIP" || !order.pickupDate || !order.pickupTime) return new Response("Not found", { status: 404 });
 
+  const place = await pickupPlaceFor(order);
   const start = zoned(order.pickupDate, order.pickupTime, pickup.timeZone);
-  const end = new Date(start.getTime() + pickup.slotMinutes * 60_000);
+  // A market pickup lasts as long as the market; a home pickup is one slot.
+  const end = place.market ? zoned(order.pickupDate, place.market.endTime, pickup.timeZone) : new Date(start.getTime() + pickup.slotMinutes * 60_000);
   const ics = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
@@ -40,7 +42,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
     `DTSTART:${stamp(start)}`,
     `DTEND:${stamp(end)}`,
     `SUMMARY:${esc(`Pick up ${site.name} order ${order.orderNumber}`)}`,
-    `LOCATION:${esc(privateSite.pickupAddress)}`,
+    `LOCATION:${esc(place.address)}`,
     `DESCRIPTION:${esc(`Bring your order number, ${order.orderNumber}. Need a different time? Reply to your receipt email.`)}`,
     "END:VEVENT",
     "END:VCALENDAR",

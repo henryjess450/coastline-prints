@@ -42,6 +42,8 @@ export const addressSchema = z.object({
 export const fulfillmentSchema = z.discriminatedUnion("method", [
   /** Chosen pickup slot. Re-checked against the schedule on the server. */
   z.object({ method: z.literal("pickup"), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), time: z.string().regex(/^\d{2}:\d{2}$/) }),
+  /** LightLab orders: picked up at one of the shop's market days (Market.id). */
+  z.object({ method: z.literal("market"), marketId: z.string().min(1).max(40) }),
   /** option: "mailer" (Lettermail, untracked), "parcel" (mailer as a tracked parcel) or "box" (tracked flat rate box). */
   z.object({ method: z.literal("ship"), option: z.enum(["mailer", "parcel", "box"]), address: addressSchema }),
 ]);

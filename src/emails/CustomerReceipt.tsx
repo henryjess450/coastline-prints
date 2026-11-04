@@ -58,14 +58,16 @@ export function CustomerReceipt({ d, signInUrl }: { d: OrderEmailData; signInUrl
         <>
           <Label accent={accent}>Pickup</Label>
           <P muted>
-            {signInUrl
+            {d.atMarket
+              ? "Pick it up at the LightLab stand at the market below. Bring your order number. If you can't make it, just reply to this email."
+              : signInUrl
               ? "Your order will be ready by the day below. We'll email you when it's ready to pick up, and to set a time. If you'd rather have it shipped, just reply: we'll tell you the cost once it's printed."
               : d.pickupWhen
               ? "Here's the pickup time you chose. We'll email you to confirm once your order is ready. If the time stops working for you, just reply to this email."
               : "This order is for local pickup. Please wait for the \"ready for pickup\" email before coming by."}
           </P>
           <AddressBox accent={accent} address={d.pickupAddress ?? ""} when={d.pickupWhen} whenLabel={signInUrl ? "Ready by" : undefined} />
-          <Text style={{ margin: "0 0 20px", fontSize: 12, color: colors.faint }}>Please keep this address private.</Text>
+          {!d.atMarket && <Text style={{ margin: "0 0 20px", fontSize: 12, color: colors.faint }}>Please keep this address private.</Text>}
         </>
       )}
 

@@ -47,6 +47,7 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const order = await db.order.findUnique({ where: { id }, include: { items: { include: { upload: { select: { fileDeletedAt: true } }, product: { select: { images: true, slug: true } } } }, events: { orderBy: { createdAt: "desc" } } } });
   if (!order) notFound();
+  const pickupMarket = order.pickupMarketId ? await db.market.findUnique({ where: { id: order.pickupMarketId }, select: { name: true } }) : null;
   const [cfg, jobs] = await Promise.all([getEffectiveConfig(), db.outboxJob.findMany({ where: { dedupeKey: { startsWith: `${order.id}:` } }, orderBy: { createdAt: "asc" } })]);
 
   const items: AdminItem[] = order.items.map((it) => {
@@ -183,6 +184,7 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
               <>
                 <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-faint">Pickup</h3>
                 <p className="font-medium">{formatPickup(order.pickupDate, order.pickupTime, pickup) ?? "Not booked"}</p>
+                {pickupMarket && <p className="text-sm font-semibold text-accent-text">At the {pickupMarket.name} stand (bring it to the market)</p>}
               </>
             )}
             {order.notes && (

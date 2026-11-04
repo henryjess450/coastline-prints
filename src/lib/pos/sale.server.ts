@@ -34,9 +34,11 @@ export async function ringUpSale(raw: PosSaleInput) {
   if (previous?.order) return { order: previous.order, emailed: false };
   if (previous) throw new PosSaleError("This sale didn't go through. Start it again.");
 
-  const priced = await pricePos({ ...sale.cart, email: sale.customer.email });
+  const offline = sale.offline;
+  if (offline && (sale.squarePaymentId || sale.cart.items.length || sale.cart.codes.length)) throw new PosSaleError("Offline sales can't have prints, codes or Square links.");
+  const priced = await pricePos({ ...sale.cart, email: sale.customer.email }, { ignoreStock: !!offline });
   if (!priced.ok) throw new PosSaleError(priced.error ?? "Something in the cart can't be sold.", publicQuote(priced));
-  if (priced.totalCents !== sale.expectedTotalCents) throw new PosSaleError(`The total changed to ${money(priced.totalCents)}. Check it with the customer.`, publicQuote(priced));
+  if (!offline && priced.totalCents !== sale.expectedTotalCents) throw new PosSaleError(`The total changed to ${money(priced.totalCents)}. Check it with the customer.`, publicQuote(priced));
   if (sale.payment === "CASH" && sale.tenderedCents != null && sale.tenderedCents < priced.totalCents) throw new PosSaleError("That's less cash than the total.");
   if (sale.order) {
     // Start order: paid now by cash or e-Transfer, made later, and they need an email for the account and updates.
@@ -95,7 +97,16 @@ export async function ringUpSale(raw: PosSaleInput) {
       checkout.id,
       squarePayment ?? { id: `${ADMIN_PAYMENT_PREFIX}${checkout.id}`, status: "COMPLETED", amountCents: checkout.totalCents, currency: checkout.currency },
       {
-        note: [sale.order ? "Order taken at the register" : "Rung up at the register", sale.source, squarePayment ? "Paid by Square link" : paid].filter(Boolean).join(" · "),
+        note: [
+          sale.order ? "Order taken at the register" : "Rung up at the register",
+          sale.source,
+          squarePayment ? "Paid by Square link" : paid,
+          offline && `Rung up offline at ${new Date(offline.at).toLocaleTimeString("en-CA", { timeZone: "America/Vancouver", hour: "numeric", minute: "2-digit" })}, sent when back online`,
+          offline && offline.totalCents !== priced.totalCents && `Charged ${money(offline.totalCents)} offline; prices now add up to ${money(priced.totalCents)}`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        createdAt: offline ? new Date(offline.at) : undefined,
         emailCustomer: sale.order ? true : sale.emailCustomer,
         printTicket: sale.printTicket,
         takenOrder: !!sale.order,

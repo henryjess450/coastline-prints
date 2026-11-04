@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { useState, useTransition } from "react";
@@ -144,6 +145,11 @@ function MarketRow({ m, active, onEdit, onAgain, onRemove }: { m: MarketDto; act
         </p>
       </div>
       <div className="flex gap-2">
+        {onEdit && (
+          <Link href={`/lightlab/admin/markets/${m.id}/pack`} className={buttonClass("secondary", "sm")}>
+            Packing list
+          </Link>
+        )}
         {onEdit && (
           <button type="button" onClick={onEdit} className={buttonClass("secondary", "sm")}>
             Edit

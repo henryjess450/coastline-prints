@@ -13,13 +13,17 @@
  *
  * Optional: SERVER (default https://coastlineprints.ca), PRINTER_HOST (else
  * it finds the Star printer on the local networks), PRINTER_PORT (9100),
- * BRIDGE_JSON=1 (one JSON event per line, for the Coastline Printer Mac app).
+ * BRIDGE_JSON=1 (one JSON event per line, for the Coastline Printer Mac app;
+ * it also takes "reprint [job id]" lines on stdin and exits when stdin closes),
+ * JOBS_DIR (keeps the last 10 receipts there, so they can be reprinted).
  * No packages needed.
  */
 import net from "node:net";
+import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
+import path from "node:path";
 
-const VERSION = "1.1";
+const VERSION = "1.2";
 const KEY = process.env.BRIDGE_KEY ?? process.argv[2];
 const SERVER = (process.env.SERVER ?? "https://coastlineprints.ca").replace(/\/$/, "");
 const PORT = Number(process.env.PRINTER_PORT ?? 9100);
@@ -41,19 +45,38 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * to port 9100: first byte has bit 0 set and bits 4 and 7 clear (e.g. 0x23).
  * That tells it apart from other printers on the network.
  */
+const isAsb = (d) => d.length > 0 && (d[0] & 0x91) === 0x01;
+
+/**
+ * What's wrong, from a Star status message (Star Line Mode spec): byte 3 has
+ * the cover and offline bits, byte 4 the cutter error, byte 6 paper empty
+ * and the near-end sensors. Empty when all is well.
+ */
+function problems(d) {
+  if (!isAsb(d) || d.length < 7) return [];
+  const out = [];
+  if (d[2] & 0x20) out.push("cover");
+  if (d[5] & 0x08) out.push("paper-out");
+  else if (d[5] & 0x06) out.push("paper-low");
+  if (d[3] & 0x08) out.push("cutter");
+  if (d[2] & 0x08 && !out.length) out.push("offline");
+  return out;
+}
+
+/** Connects to see if a Star printer is there. Resolves its problems ([] when fine), or null if it isn't one. */
 function probe(host, timeout = 900) {
   return new Promise((resolve) => {
     const s = net.connect({ host, port: PORT });
     let done = false;
-    const finish = (ok) => {
+    const finish = (result) => {
       if (done) return;
       done = true;
       s.destroy();
-      resolve(ok);
+      resolve(result);
     };
-    s.setTimeout(timeout, () => finish(false));
-    s.on("error", () => finish(false));
-    s.on("data", (d) => finish((d[0] & 0x91) === 0x01));
+    s.setTimeout(timeout, () => finish(null));
+    s.on("error", () => finish(null));
+    s.on("data", (d) => finish(isAsb(d) ? problems(d) : null));
     // Ask for status if it didn't offer one.
     s.on("connect", () => setTimeout(() => !done && s.write(Buffer.from([0x1b, 0x06, 0x01])), 400));
   });
@@ -87,14 +110,26 @@ let printerHost = process.env.PRINTER_HOST || null;
 let checkedOnce = false;
 
 async function findPrinter() {
-  if (process.env.PRINTER_HOST) return (await probe(process.env.PRINTER_HOST, 2500)) ? process.env.PRINTER_HOST : null;
-  if (printerHost && (await probe(printerHost, 2500))) return printerHost;
+  if (process.env.PRINTER_HOST) {
+    const st = await probe(process.env.PRINTER_HOST, 2500);
+    if (st) setStatus(st);
+    return st ? process.env.PRINTER_HOST : null;
+  }
+  if (printerHost) {
+    const st = await probe(printerHost, 2500);
+    if (st) {
+      setStatus(st);
+      return printerHost;
+    }
+  }
   const hosts = candidates();
   let found = null;
   for (let i = 0; i < hosts.length && !found; i += 64) {
     const batch = hosts.slice(i, i + 64);
-    const hits = await Promise.all(batch.map((h) => probe(h).then((ok) => (ok ? h : null))));
-    found = hits.find(Boolean) ?? null;
+    const hits = await Promise.all(batch.map((h) => probe(h).then((st) => (st ? { h, st } : null))));
+    const hit = hits.find(Boolean);
+    if (hit) setStatus(hit.st);
+    found = hit?.h ?? null;
   }
   if (found !== printerHost || !checkedOnce) {
     log(found ? `Found the printer at ${found}` : "Can't find the printer yet");
@@ -105,7 +140,36 @@ async function findPrinter() {
   return found;
 }
 
+// ── Printer status (paper, cover) ────────────────────────────────────────
+
+let status = [];
+const MESSAGES = { cover: "The printer's cover is open", "paper-out": "The printer is out of paper", "paper-low": "Paper is running low", cutter: "The paper cutter is jammed", offline: "The printer is offline" };
+
+function setStatus(next) {
+  if (next.join() === status.join()) return;
+  status = next;
+  log(status.length ? status.map((k) => MESSAGES[k]).join(". ") : "Printer is OK");
+  event("status", { problems: status });
+  // Tell the site now, not at the next check-in (take=0: just a report, no job handed out).
+  if (online) {
+    const q = new URLSearchParams({ v: VERSION, printer: "ok", host: printerHost ?? "", status: status.join(","), take: "0" });
+    fetch(`${SERVER}/api/print-bridge?${q}`, { headers: { Authorization: `Bearer ${KEY}` }, signal: AbortSignal.timeout(10_000) }).catch(() => {});
+  }
+}
+
+/** Can't print right now: cover open, out of paper, cutter jammed. Paper low still prints. */
+const blocked = () => status.some((k) => k !== "paper-low");
+
+// Check the printer every 15 s (just a quick connect; it answers with its status).
+setInterval(async () => {
+  if (!printerHost || busy) return;
+  const st = await probe(printerHost, 2500);
+  if (st) setStatus(st);
+}, 15_000);
+
 // ── Printing ─────────────────────────────────────────────────────────────
+
+let busy = false;
 
 function send(host, bytes) {
   return new Promise((resolve, reject) => {
@@ -121,10 +185,80 @@ function send(host, bytes) {
     s.setTimeout(20_000, () => done(new Error(`Printer at ${host} timed out`)));
     s.on("error", (e) => done(new Error(`Can't reach the printer at ${host}: ${e.message}`)));
     // Star printers reply with status; read it so the connection can close.
-    s.on("data", () => {});
+    s.on("data", (d) => isAsb(d) && setStatus(problems(d)));
     s.on("connect", () => s.end(bytes));
     s.on("close", (hadError) => !hadError && done());
   });
+}
+
+/** Sends a receipt, waiting up to 90 s for an open cover or empty paper to be fixed first. */
+async function printBytes(host, bytes) {
+  busy = true;
+  try {
+    for (let i = 0; i < 30 && blocked(); i++) {
+      if (i === 0) log("Waiting for the printer: " + status.map((k) => MESSAGES[k]).join(". "));
+      await sleep(3000);
+      const st = await probe(host, 2500);
+      if (st) setStatus(st);
+    }
+    if (blocked()) throw new Error(status.map((k) => MESSAGES[k]).join(". "));
+    await send(host, bytes);
+  } finally {
+    busy = false;
+  }
+}
+
+// ── The last few receipts, for reprints ──────────────────────────────────
+
+const JOBS_DIR = process.env.JOBS_DIR || null;
+const recent = []; // newest first: { id, label, bytes }
+if (JOBS_DIR) {
+  mkdirSync(JOBS_DIR, { recursive: true });
+  for (const f of readdirSync(JOBS_DIR).filter((f) => f.endsWith(".bin")).sort((a, b) => statSync(path.join(JOBS_DIR, b)).mtimeMs - statSync(path.join(JOBS_DIR, a)).mtimeMs).slice(0, 10)) {
+    const [id, ...label] = f.slice(0, -4).split("__");
+    const file = path.join(JOBS_DIR, f);
+    recent.push({ id, label: decodeURIComponent(label.join("__")), bytes: readFileSync(file), at: statSync(file).mtimeMs });
+  }
+}
+
+function remember(id, label, bytes) {
+  recent.unshift({ id, label, bytes, at: Date.now() });
+  for (const old of recent.splice(10)) if (JOBS_DIR) try { unlinkSync(path.join(JOBS_DIR, `${old.id}__${encodeURIComponent(old.label)}.bin`)); } catch {}
+  if (JOBS_DIR) try { writeFileSync(path.join(JOBS_DIR, `${id}__${encodeURIComponent(label)}.bin`), bytes); } catch {}
+}
+
+async function reprint(id) {
+  const job = id ? recent.find((j) => j.id === id) : recent[0];
+  if (!job) return event("failed", { id: `reprint-${Date.now()}`, label: "Reprint", error: "No receipt to reprint yet" });
+  const rid = `reprint-${Date.now()}`;
+  const label = `Reprint: ${job.label.replace(/^Reprint: /, "")}`;
+  log(`Printing ${label}`);
+  event("printing", { id: rid, label });
+  const host = printerHost ?? (await findPrinter());
+  try {
+    if (!host) throw new Error("Can't find the printer");
+    await printBytes(host, job.bytes);
+    log("Printed");
+    event("printed", { id: rid, label });
+  } catch (err) {
+    event("failed", { id: rid, label, error: err.message });
+  }
+}
+
+/** The app sends commands on stdin, one per line, and closes it when it quits. */
+if (JSON_OUT) {
+  let input = "";
+  process.stdin.on("data", (d) => {
+    input += d;
+    let nl;
+    while ((nl = input.indexOf("\n")) >= 0) {
+      const [cmd, arg] = input.slice(0, nl).trim().split(/\s+/);
+      input = input.slice(nl + 1);
+      if (cmd === "reprint") void reprint(arg);
+    }
+  });
+  process.stdin.on("end", () => process.exit(0));
+  if (recent.length) event("history", { jobs: recent.map((j) => ({ id: j.id, label: j.label, at: j.at })) });
 }
 
 async function report(id, ok, error) {
@@ -153,7 +287,7 @@ for (;;) {
   }
   try {
     // Until it has heard back, ask without waiting, so it knows straight away that it's online.
-    const q = new URLSearchParams({ v: VERSION, printer: printerHost ? "ok" : "missing", host: printerHost ?? "", wait: online ? "1" : "0" });
+    const q = new URLSearchParams({ v: VERSION, printer: printerHost ? "ok" : "missing", host: printerHost ?? "", status: status.join(","), wait: online ? "1" : "0" });
     const res = await fetch(`${SERVER}/api/print-bridge?${q}`, { headers: { Authorization: `Bearer ${KEY}` }, signal: AbortSignal.timeout(40_000) });
     if (res.status === 401) {
       log("The site doesn't know this bridge key. Make a new one on Admin > Receipts.");
@@ -177,12 +311,14 @@ for (;;) {
       continue;
     }
     try {
-      await send(host, Buffer.from(job.data, "base64"));
+      const bytes = Buffer.from(job.data, "base64");
+      await printBytes(host, bytes);
+      remember(job.id, job.label, bytes);
       await report(job.id, true);
       log("Printed");
       event("printed", { id: job.id, label: job.label });
     } catch (err) {
-      printerHost = null;
+      if (!blocked()) printerHost = null;
       await report(job.id, false, err.message);
       log(err.message);
       event("failed", { id: job.id, label: job.label, error: err.message });

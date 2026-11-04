@@ -63,6 +63,8 @@ export type AdminOrderOptions = {
   takenOrder?: boolean;
   /** LightLab stand slips for the customer, themed for this market (see receipt/stand). */
   slips?: { slip: "receipt" | "gift" | "claim"; marketId: string | null }[];
+  /** A register sale made offline and sent later: when it really happened. */
+  createdAt?: Date;
 };
 
 /**
@@ -112,6 +114,8 @@ export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts
             notes: checkout.notes,
             pickupDate: checkout.pickupDate,
             pickupTime: checkout.pickupTime,
+            pickupMarketId: checkout.pickupMarketId,
+            ...(admin?.createdAt ? { createdAt: admin.createdAt } : {}),
             fulfillment: checkout.fulfillment,
             shippingCents: checkout.shippingCents,
             shippingBoxes: checkout.shippingBoxes,

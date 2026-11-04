@@ -46,7 +46,16 @@ export async function bridgeKeyOk(header: string | null) {
 // ── Presence and wake-ups (in memory: the site is one process) ──────────
 
 /** What the bridge last told us: where it is and whether it can reach the printer. */
-export type BridgeReport = { ip: string; version: string | null; printer: "ok" | "missing" | null; printerHost: string | null };
+export type BridgeReport = { ip: string; version: string | null; printer: "ok" | "missing" | null; printerHost: string | null; /** "cover", "paper-out", "paper-low", "cutter", "offline". */ problems: string[] };
+
+/** What each printer problem means, for the admin. */
+export const PRINTER_PROBLEMS: Record<string, string> = {
+  cover: "The printer's cover is open",
+  "paper-out": "The printer is out of paper",
+  "paper-low": "Paper is running low",
+  cutter: "The paper cutter is jammed",
+  offline: "The printer is offline",
+};
 type Presence = BridgeReport & { seenAt: number; waiting: number };
 
 const g = globalThis as unknown as { __printBridge?: { presence: Presence | null; bus: EventTarget } };

@@ -2,11 +2,14 @@
 //
 // Runs print-bridge.mjs (bundled in the app) with Node in the background,
 // reads its JSON events and shows what's going on: online, printer found,
-// receipts printed today. Keeps the Mac awake while it's open. The bridge
-// key is kept in the login keychain. Built by build.sh with swiftc.
+// paper and cover warnings, receipts printed today (any of the last ten can
+// be reprinted). Lives in the menu bar, so the window can be closed; keeps
+// the Mac awake while it runs and can start at login. The bridge key is kept
+// in the login keychain. Built by build.sh with swiftc.
 
 import AppKit
 import Security
+import ServiceManagement
 import SwiftUI
 
 // MARK: - Colours (from the logo)
@@ -27,6 +30,8 @@ let server = ProcessInfo.processInfo.environment["COASTLINE_SERVER"] ?? "https:/
 enum KeyStore {
   static let service = ProcessInfo.processInfo.environment["COASTLINE_KEYCHAIN"] ?? "ca.coastlineprints.printer"
   static func load() -> String? {
+    // Testing only: a key straight from the environment, so a test build never touches the keychain.
+    if let key = ProcessInfo.processInfo.environment["COASTLINE_KEY"] { return key }
     let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecReturnData as String: true]
     var out: CFTypeRef?
     guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data else { return nil }
@@ -56,6 +61,8 @@ struct PrintItem: Identifiable {
   var status: Status
   var error: String?
   enum Status { case printing, printed, failed }
+  /** Reprints are made from the receipts the bridge kept, not from other reprints. */
+  var canReprint: Bool { status == .printed && !id.hasPrefix("reprint-") }
 }
 
 @MainActor
@@ -73,8 +80,11 @@ final class Bridge: ObservableObject {
   @Published var recent: [PrintItem] = []
   @Published var printedToday = 0
   @Published var askForKey = false
+  /// From the printer itself: "cover", "paper-out", "paper-low", "cutter", "offline".
+  @Published var problems: [String] = []
 
   private var process: Process?
+  private var input: FileHandle?
   private var stopping = false
   private var buffer = Data()
   private var awake: NSObjectProtocol?
@@ -86,6 +96,12 @@ final class Bridge: ObservableObject {
   }
 
   static var today: String { DateFormatter.localizedString(from: Date(), dateStyle: .short, timeStyle: .none) }
+
+  /// Problems in words, for the window and the menu.
+  var problemText: [String] {
+    let words = ["cover": "The printer's cover is open", "paper-out": "The printer is out of paper", "paper-low": "Paper is running low", "cutter": "The paper cutter is jammed", "offline": "The printer is offline"]
+    return problems.map { words[$0] ?? $0 }
+  }
 
   static let nodePath: String? = ["/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"].first { FileManager.default.isExecutableFile(atPath: $0) }
 
@@ -102,12 +118,16 @@ final class Bridge: ObservableObject {
     let p = Process()
     p.executableURL = URL(fileURLWithPath: node)
     // Exits when this app goes away (stdin closes), even if the app crashes.
-    p.arguments = ["-e", "process.stdin.on('end',()=>process.exit(0));process.stdin.resume();import(require('url').pathToFileURL(process.argv[1]).href)", script]
-    p.environment = ["BRIDGE_KEY": key, "BRIDGE_JSON": "1", "SERVER": server, "PATH": "/usr/bin:/bin:/usr/sbin:/sbin"]
+    // In JSON mode the bridge takes commands on stdin and exits when it closes (when this app quits, even by crashing).
+    p.arguments = [script]
+    let jobs = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Coastline Printer/receipts").path
+    p.environment = ["BRIDGE_KEY": key, "BRIDGE_JSON": "1", "SERVER": server, "JOBS_DIR": jobs, "PATH": "/usr/bin:/bin:/usr/sbin:/sbin"]
     let out = Pipe()
     p.standardOutput = out
     p.standardError = FileHandle.nullDevice
-    p.standardInput = Pipe()
+    let stdin = Pipe()
+    p.standardInput = stdin
+    input = stdin.fileHandleForWriting
     out.fileHandleForReading.readabilityHandler = { [weak self] h in
       let data = h.availableData
       Task { @MainActor in self?.consume(data) }
@@ -132,6 +152,11 @@ final class Bridge: ObservableObject {
     checkNetwork()
     timer?.invalidate()
     timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in Task { @MainActor in self?.checkNetwork() } }
+  }
+
+  /// Prints one of the kept receipts again (the newest when `id` is nil).
+  func reprint(_ id: String? = nil) {
+    input?.write(Data("reprint \(id ?? "")\n".utf8))
   }
 
   func stop() {
@@ -174,8 +199,17 @@ final class Bridge: ObservableObject {
       recent = Array(recent.prefix(30))
     case "printed":
       update(e["id"] as? String, .printed)
-      bumpCount()
+      if !(e["id"] as? String ?? "").hasPrefix("reprint-") { bumpCount() }
       NSSound(named: "Glass")?.play()
+    case "status":
+      let next = e["problems"] as? [String] ?? []
+      // A new problem that stops printing gets a sound, so it's noticed across the stand.
+      if next.contains(where: { $0 != "paper-low" && !problems.contains($0) }) { NSSound(named: "Sosumi")?.play() }
+      problems = next
+    case "history":
+      // Receipts kept from before the app was last opened, so they can still be reprinted.
+      guard recent.isEmpty, let jobs = e["jobs"] as? [[String: Any]] else { break }
+      recent = jobs.map { PrintItem(id: $0["id"] as? String ?? UUID().uuidString, label: $0["label"] as? String ?? "Receipt", at: Date(timeIntervalSince1970: ($0["at"] as? Double ?? 0) / 1000), status: .printed) }
     case "failed":
       update(e["id"] as? String, .failed, error: e["error"] as? String)
       NSSound(named: "Basso")?.play()
@@ -258,24 +292,52 @@ struct CoastlinePrinterApp: App {
     Window("Coastline Printer", id: "main") {
       ContentView()
         .environmentObject(bridge)
-        .onAppear { bridge.start() }
+        .onAppear {
+          NSApp.setActivationPolicy(.regular)
+          bridge.start()
+        }
     }
     .windowResizability(.contentSize)
     .windowStyle(.hiddenTitleBar)
     .commands {
       CommandGroup(after: .appSettings) {
         Button("Change Bridge Key…") { bridge.askForKey = true }
+        Button("Reprint Last Receipt") { bridge.reprint() }.keyboardShortcut("p", modifiers: [.command, .shift])
       }
     }
+
+    MenuBarExtra {
+      MenuPanel().environmentObject(bridge)
+    } label: {
+      Image(nsImage: menuBarIcon(bridge.light))
+    }
+    .menuBarExtraStyle(.window)
   }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
-    // For checking the design: COASTLINE_SNAPSHOT=/path.png saves the window as a picture after a few seconds.
+    MainActor.assumeIsolated { Bridge.shared.start() }
+    // Closing the window leaves it running in the menu bar, without a Dock icon.
+    NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { note in
+      guard let closing = note.object as? NSWindow, closing.styleMask.contains(.titled) else { return }
+      DispatchQueue.main.async {
+        if !NSApp.windows.contains(where: { $0 !== closing && $0.isVisible && $0.styleMask.contains(.titled) }) { NSApp.setActivationPolicy(.accessory) }
+      }
+    }
+
+    // For checking the design: COASTLINE_SNAPSHOT=/path.png saves the windows as pictures after a few seconds.
     guard let path = ProcessInfo.processInfo.environment["COASTLINE_SNAPSHOT"] else { return }
     DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
       // One picture per open window (the key sheet is a window of its own): path, path-1.png...
+      // The menu bar panel, drawn off screen.
+      MainActor.assumeIsolated {
+        let renderer = ImageRenderer(content: MenuPanel().environmentObject(Bridge.shared))
+        renderer.scale = 2
+        if let img = renderer.nsImage, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) {
+          try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path.replacingOccurrences(of: ".png", with: "-menu.png")))
+        }
+      }
       for (i, window) in NSApp.windows.filter(\.isVisible).enumerated() {
         guard let view = window.contentView?.superview, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
         view.cacheDisplay(in: view.bounds, to: rep)
@@ -283,9 +345,121 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       }
     }
   }
-  func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+  func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
   func applicationWillTerminate(_ notification: Notification) {
     MainActor.assumeIsolated { Bridge.shared.stop() }
+  }
+}
+
+// MARK: - Menu bar
+
+extension Bridge {
+  /// The little light on the menu bar icon.
+  enum Light { case good, warn, busy, off }
+  var light: Light {
+    switch phase {
+    case .ready: return problems.contains(where: { $0 != "paper-low" }) ? .warn : problems.isEmpty ? .good : .warn
+    case .looking, .starting, .connecting: return .busy
+    case .needKey, .needNode: return .off
+    default: return .warn
+    }
+  }
+}
+
+/// The Coastline mark at menu bar size, in its own colours, with a status light.
+func menuBarIcon(_ light: Bridge.Light) -> NSImage {
+  let image = NSImage(size: NSSize(width: 24, height: 18), flipped: true) { _ in
+    let k = 17.0 / 32.0
+    let o = NSPoint(x: 0.5, y: 0.5)
+    NSColor(Color.navy).setFill()
+    let circle = NSBezierPath(ovalIn: NSRect(x: o.x, y: o.y, width: 17, height: 17))
+    circle.fill()
+    NSColor.white.withAlphaComponent(0.55).setStroke()
+    circle.lineWidth = 0.8
+    circle.stroke()
+    NSColor(Color.sun).setFill()
+    NSBezierPath(ovalIn: NSRect(x: o.x + 18.5 * k, y: o.y + 7 * k, width: 6 * k, height: 6 * k)).fill()
+    func wave(y: Double, from: Double, step: Double, amp: Double, color: NSColor, width: Double) {
+      let path = NSBezierPath()
+      path.move(to: NSPoint(x: o.x + from * k, y: o.y + y * k))
+      for i in 0..<3 {
+        let x = from + Double(i) * step
+        path.curve(to: NSPoint(x: o.x + (x + step / 2) * k, y: o.y + y * k), controlPoint1: NSPoint(x: o.x + (x + step / 4) * k, y: o.y + (y - amp) * k), controlPoint2: NSPoint(x: o.x + (x + step / 4) * k, y: o.y + (y - amp) * k))
+        path.curve(to: NSPoint(x: o.x + (x + step) * k, y: o.y + y * k), controlPoint1: NSPoint(x: o.x + (x + step * 0.75) * k, y: o.y + (y + amp) * k), controlPoint2: NSPoint(x: o.x + (x + step * 0.75) * k, y: o.y + (y + amp) * k))
+      }
+      path.lineWidth = width * k
+      path.lineCapStyle = .round
+      color.setStroke()
+      path.stroke()
+    }
+    wave(y: 17, from: 5, step: 6.6, amp: 2.2, color: .white, width: 2.8)
+    wave(y: 22.5, from: 7, step: 5.4, amp: 1.8, color: NSColor(Color.wave), width: 2.6)
+    let dot: NSColor? = switch light {
+      case .good: NSColor(Color.good)
+      case .warn: NSColor(Color.warn)
+      case .busy: NSColor(Color.wave)
+      case .off: nil
+    }
+    if let dot {
+      let r = NSRect(x: 16, y: 10, width: 7.5, height: 7.5)
+      NSColor.black.withAlphaComponent(0.35).setFill()
+      NSBezierPath(ovalIn: r.insetBy(dx: -1, dy: -1)).fill()
+      dot.setFill()
+      NSBezierPath(ovalIn: r).fill()
+    }
+    return true
+  }
+  image.isTemplate = false
+  return image
+}
+
+struct MenuPanel: View {
+  @EnvironmentObject var bridge: Bridge
+  @Environment(\.openWindow) private var openWindow
+  @State private var atLogin = SMAppService.mainApp.status == .enabled
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(spacing: 10) {
+        Mark(size: 34)
+        VStack(alignment: .leading, spacing: 1) {
+          Text("Coastline Printer").font(.system(size: 15, weight: .bold, design: .rounded))
+          Text(StatusCard.look(bridge).title).font(.system(size: 12, weight: .medium)).foregroundStyle(StatusCard.look(bridge).color)
+        }
+      }
+      ForEach(bridge.problemText, id: \.self) { p in
+        Label(p, systemImage: "exclamationmark.triangle.fill").font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.warn)
+      }
+      HStack(alignment: .firstTextBaseline, spacing: 6) {
+        Text("\(bridge.printedToday)").font(.system(size: 26, weight: .bold, design: .rounded)).foregroundStyle(Color.sun)
+        Text("printed today").font(.system(size: 12)).foregroundStyle(.white.opacity(0.7))
+      }
+      RecentList(limit: 4, compact: true)
+      Button { bridge.reprint() } label: { Label("Reprint last receipt", systemImage: "arrow.clockwise").frame(maxWidth: .infinity) }
+        .buttonStyle(PillButton(filled: true))
+        .disabled(!bridge.recent.contains(where: \.canReprint))
+      Divider().overlay(Color.white.opacity(0.1))
+      Toggle("Start when this Mac logs in", isOn: $atLogin)
+        .toggleStyle(.switch).controlSize(.small).font(.system(size: 12))
+        .onChange(of: atLogin) { _, on in
+          do { on ? try SMAppService.mainApp.register() : try SMAppService.mainApp.unregister() } catch { atLogin = SMAppService.mainApp.status == .enabled }
+        }
+      HStack {
+        Button("Open window") {
+          NSApp.setActivationPolicy(.regular)
+          openWindow(id: "main")
+          NSApp.activate(ignoringOtherApps: true)
+        }
+        Spacer()
+        Button("Quit") { NSApp.terminate(nil) }
+      }
+      .buttonStyle(PillButton())
+    }
+    .padding(16)
+    .frame(width: 300)
+    .background(Color.navy)
+    .foregroundStyle(.white)
+    .preferredColorScheme(.dark)
   }
 }
 
@@ -364,7 +538,7 @@ struct StatusCard: View {
   @State private var pulse = false
 
   var body: some View {
-    let s = look
+    let s = Self.look(bridge)
     HStack(spacing: 16) {
       ZStack {
         Circle().fill(s.color.opacity(0.18)).frame(width: 64, height: 64)
@@ -388,8 +562,11 @@ struct StatusCard: View {
     }
   }
 
-  private var look: (icon: String, color: Color, title: String, detail: String, busy: Bool) {
+  static func look(_ bridge: Bridge) -> (icon: String, color: Color, title: String, detail: String, busy: Bool) {
     switch bridge.phase {
+    case .ready where !bridge.problems.isEmpty:
+      let stops = bridge.problems.contains { $0 != "paper-low" }
+      return (stops ? "exclamationmark.triangle.fill" : "scroll.fill", .warn, bridge.problemText.first ?? "Check the printer", stops ? "Receipts wait until it's fixed, then print by themselves." : "Put a new roll in soon. Receipts still print.", stops)
     case .ready: return ("checkmark.circle.fill", .good, "Ready to print", "Ring up a sale on the iPad and the receipt prints here. Leave this open.", false)
     case .looking, .starting: return ("magnifyingglass", .wave, "Looking for the printer…", "Checking the ethernet cable and the network.", true)
     case .noPrinter: return ("printer.dotmatrix.fill", .warn, "Can't find the printer", bridge.adapter && !bridge.sharing ? "Turn on Internet Sharing so the printer gets an address (see below)." : "Check it's switched on and the ethernet cable is plugged in at both ends.", true)
@@ -466,28 +643,48 @@ struct TodayCard: View {
         Text(bridge.printedToday == 1 ? "receipt printed today" : "receipts printed today").font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.8))
       }
       .animation(.spring(duration: 0.4), value: bridge.printedToday)
-      if bridge.recent.isEmpty {
-        Text("Nothing yet today.").font(.system(size: 13)).foregroundStyle(.white.opacity(0.55))
-      } else {
-        ForEach(bridge.recent.prefix(5)) { item in
-          HStack(spacing: 10) {
-            Image(systemName: item.status == .printed ? "checkmark.circle.fill" : item.status == .failed ? "xmark.circle.fill" : "arrow.down.doc.fill")
-              .foregroundStyle(item.status == .printed ? Color.good : item.status == .failed ? Color.warn : Color.wave)
-            VStack(alignment: .leading, spacing: 1) {
-              Text(item.label).font(.system(size: 13, weight: .medium)).lineLimit(1)
-              if let e = item.error { Text(e).font(.system(size: 11)).foregroundStyle(Color.warn).lineLimit(2) }
-            }
-            Spacer()
-            Text(item.at, style: .time).font(.system(size: 12)).foregroundStyle(.white.opacity(0.55))
-          }
-          .transition(.move(edge: .top).combined(with: .opacity))
-        }
+      RecentList(limit: 5, compact: false)
+      if bridge.recent.contains(where: \.canReprint) {
+        Button { bridge.reprint() } label: { Label("Reprint last receipt", systemImage: "arrow.clockwise") }.buttonStyle(PillButton(filled: true))
       }
     }
     .animation(.spring(duration: 0.35), value: bridge.recent.map(\.id))
     .padding(18)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(RoundedRectangle(cornerRadius: 22).fill(Color.deep))
+  }
+}
+
+/// The latest receipts, each with a reprint button.
+struct RecentList: View {
+  @EnvironmentObject var bridge: Bridge
+  let limit: Int
+  let compact: Bool
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: compact ? 6 : 8) {
+      if bridge.recent.isEmpty {
+        Text("Nothing printed yet.").font(.system(size: 12)).foregroundStyle(.white.opacity(0.55))
+      }
+      ForEach(bridge.recent.prefix(limit)) { item in
+        HStack(spacing: 10) {
+          Image(systemName: item.status == .printed ? "checkmark.circle.fill" : item.status == .failed ? "xmark.circle.fill" : "arrow.down.doc.fill")
+            .foregroundStyle(item.status == .printed ? Color.good : item.status == .failed ? Color.warn : Color.wave)
+          VStack(alignment: .leading, spacing: 1) {
+            Text(item.label).font(.system(size: compact ? 12 : 13, weight: .medium)).lineLimit(1)
+            if let e = item.error { Text(e).font(.system(size: 11)).foregroundStyle(Color.warn).lineLimit(2) }
+          }
+          Spacer()
+          Text(item.at, style: .time).font(.system(size: 11)).foregroundStyle(.white.opacity(0.55))
+          if item.canReprint {
+            Button { bridge.reprint(item.id) } label: { Image(systemName: "arrow.clockwise") }
+              .buttonStyle(.plain).foregroundStyle(Color.wave).help("Print this one again")
+          }
+        }
+        .transition(.move(edge: .top).combined(with: .opacity))
+      }
+    }
+    .animation(.spring(duration: 0.35), value: bridge.recent.map(\.id))
   }
 }
 
@@ -528,8 +725,14 @@ struct KeySheet: View {
 /// Pill buttons that squash a little when pressed, like the website's.
 struct PillButton: ButtonStyle {
   var filled = false
-  func makeBody(configuration: Configuration) -> some View {
-    configuration.label
+  func makeBody(configuration: Configuration) -> some View { Pill(configuration: configuration, filled: filled) }
+
+  private struct Pill: View {
+    let configuration: Configuration
+    let filled: Bool
+    @Environment(\.isEnabled) private var enabled
+    var body: some View {
+      configuration.label
       .font(.system(size: 13, weight: .semibold))
       .padding(.horizontal, 14)
       .padding(.vertical, 7)
@@ -538,5 +741,7 @@ struct PillButton: ButtonStyle {
       .scaleEffect(x: configuration.isPressed ? 1.04 : 1, y: configuration.isPressed ? 0.92 : 1)
       .animation(.spring(duration: 0.2), value: configuration.isPressed)
       .contentShape(Capsule())
+      .opacity(enabled ? 1 : 0.4)
+    }
   }
 }

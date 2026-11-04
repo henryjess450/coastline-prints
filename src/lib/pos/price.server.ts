@@ -25,7 +25,7 @@ export type PricedPos = PosQuote & {
  * plus custom lines at the price typed in. Then coupons and gift cards.
  * The site-wide sale is an online promotion and isn't applied here.
  */
-export async function pricePos(raw: PosCartInput): Promise<PricedPos> {
+export async function pricePos(raw: PosCartInput, opts: { ignoreStock?: boolean } = {}): Promise<PricedPos> {
   const cart = posCartSchema.parse(raw);
   const empty = (error: string): PricedPos => ({ ok: false, error, lines: [], fees: [], discounts: [], rejected: [], totalCents: 0, snapshot: { lines: [], quote: { items: [], baseFeeCents: 0, subtotalCents: 0, minimumAdjCents: 0, totalCents: 0 } }, applied: [], records: [], discountCents: 0, giftCardCents: 0 });
   if (!cart.items.length && !cart.products.length && !cart.custom.length) return empty("The cart is empty.");
@@ -34,7 +34,7 @@ export async function pricePos(raw: PosCartInput): Promise<PricedPos> {
   let prints, shop;
   try {
     prints = cart.items.length ? await priceCart(cart.items, config) : null;
-    shop = cart.products.length ? await priceShopCart(cart.products, config) : null;
+    shop = cart.products.length ? await priceShopCart(cart.products, config, opts) : null;
   } catch (err) {
     if (err instanceof CartError) return empty(err.message);
     throw err;

@@ -5,9 +5,10 @@ import { shipping as shipCfg } from "@config/shipping";
 import { cn } from "@/lib/cn";
 import { money } from "@/lib/format";
 import { packageName, type ShippingMethod, type ShippingOption, type ShippingQuote } from "@/lib/shipping/pack";
+import { dayParts, hours, type MarketDto } from "@/lib/shop/markets";
 import { Field, inputClass } from "./fields";
 
-export type DeliveryMethod = "pickup" | "ship";
+export type DeliveryMethod = "pickup" | "ship" | "market";
 export type AddressDraft = { name: string; line1: string; line2: string; city: string; province: string; postal: string };
 export type AddressErrors = Partial<Record<keyof AddressDraft, string>>;
 
@@ -23,9 +24,10 @@ function CanadaPostLogo() {
   );
 }
 
-/** Two big pills: free local pickup, or Canada Post anywhere in Canada. */
-export function MethodToggle({ value, onChange, shipping }: { value: DeliveryMethod; onChange: (m: DeliveryMethod) => void; shipping: ShippingQuote | null }) {
+/** Big pills: free local pickup, Canada Post anywhere in Canada, and (LightLab) pickup at one of the shop's markets. */
+export function MethodToggle({ value, onChange, shipping, markets = [] }: { value: DeliveryMethod; onChange: (m: DeliveryMethod) => void; shipping: ShippingQuote | null; markets?: MarketDto[] }) {
   const cheapest = shipping?.ok ? shipping.options[0].totalCents : null;
+  const next = markets[0] ? dayParts(markets[0].date) : null;
   const options = [
     { id: "pickup" as const, title: "Local pickup", detail: "Free", disabled: false },
     {
@@ -34,6 +36,8 @@ export function MethodToggle({ value, onChange, shipping }: { value: DeliveryMet
       detail: shipping ? (cheapest != null ? `${shipping.ok && shipping.options.length > 1 ? "from " : ""}${money(cheapest)}` : "Not available") : "…",
       disabled: !shipping?.ok,
     },
+    // On its own row underneath, so the two above keep their room.
+    ...(next ? [{ id: "market" as const, title: "Pick up at a market", detail: `Free · next one ${next.weekday} ${next.month} ${next.day}`, disabled: false }] : []),
   ];
   return (
     <div>
@@ -51,6 +55,7 @@ export function MethodToggle({ value, onChange, shipping }: { value: DeliveryMet
               className={cn(
                 "relative flex items-center justify-between gap-2 rounded-2xl border px-4 py-3 text-left transition-[border-color,transform] duration-150 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50",
                 active ? "border-accent-line" : "border-line hover:border-accent-line",
+                o.id === "market" && "sm:col-span-2",
               )}
             >
               {active && <motion.span layoutId="delivery-active" className="absolute -inset-px rounded-2xl border-2 border-accent-line bg-accent-soft" transition={{ type: "spring", stiffness: 420, damping: 32 }} />}
@@ -312,6 +317,44 @@ export function AddressForm({ value, onChange, errors, flash }: { value: Address
         </select>
       </Field>
       {text("postal", "Postal code", "shipping postal-code", { placeholder: "A1A 1A1", valid: postalOk })}
+    </div>
+  );
+}
+
+/** The market days an order can be picked up at, as a list of date cards. */
+export function MarketPicker({ markets, value, onChange, error }: { markets: MarketDto[]; value: string | null; onChange: (id: string) => void; error?: string }) {
+  return (
+    <div>
+      <p className="mb-3 text-sm text-muted">Pick it up at the LightLab stand. We pack it and bring it to the market you choose.</p>
+      <div role="radiogroup" aria-label="Market day" className="grid gap-2">
+        {markets.map((m) => {
+          const d = dayParts(m.date);
+          const active = value === m.id;
+          return (
+            <button
+              key={m.id}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onChange(m.id)}
+              className={cn("relative flex items-center gap-4 rounded-2xl border px-4 py-3 text-left transition-[border-color,transform] duration-150 active:scale-[0.98]", active ? "border-accent-line" : "border-line hover:border-accent-line")}
+            >
+              {active && <motion.span layoutId="market-active" className="absolute -inset-px rounded-2xl border-2 border-accent-line bg-accent-soft" transition={{ type: "spring", stiffness: 420, damping: 32 }} />}
+              <span className="relative flex w-12 shrink-0 flex-col items-center rounded-xl border border-line bg-surface py-1 leading-tight">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">{d.month}</span>
+                <span className="font-display text-xl font-bold">{d.day}</span>
+              </span>
+              <span className="relative flex min-w-0 flex-col">
+                <span className="font-semibold">{m.name}</span>
+                <span className="text-sm text-muted">
+                  {d.weekday}, {hours(m)} · {m.place}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
     </div>
   );
 }
