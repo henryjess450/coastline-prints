@@ -258,8 +258,12 @@ final class Bridge: ObservableObject {
         if line.hasPrefix("Hardware Port: ") { port = String(line.dropFirst(15)) }
         if line.hasPrefix("Device: "), !port.contains("Wi-Fi"), !port.contains("Bluetooth"), !port.contains("Thunderbolt Bridge") { devices.append(String(line.dropFirst(8))) }
       }
-      let active = devices.contains { shell("/sbin/ifconfig", [$0]).contains("status: active") }
-      let shared = shell("/sbin/ifconfig", ["bridge100"]).contains("inet ")
+      let plugged = devices.filter { shell("/sbin/ifconfig", [$0]).contains("status: active") }
+      let active = !plugged.isEmpty
+      // Internet Sharing joins the ports it shares to into bridge100. It has to include the adapter the printer is on,
+      // not just be switched on (it's easy to tick the wrong "Ethernet" port in Settings).
+      let bridge = shell("/sbin/ifconfig", ["bridge100"])
+      let shared = bridge.contains("inet ") && plugged.contains { bridge.contains("member: \($0) ") }
       await MainActor.run {
         self.adapter = active
         self.sharing = shared
@@ -416,7 +420,6 @@ func menuBarIcon(_ light: Bridge.Light) -> NSImage {
 struct MenuPanel: View {
   @EnvironmentObject var bridge: Bridge
   @Environment(\.openWindow) private var openWindow
-  @State private var atLogin = SMAppService.mainApp.status == .enabled
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -439,11 +442,7 @@ struct MenuPanel: View {
         .buttonStyle(PillButton(filled: true))
         .disabled(!bridge.recent.contains(where: \.canReprint))
       Divider().overlay(Color.white.opacity(0.1))
-      Toggle("Start when this Mac logs in", isOn: $atLogin)
-        .toggleStyle(.switch).controlSize(.small).font(.system(size: 12))
-        .onChange(of: atLogin) { _, on in
-          do { on ? try SMAppService.mainApp.register() : try SMAppService.mainApp.unregister() } catch { atLogin = SMAppService.mainApp.status == .enabled }
-        }
+      LoginToggle()
       HStack {
         Button("Open window") {
           NSApp.setActivationPolicy(.regular)
@@ -474,6 +473,7 @@ struct ContentView: View {
       StatusCard()
       Checklist()
       TodayCard()
+      MenuBarCard()
       HStack {
         Button("Receipts page") { NSWorkspace.shared.open(URL(string: "\(server)/admin/receipts")!) }
         Spacer()
@@ -569,7 +569,7 @@ struct StatusCard: View {
       return (stops ? "exclamationmark.triangle.fill" : "scroll.fill", .warn, bridge.problemText.first ?? "Check the printer", stops ? "Receipts wait until it's fixed, then print by themselves." : "Put a new roll in soon. Receipts still print.", stops)
     case .ready: return ("checkmark.circle.fill", .good, "Ready to print", "Ring up a sale on the iPad and the receipt prints here. Leave this open.", false)
     case .looking, .starting: return ("magnifyingglass", .wave, "Looking for the printer…", "Checking the ethernet cable and the network.", true)
-    case .noPrinter: return ("printer.dotmatrix.fill", .warn, "Can't find the printer", bridge.adapter && !bridge.sharing ? "Turn on Internet Sharing so the printer gets an address (see below)." : "Check it's switched on and the ethernet cable is plugged in at both ends.", true)
+    case .noPrinter: return ("printer.dotmatrix.fill", .warn, "Can't find the printer", bridge.adapter && !bridge.sharing ? "Internet Sharing has to share to your USB adapter so the printer gets an address (see below)." : "Check it's switched on and the ethernet cable is plugged in at both ends.", true)
     case .connecting: return ("antenna.radiowaves.left.and.right", .wave, "Connecting…", "Checking in with coastlineprints.ca.", true)
     case .offline: return ("wifi.slash", .warn, "No internet", "Turn on your phone's hotspot and join it. It reconnects by itself.", true)
     case .needKey: return ("key.fill", .sun, "One-time setup", "Paste your bridge key to get started.", false)
@@ -587,10 +587,15 @@ struct Checklist: View {
       Divider().overlay(Color.white.opacity(0.08))
       Row(icon: "printer.fill", ok: bridge.printerHost != nil, text: bridge.printerHost != nil ? "Printer found" : "No printer yet", detail: bridge.printerHost ?? "Searching")
       Divider().overlay(Color.white.opacity(0.08))
+      if bridge.printerHost != nil {
+        // The printer's own report: cover, paper, cutter. Checked every 15 seconds.
+        Row(icon: "scroll.fill", ok: bridge.problems.isEmpty, text: bridge.problems.isEmpty ? "Paper and cover OK" : bridge.problemText.joined(separator: ". "), detail: bridge.problems.isEmpty ? "Checked every 15 s" : nil)
+        Divider().overlay(Color.white.opacity(0.08))
+      }
       if bridge.adapter {
-        Row(icon: "cable.connector", ok: bridge.sharing, text: bridge.sharing ? "Ethernet adapter + Internet Sharing" : "Internet Sharing is off", detail: bridge.sharing ? "On" : nil) {
+        Row(icon: "cable.connector", ok: bridge.sharing, text: bridge.sharing ? "Ethernet adapter + Internet Sharing" : "Not sharing to the USB adapter", detail: bridge.sharing ? "On" : nil) {
           if !bridge.sharing {
-            Button("Turn on") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Sharing-Settings.extension")!) }.buttonStyle(PillButton(filled: true))
+            Button("Fix") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Sharing-Settings.extension")!) }.buttonStyle(PillButton(filled: true))
           }
         }
       } else {
@@ -644,14 +649,45 @@ struct TodayCard: View {
       }
       .animation(.spring(duration: 0.4), value: bridge.printedToday)
       RecentList(limit: 5, compact: false)
-      if bridge.recent.contains(where: \.canReprint) {
-        Button { bridge.reprint() } label: { Label("Reprint last receipt", systemImage: "arrow.clockwise") }.buttonStyle(PillButton(filled: true))
-      }
+      // Always shown, so it's easy to find; it wakes up once something has printed.
+      Button { bridge.reprint() } label: { Label("Reprint last receipt", systemImage: "arrow.clockwise") }
+        .buttonStyle(PillButton(filled: true))
+        .disabled(!bridge.recent.contains(where: \.canReprint))
+        .help("⇧⌘P")
     }
     .animation(.spring(duration: 0.35), value: bridge.recent.map(\.id))
     .padding(18)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(RoundedRectangle(cornerRadius: 22).fill(Color.deep))
+  }
+}
+
+/// Where the app lives when the window is closed, and starting at login.
+struct MenuBarCard: View {
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(spacing: 10) {
+        Image(nsImage: menuBarIcon(.good))
+        Text("Close this window and it keeps printing from the menu bar (top right of the screen). Click the icon there for reprints and status.")
+          .font(.system(size: 12)).foregroundStyle(.white.opacity(0.75)).fixedSize(horizontal: false, vertical: true)
+      }
+      LoginToggle()
+    }
+    .padding(16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(RoundedRectangle(cornerRadius: 22).fill(Color.deep))
+  }
+}
+
+/// "Start when this Mac logs in", shared by the window and the menu bar panel.
+struct LoginToggle: View {
+  @State private var atLogin = SMAppService.mainApp.status == .enabled
+  var body: some View {
+    Toggle("Start when this Mac logs in", isOn: $atLogin)
+      .toggleStyle(.switch).controlSize(.small).font(.system(size: 12, weight: .medium))
+      .onChange(of: atLogin) { _, on in
+        do { on ? try SMAppService.mainApp.register() : try SMAppService.mainApp.unregister() } catch { atLogin = SMAppService.mainApp.status == .enabled }
+      }
   }
 }
 

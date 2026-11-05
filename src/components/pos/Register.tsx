@@ -134,7 +134,8 @@ export function Register({ products, printOptions, links, markets }: { products:
     } catch {}
     const m = store.get("market");
     setMarketId(m && markets.some((x) => x.id === m) ? m : null);
-    setSaleSlips((store.get("slips") ?? "").split(",").filter((x): x is Slip => x === "receipt" || x === "gift"));
+    // A device that's never chosen starts with the receipt on; after that it remembers (even all off).
+    setSaleSlips((store.get("slips") ?? "receipt").split(",").filter((x): x is Slip => x === "receipt" || x === "gift"));
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- once, on load
 
