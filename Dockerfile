@@ -6,6 +6,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 # 1. Install dependencies (also generates the Prisma client via postinstall).
 FROM base AS deps
+# better-sqlite3 downloads a ready-made binary when one exists for this Node;
+# when it doesn't, it compiles itself, which needs these (this stage only).
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json prisma.config.ts ./
 COPY prisma ./prisma
 ENV DATABASE_URL=file:/app/data/coastline.db
