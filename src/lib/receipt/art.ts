@@ -334,3 +334,9 @@ export function lampRow(height = 92): Art {
   }
   return svg(height + 8, body);
 }
+
+/** A small pair of scissors, for "cut here" lines. */
+export const scissors: Art = {
+  h: 24,
+  svg: `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="24" viewBox="0 0 34 24"><g fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round"><circle cx="6" cy="6" r="4"/><circle cx="6" cy="18" r="4"/><path d="M9.5 8L32 19M9.5 16L32 5"/></g></svg>`,
+};

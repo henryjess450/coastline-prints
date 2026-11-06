@@ -40,9 +40,11 @@ export function pinMatches(expected: string, given: string) {
  * "NUMBER:PIN". A wrong PIN gives the same message as an unknown code.
  * Codes saved to an account only work for that account (`customerId`), and
  * its owner doesn't need the PIN. Invite codes only work on a first order
- * (checked against `email`, who's ordering, when it's known).
+ * (checked against `email`, who's ordering, when it's known). Market-only
+ * coupons (the "come back" ones on stand receipts) only work at the
+ * LightLab register (`channel: "market"`).
  */
-export async function lookupCodes(raw: string[], now = new Date(), customerId: string | null = null, email: string | null = null) {
+export async function lookupCodes(raw: string[], now = new Date(), customerId: string | null = null, email: string | null = null, opts: { channel?: "online" | "market" } = {}) {
   const entries = new Map<string, string>();
   for (const r of raw) {
     const [c, p = ""] = r.split(":");
@@ -63,7 +65,8 @@ export async function lookupCodes(raw: string[], now = new Date(), customerId: s
     const owned = !!row?.ownerId && row.ownerId === customerId;
     const needsPin = !owned && !!row && (!!row.pin || (row.kind === "GIFT_CARD" && /^\d{16}$/.test(row.code)));
     if (row && needsPin && !(row.pin && pinMatches(row.pin, entries.get(code)!))) row = null;
-    const reason = unusableReason(row, now) ?? (row ? await inviteProblem(row, customerId, email) : null);
+    const marketOnly = row?.marketOnly && opts.channel !== "market" ? "This coupon is for the LightLab market stand. Show it at the stand to use it." : null;
+    const reason = unusableReason(row, now) ?? marketOnly ?? (row ? await inviteProblem(row, customerId, email) : null);
     if (reason) errors.push({ code, reason });
     else records.push(row!);
   }

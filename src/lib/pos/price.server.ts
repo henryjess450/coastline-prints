@@ -64,7 +64,8 @@ export async function pricePos(raw: PosCartInput, opts: { ignoreStock?: boolean 
   const beforeCodes = (prints?.totalCents ?? 0) + (shop?.totalCents ?? 0) + customCents;
   const printsOk = !prints || prints.ok;
 
-  const { records, errors } = await lookupCodes(cart.codes, new Date(), null, cart.email || null);
+  // Market-only coupons work at the LightLab register.
+  const { records, errors } = await lookupCodes(cart.codes, new Date(), null, cart.email || null, { channel: cart.brand === "lightlab" ? "market" : "online" });
   const discount = applyCodes(beforeCodes, records.map(toCodeInfo), 0, null);
   const rejected = [...errors, ...discount.rejected];
   const usable = records.filter((r) => discount.applied.some((a) => a.code === r.code));

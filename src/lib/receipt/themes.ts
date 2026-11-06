@@ -42,6 +42,10 @@ export const printSettingsSchema = z.object({
   /** Overrides for each season's printed greeting. */
   seasonMessages: z.record(z.string(), z.string().trim().max(120)).default({}),
   markets: z.array(marketSchema).max(30).default([]),
+  /** The "come back" coupon on the bottom of stand receipts: % off a next visit, at the stand only. */
+  comeback: z
+    .object({ on: z.boolean().default(true), percent: z.number().int().min(1).max(50).default(5), days: z.number().int().min(7).max(365).default(60) })
+    .default({ on: true, percent: 5, days: 60 }),
   /** Printed on every receipt when there's no market message. */
   footer: z.string().trim().max(120).default("Thanks for supporting a small Victoria maker!"),
 });

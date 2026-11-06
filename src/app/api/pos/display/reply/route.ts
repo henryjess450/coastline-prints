@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 
 const body = z.object({
   popupId: z.string().min(1).max(40),
-  kind: z.enum(["email", "account", "order", "dismiss"]),
+  kind: z.enum(["email", "account", "join", "order", "dismiss"]),
   email: z.string().trim().toLowerCase().email("That email doesn't look right.").max(200).optional(),
   name: z.string().trim().max(100).optional(),
   order: posOrderDetailsSchema.optional(),

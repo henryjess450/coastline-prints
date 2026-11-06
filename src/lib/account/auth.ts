@@ -85,7 +85,7 @@ export function squareSyncEnabled() {
   return process.env.NODE_ENV === "production" || process.env.SQUARE_ENVIRONMENT === "sandbox";
 }
 
-async function queueSquareSync(customerId: string) {
+export async function queueSquareSync(customerId: string) {
   if (!squareSyncEnabled()) return;
   const dedupeKey = `${customerId}:account-sync`;
   await db.outboxJob.upsert({

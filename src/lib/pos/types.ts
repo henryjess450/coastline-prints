@@ -130,6 +130,8 @@ export type PosPopup =
   | { id: string; kind: "email" }
   /** Join Coastline Rewards: makes an account and emails them how to sign in. */
   | { id: string; kind: "account" }
+  /** Join LightLab updates: name and email for news (no account email). `source` is the market. */
+  | { id: string; kind: "join"; source?: string }
   /** A Square payment link to scan and pay on their phone. */
   | { id: string; kind: "card-link"; url: string; amountCents: number; paid?: boolean }
   /** Where to send an e-Transfer. */
@@ -142,7 +144,7 @@ export type PosPopup =
   | { id: string; kind: "order"; firstName: string; items: PosOrderItem[]; minDate: string };
 
 /** The customer's answer to a popup, picked up by the register. */
-export type PosReply = { popupId: string; kind: "email" | "account" | "order" | "dismiss"; email?: string; name?: string; created?: boolean; order?: PosOrderDetails; at: number };
+export type PosReply = { popupId: string; kind: "email" | "account" | "join" | "order" | "dismiss"; email?: string; name?: string; created?: boolean; order?: PosOrderDetails; at: number };
 
 /**
  * Start order: things made later and picked up (or shipped) on a day at
@@ -218,3 +220,48 @@ export type PosScreen = {
 export const PAIR_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 export const PAIR_LENGTH = 6;
 export const normalizePairCode = (raw: string) => raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, PAIR_LENGTH);
+
+/**
+ * The LightLab customer display's slideshow between sales. The owner picks
+ * which slides run and in what order (Admin > Display), and which lamps get
+ * a slide of their own (none until picked).
+ */
+export const SLIDE_KINDS = [
+  { id: "welcome", name: "Welcome", hint: "Hi there! with the lamp drawings" },
+  { id: "lamps", name: "Your picked lamps", hint: "One slide per lamp you pick below" },
+  { id: "markets", name: "Find us next", hint: "Upcoming market dates, hours and places" },
+  { id: "shop", name: "Order online", hint: "QR to the shop, ships across Canada" },
+  { id: "pickup", name: "Pick up at a market", hint: "Order online, collect it at the stand" },
+  { id: "gifts", name: "Gift cards", hint: "QR to gift cards" },
+  { id: "orders", name: "We take orders", hint: "Order at the stand, ready in about a week" },
+  { id: "made", name: "Made in Victoria", hint: "Designed and 3D printed here" },
+  { id: "comeback", name: "Come back coupon", hint: "Keep your receipt for % off next time" },
+  { id: "coastline", name: "Coastline Prints", hint: "Custom 3D printing, with a QR" },
+  { id: "follow", name: "Follow along", hint: "Instagram QR" },
+  { id: "review", name: "Leave a review", hint: "Google reviews QR" },
+] as const;
+export type SlideKind = (typeof SLIDE_KINDS)[number]["id"];
+
+export const displaySettingsSchema = z.object({
+  /** In order; the ones listed run. */
+  slides: z.array(z.enum(SLIDE_KINDS.map((k) => k.id) as [SlideKind, ...SlideKind[]])).default(["welcome", "markets", "shop", "orders", "pickup", "gifts", "made", "comeback", "coastline", "follow"]),
+  /** Lamps with a slide of their own (product ids). */
+  products: z.array(z.string().max(40)).max(30).default([]),
+  seconds: z.number().int().min(4).max(30).default(8),
+});
+export type DisplaySettings = z.infer<typeof displaySettingsSchema>;
+
+/** Everything the slideshow shows, loaded by the display. */
+export type DisplaySlides = {
+  slides: SlideKind[];
+  seconds: number;
+  products: { name: string; tagline: string; price: string; image: string | null }[];
+  markets: { name: string; month: string; day: number; weekday: string; long: string; hours: string; place: string; address: string; note: string }[];
+  links: { shop: string; gifts: string; coastline: string; instagram: string; review: string | null };
+  /** The come back coupon's percent, when it's on. */
+  comebackPercent: number | null;
+  /** From the site: the gift card bonus while it's running ("$5 extra on gift cards of $50 or more, until December 24"). */
+  giftBonus: string | null;
+  /** From the site: "Coastline Prints is the Preferred 3D Printing Partner of LightLab | Victoria". */
+  partnerLine: string;
+};

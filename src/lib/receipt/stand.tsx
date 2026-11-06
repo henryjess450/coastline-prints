@@ -10,7 +10,9 @@ import { lightlab } from "@config/lightlab";
 import { db } from "@/lib/db";
 import { appUrl } from "@/lib/email/data";
 import { money } from "@/lib/format";
-import { artUri, lampRow, marketBand, seasonBottom, seasonTop, type Art } from "./art";
+import { comebackCouponFor } from "@/lib/codes/comeback";
+import { formatCardNumber } from "@/lib/codes/apply";
+import { artUri, scissors, lampRow, marketBand, seasonBottom, seasonTop, type Art } from "./art";
 import { loadReceiptData, orderBarcode, RECEIPT_WIDTH } from "./render";
 import { findMarket, getPrintSettings, receiptSeason, seasonMessage } from "./settings";
 import type { Market } from "./themes";
@@ -40,7 +42,11 @@ export type StandSlipData = {
   notes: string | null;
   /** The order's page (claim tickets) or invoice (receipts), as a QR code. */
   link: string;
+  /** Receipts: the "come back" coupon on the bottom (market stand only). */
+  comeback?: { code: string; percent: number; expires: string } | null;
 };
+
+const fmtExpiry = (d: Date) => new Intl.DateTimeFormat("en-US", { timeZone: pickup.timeZone, month: "long", day: "numeric", year: "numeric" }).format(d);
 
 export type StandTheme = { market: Market | null; season: SeasonId; seasonMessage: string; footer: string };
 
@@ -75,6 +81,10 @@ export async function standTheme(marketIdOrSource: string | null | undefined, se
 /** An order's slip as a PNG for the printer. */
 export async function renderStandSlipForOrder(orderId: string, slip: StandSlip, marketId?: string | null) {
   const { data, source } = await loadStandSlipData(orderId);
+  if (slip === "receipt") {
+    const c = await comebackCouponFor(orderId);
+    data.comeback = c ? { code: c.code, percent: c.percent, expires: fmtExpiry(c.expiresAt) } : null;
+  }
   const theme = await standTheme(marketId || source);
   return { png: await renderStandSlipPng(slip, data, theme), orderNumber: data.orderNumber };
 }
@@ -95,6 +105,7 @@ export function sampleSlipData(slip: StandSlip): StandSlipData {
     readyOn: slip === "claim" ? "Saturday, December 20" : null,
     notes: slip === "claim" ? "Name on the base: AVA" : null,
     link: `${appUrl()}/lightlab`,
+    comeback: slip === "receipt" ? { code: "512345678901", percent: 5, expires: fmtExpiry(new Date(Date.now() + 60 * 86_400_000)) } : null,
   };
 }
 
@@ -134,7 +145,8 @@ export async function renderStandSlipPng(slip: StandSlip, d: StandSlipData, them
   const title = slip === "gift" ? "Gift Receipt" : slip === "claim" ? "Order Ticket" : "Receipt";
   const closing = [theme.seasonMessage, theme.market?.message || theme.footer].filter(Boolean);
 
-  const height = 1500 + d.items.length * 70 + d.discounts.length * 30 + (top?.h ?? 0) + (bottom?.h ?? 0) + (band?.h ?? 0) + (d.notes ? 90 : 0);
+  const couponBarcode = d.comeback ? await orderBarcode(d.comeback.code) : null;
+  const height = (d.comeback ? 470 : 0) + 1500 + d.items.length * 70 + d.discounts.length * 30 + (top?.h ?? 0) + (bottom?.h ?? 0) + (band?.h ?? 0) + (d.notes ? 90 : 0);
 
   const tree = (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%", height: "100%", background: "white", color: "black", fontFamily: "Gabarito", fontSize: 24, lineHeight: 1.2 }}>
@@ -237,6 +249,27 @@ export async function renderStandSlipPng(slip: StandSlip, d: StandSlipData, them
       <ArtImg art={lamps} />
       <span style={{ fontSize: 20, marginTop: 6 }}>coastlineprints.ca/lightlab</span>
       <span style={{ ...serif, fontSize: 22 }}>handmade in victoria, b.c.</span>
+
+      {d.comeback && (
+        // Torn off and kept: a percent off the next visit, at the stand only.
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", alignSelf: "stretch", marginTop: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", alignSelf: "stretch", gap: 8 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={artUri(scissors)} width={34} height={24} alt="" />
+            <div style={{ display: "flex", flex: 1, borderTop: "3px dashed black" }} />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", alignSelf: "stretch", padding: "4px 12px 8px", marginTop: 14 }}>
+            <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3 }}>COME BACK SOON</span>
+            <span style={{ fontSize: 76, fontWeight: 800, lineHeight: 1 }}>{d.comeback.percent}% off</span>
+            <span style={{ ...serif, fontSize: 30 }}>your next visit to the LightLab stand</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {couponBarcode && <img src={couponBarcode.src} width={couponBarcode.width} height={couponBarcode.height} alt="" style={{ marginTop: 10 }} />}
+            <span style={{ fontSize: 34, fontWeight: 800, letterSpacing: 3, marginTop: 4 }}>{formatCardNumber(d.comeback.code)}</span>
+            <span style={{ fontSize: 19, marginTop: 6, textAlign: "center" }}>One use · Valid until {d.comeback.expires}</span>
+            <span style={{ fontSize: 19, textAlign: "center" }}>At any LightLab market stand (not online)</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 

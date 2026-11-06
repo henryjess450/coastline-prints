@@ -266,18 +266,24 @@ model PromoCode {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  redemptions   CodeRedemption[]
+  redemptions     CodeRedemption[]
   /// Set when the card was bought online on the gift card page.
-  purchase      GiftPurchase?
+  purchase        GiftPurchase?
   /// Saved to (and locked to) a customer account at /redeem. Only that account can spend it.
-  ownerId       String?
-  owner         Customer?        @relation("Saved", fields: [ownerId], references: [id])
-  savedAt       DateTime?
+  ownerId         String?
+  owner           Customer?        @relation("Saved", fields: [ownerId], references: [id])
+  savedAt         DateTime?
   /// First-order thank-you coupons: the order they were made for (one per order).
-  rewardOrderId String?          @unique
+  rewardOrderId   String?          @unique
   /// Invite codes: the account that shares it. Works on a friend's first order only.
-  referrerId    String?          @unique
-  referrer      Customer?        @relation("Invites", fields: [referrerId], references: [id])
+  referrerId      String?          @unique
+  referrer        Customer?        @relation("Invites", fields: [referrerId], references: [id])
+  /// Only works at the LightLab market stand register, never online.
+  marketOnly      Boolean          @default(false)
+  /// "Come back" coupons printed on a stand receipt: the order it was printed for (one each)...
+  comebackOrderId String?          @unique
+  /// ...and the market it was handed out at, to see which markets bring people back.
+  issuedMarket    String?
 
   @@index([ownerId])
 }
@@ -351,6 +357,9 @@ model Customer {
   theme            String?
   /// Said no to news and promotions (order emails still come).
   emailOptOut      Boolean           @default(false)
+  /// Signed up for LightLab updates at the stand: when, and where ("LightLab updates · Holiday Craft Fair"). Their consent record.
+  joinedAt         DateTime?
+  joinedFrom       String?
   /// When the owner set up this account for them from the admin panel.
   invitedAt        DateTime?
   createdAt        DateTime          @default(now())
@@ -490,6 +499,12 @@ model ShopProduct {
   variants       String   @default("[]")
   /// JSON string[] of storage keys under shop/, first one is the cover.
   images         String   @default("[]")
+  /// Price tag: the line drawing on the left (storage key under shop/), the
+  /// name's colours (JSON hex list: one = solid, more = a left-to-right
+  /// gradient) and the price colour (null = follows the name).
+  tagImage       String?
+  tagColors      String   @default("[]")
+  tagPriceColor  String?
   /// Packed size and weight, for shipping quotes.
   sizeXMm        Float    @default(150)
   sizeYMm        Float    @default(150)

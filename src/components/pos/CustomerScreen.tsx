@@ -8,10 +8,11 @@ import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 import { money } from "@/lib/format";
 import { formatPickup } from "@/lib/pickup";
-import { orderDetailsError, posOrderDetailsSchema, type PosOrderDetails, type PosPopup, type PosReply, type PosScreen } from "@/lib/pos/types";
+import { orderDetailsError, posOrderDetailsSchema, type DisplaySlides, type PosOrderDetails, type PosPopup, type PosReply, type PosScreen } from "@/lib/pos/types";
 import { pickup } from "@config/pickup";
 import { POINTS_PER_DOLLAR } from "@config/rewards";
 import { AnimatedMoney, DrawnCheck, Qr, Thumb } from "./bits";
+import { IdleSlides } from "./IdleSlides";
 
 export type ReplyFn = (answer: { popupId: string; kind: PosReply["kind"]; email?: string; name?: string; order?: PosOrderDetails }) => Promise<string | null>;
 
@@ -32,7 +33,7 @@ const PAY_HINT: Record<string, string> = {
  * cashier sends (receipt email, join rewards, pay by QR, e-Transfer details,
  * links to scan, a note), and a thank you. LightLab or Coastline styling.
  */
-export function CustomerScreen({ screen, onReply, corner }: { screen: PosScreen; onReply?: ReplyFn; corner?: React.ReactNode }) {
+export function CustomerScreen({ screen, onReply, corner, slides, quick }: { screen: PosScreen; onReply?: ReplyFn; corner?: React.ReactNode; /** Previews: the slideshow's content, instead of loading it. */ slides?: DisplaySlides; /** Admin preview: quick slides you can tap through. */ quick?: boolean }) {
   const lightlab = screen.brand === "lightlab";
   return (
     <MotionConfig reducedMotion="user">
@@ -50,7 +51,7 @@ export function CustomerScreen({ screen, onReply, corner }: { screen: PosScreen;
             transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
             className="relative flex min-h-0 flex-1 flex-col px-8 pb-8 pt-4"
           >
-            {screen.stage === "idle" ? <Welcome lightlab={lightlab} /> : screen.stage === "done" ? <Thanks screen={screen} lightlab={lightlab} /> : <Cart screen={screen} lightlab={lightlab} />}
+            {screen.stage === "idle" ? lightlab ? <IdleSlides slides={slides} quick={quick} /> : <Welcome lightlab={lightlab} /> : screen.stage === "done" ? <Thanks screen={screen} lightlab={lightlab} /> : <Cart screen={screen} lightlab={lightlab} />}
           </motion.main>
         </AnimatePresence>
         <PopupLayer popup={screen.popup ?? null} onReply={onReply} />
@@ -261,6 +262,19 @@ function PopupBody({ popup, onReply }: { popup: PosPopup; onReply?: ReplyFn }) {
           note={`Earn ${POINTS_PER_DOLLAR} points for every $1, today included. We'll email you a link to sign in. No password needed.`}
           submit="Join"
           onSubmit={(email, name) => send("account", { email, name })}
+          onSkip={() => send("dismiss")}
+        />
+      );
+    case "join":
+      return (
+        <EmailForm
+          busy={busy}
+          error={error}
+          withName
+          title="Join LightLab updates"
+          note="New lamps, market dates and the odd treat, by email. No spam, and you can unsubscribe any time."
+          submit="Join"
+          onSubmit={(email, name) => send("join", { email, name })}
           onSkip={() => send("dismiss")}
         />
       );

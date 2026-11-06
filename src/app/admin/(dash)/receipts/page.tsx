@@ -6,6 +6,7 @@ import { appUrl } from "@/lib/email/data";
 import { bridgeKeyMadeAt, bridgePresence, PRINTER_PROBLEMS } from "@/lib/receipt/bridge";
 import { printDestination } from "@/lib/receipt/print";
 import { getPrintSettings, receiptSeason } from "@/lib/receipt/settings";
+import { comebackStats } from "@/lib/codes/comeback";
 
 export const metadata = { title: "Receipts" };
 
@@ -32,6 +33,7 @@ export default async function ReceiptsPage() {
       jobs={jobs.map((j) => ({ ...j, createdAt: new Intl.DateTimeFormat("en-CA", { timeZone: pickup.timeZone, hour: "numeric", minute: "2-digit" }).format(j.createdAt) }))}
       site={appUrl()}
       missingMarkets={missing}
+      comeback={await comebackStats()}
     />
   );
 }

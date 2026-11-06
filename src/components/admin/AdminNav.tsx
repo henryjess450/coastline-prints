@@ -18,6 +18,8 @@ const links = [
   { href: "/admin/codes", label: "Codes" },
   { href: "/admin/etransfers", label: "e-Transfers" },
   { href: "/admin/receipts", label: "Receipts" },
+  { href: "/admin/price-tags", label: "Price tags" },
+  { href: "/admin/display", label: "Display" },
   { href: "/admin/lamp", label: "Lamp" },
   { href: "/admin/settings", label: "Settings" },
 ];

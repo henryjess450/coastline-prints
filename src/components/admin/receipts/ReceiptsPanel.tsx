@@ -25,7 +25,7 @@ const SLIPS: { value: Slip; label: string }[] = [
 const STATUS: Record<string, string> = { QUEUED: "Waiting", SENT: "Printing", PRINTED: "Printed", FAILED: "Didn't print", CANCELLED: "Cancelled" };
 const seasonName = (id: string) => RECEIPT_SEASONS.find((s) => s.id === id)?.name ?? id;
 
-export function ReceiptsPanel({ settings: saved, seasonNow, bridge, destination, homePrinter, jobs, site, missingMarkets }: { settings: PrintSettings; seasonNow: SeasonId; bridge: Bridge; destination: "bridge" | "home"; homePrinter: string | null; jobs: Job[]; site: string; missingMarkets: string[] }) {
+export function ReceiptsPanel({ settings: saved, seasonNow, bridge, destination, homePrinter, jobs, site, missingMarkets, comeback }: { settings: PrintSettings; seasonNow: SeasonId; bridge: Bridge; destination: "bridge" | "home"; homePrinter: string | null; jobs: Job[]; site: string; missingMarkets: string[]; comeback: ComebackStat[] }) {
   const router = useRouter();
   const [settings, setSettings] = useState(saved);
   const [saving, startSave] = useTransition();
@@ -71,6 +71,7 @@ export function ReceiptsPanel({ settings: saved, seasonNow, bridge, destination,
             }}
           />
           <SeasonCard settings={settings} setSettings={setSettings} seasonNow={seasonNow} />
+          <ComebackCard value={settings.comeback} onChange={(comeback) => setSettings({ ...settings, comeback })} stats={comeback} />
           <MarketsCard missing={missingMarkets.filter((n) => !settings.markets.some((m) => m.name.toLowerCase() === n.toLowerCase()))} markets={settings.markets} footer={settings.footer} setMarkets={(markets) => setSettings({ ...settings, markets })} setFooter={(footer) => setSettings({ ...settings, footer })} />
           <div className="sticky bottom-4 z-10 flex items-center justify-end gap-3">
             {dirty && <span className="rounded-full bg-surface px-3 py-1 text-sm text-muted shadow">Unsaved changes</span>}
@@ -138,6 +139,64 @@ function PrinterCard({ bridge, route, homePrinter, onRoute }: { bridge: Bridge; 
           />
         </div>
         <p className="mt-2 text-xs text-muted">Automatic uses the bridge whenever it&apos;s online, so plugging it in at the stand is all it takes. While it&apos;s online, tickets for online orders print there too.</p>
+      </div>
+    </Card>
+  );
+}
+
+export type ComebackStat = { market: string; printed: number; used: number };
+
+function ComebackCard({ value, onChange, stats }: { value: PrintSettings["comeback"]; onChange: (v: PrintSettings["comeback"]) => void; stats: ComebackStat[] }) {
+  const num = (v: string, min: number, max: number, fallback: number) => {
+    const n = Math.round(Number(v));
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+  };
+  return (
+    <Card className="p-5 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-display text-lg font-semibold">Come back coupon</h2>
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <input type="checkbox" checked={value.on} onChange={(e) => onChange({ ...value, on: e.target.checked })} className="h-4 w-4 accent-[var(--accent)]" />
+          On every receipt
+        </label>
+      </div>
+      <p className="mt-1 text-sm text-muted">A tear-off coupon on the bottom of each LightLab receipt: one use, at the market stand only (it&apos;s refused online). Type its number into Codes on the register.</p>
+      <div className={cn("mt-4 grid grid-cols-2 gap-4 sm:max-w-sm", !value.on && "opacity-50")}>
+        <label className="grid gap-1.5">
+          <span className={label}>Percent off</span>
+          <input className={field} type="number" min={1} max={50} value={value.percent} disabled={!value.on} onChange={(e) => onChange({ ...value, percent: num(e.target.value, 1, 50, value.percent) })} />
+        </label>
+        <label className="grid gap-1.5">
+          <span className={label}>Good for (days)</span>
+          <input className={field} type="number" min={7} max={365} value={value.days} disabled={!value.on} onChange={(e) => onChange({ ...value, days: num(e.target.value, 7, 365, value.days) })} />
+        </label>
+      </div>
+      <div className="mt-5">
+        <p className={label}>Which markets bring people back</p>
+        {stats.length === 0 ? (
+          <p className="mt-2 text-sm text-muted">None handed out yet.</p>
+        ) : (
+          <table className="mt-2 w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-muted">
+                <th className="py-1 font-medium">Handed out at</th>
+                <th className="py-1 text-right font-medium">Printed</th>
+                <th className="py-1 text-right font-medium">Used</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {stats.map((s) => (
+                <tr key={s.market}>
+                  <td className="py-1.5">{s.market}</td>
+                  <td className="py-1.5 text-right tabular-nums">{s.printed}</td>
+                  <td className="py-1.5 text-right tabular-nums">
+                    {s.used} <span className="text-muted">({Math.round((s.used / s.printed) * 100)}%)</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </Card>
   );

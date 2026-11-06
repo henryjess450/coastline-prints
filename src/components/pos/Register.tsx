@@ -77,6 +77,9 @@ export function Register({ products, printOptions, links, markets }: { products:
   const [source, setSource] = useState<string>(POS_BRANDS[0].source);
   const [registerId, setRegisterId] = useState<string | null>(null);
   const [marketId, setMarketId] = useState<string | null>(null);
+  /** LightLab: when a sale starts, the paired display asks the customer to join LightLab updates. Kept on this device. */
+  const [askJoin, setAskJoin] = useState(true);
+  const askedJoin = useRef(false);
   /** Slips the cashier last chose for a sale; kept on this device. */
   const [saleSlips, setSaleSlips] = useState<Slip[]>([]);
   const [online, setOnline] = useState(true);
@@ -134,6 +137,7 @@ export function Register({ products, printOptions, links, markets }: { products:
     } catch {}
     const m = store.get("market");
     setMarketId(m && markets.some((x) => x.id === m) ? m : null);
+    setAskJoin(store.get("ask-join") !== "off");
     // A device that's never chosen starts with the receipt on; after that it remembers (even all off).
     setSaleSlips((store.get("slips") ?? "receipt").split(",").filter((x): x is Slip => x === "receipt" || x === "gift"));
     /* eslint-enable react-hooks/set-state-in-effect */
@@ -264,6 +268,7 @@ export function Register({ products, printOptions, links, markets }: { products:
     }
     if (r.email) setCustomer((c) => ({ ...c, email: r.email!, name: c.name || r.name || "" }));
     if (r.kind === "email") say(`Receipt will go to ${r.email}`);
+    if (r.kind === "join") say(r.created ? `${r.name || r.email} joined LightLab updates` : `${r.email} is already on the LightLab list (opted back in)`);
     if (r.kind === "account") say(r.created ? `Welcome ${r.name || r.email}! Account made, sign-in link on its way.` : `${r.email} already has an account. Points go there.`);
     if (r.kind === "dismiss") say("Customer closed the popup");
   }, []);
@@ -299,7 +304,13 @@ export function Register({ products, printOptions, links, markets }: { products:
 
   // On this iPad turned around: answers are handled here, then it comes back to the register.
   const flipReply: ReplyFn = async (a) => {
-    if (a.kind === "account" && a.email) {
+    if (a.kind === "join" && a.email) {
+      // Same as the display: the server adds them to the list.
+      const res = await fetch("/api/admin/pos/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: a.email, name: a.name, source }) });
+      const body = await res.json();
+      if (!res.ok) return body.error ?? "That didn't work.";
+      handleReply({ popupId: a.popupId, kind: "join", email: a.email, name: a.name, created: body.created, at: Date.now() });
+    } else if (a.kind === "account" && a.email) {
       // Same as the display: the server makes the account.
       const res = await fetch("/api/admin/pos/account", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: a.email, name: a.name }) });
       const body = await res.json();
@@ -370,6 +381,7 @@ export function Register({ products, printOptions, links, markets }: { products:
     setLink(null);
     setOrder(null);
     claimOff.current = false;
+    askedJoin.current = false;
     setAttemptId(crypto.randomUUID());
     // Fresh stock counts on the tiles after a sale.
     if (done) router.refresh();
@@ -452,6 +464,13 @@ export function Register({ products, printOptions, links, markets }: { products:
       setSaving(false);
     }
   }
+
+  // A LightLab sale just started (the first thing rung up): the paired display asks them to join LightLab updates, once per sale.
+  useEffect(() => {
+    if (empty || askedJoin.current || brand !== "lightlab" || !askJoin || !registerId || popup || order) return;
+    askedJoin.current = true;
+    setPopup({ id: popupId(), kind: "join", source });
+  }, [empty, brand, askJoin, registerId, popup, order, source]);
 
   // Send sales kept offline, oldest first, whenever the internet might be back.
   const syncing = useRef(false);
@@ -592,10 +611,37 @@ export function Register({ products, printOptions, links, markets }: { products:
               </select>
             </label>
           )}
+          {brand === "lightlab" && (
+            <label className="flex items-center gap-2 text-sm text-muted" title="When a sale starts, the paired display asks the customer to join LightLab updates">
+              <input
+                type="checkbox"
+                checked={askJoin}
+                onChange={(e) => {
+                  setAskJoin(e.target.checked);
+                  store.set("ask-join", e.target.checked ? null : "off");
+                }}
+                className="h-4 w-4 accent-[var(--accent)]"
+              />
+              Ask to join updates
+            </label>
+          )}
         </div>
         <DisplayControl registerId={registerId} online={online} onPaired={(id) => { store.set("register", id); setRegisterId(id); lastPushed.current = ""; say("Display paired"); }} onUnpair={() => unpair()} onFlip={() => setFlip(true)} />
       </div>
 
+      <AnimatePresence>
+        {popup?.kind === "join" && (
+          <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent-line bg-accent-soft p-3">
+            <p className="text-sm">
+              <span className="font-semibold">💌 The customer sees &ldquo;Join LightLab updates&rdquo;</span>
+              <span className="text-muted"> (name and email). Keep ringing up; their answer pops up here.</span>
+            </p>
+            <Button size="sm" variant="secondary" onClick={() => setPopup(null)}>
+              Dismiss
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <OfflineBanner offline={offline} queue={queue} onSend={() => void sync()} onDrop={(i) => setQueue(queue.filter((_, j) => j !== i))} onRetry={(i) => setQueue(queue.map((q, j) => (j === i ? { ...q, error: undefined } : q)))} />
 
       <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
@@ -813,7 +859,7 @@ export function Register({ products, printOptions, links, markets }: { products:
       </Modal>
 
       <Modal open={panel === "send"} onClose={() => setPanel(null)} title="Send to the display" wide>
-        <SendPanel brand={brand} popup={popup} links={links} onSend={show} onClear={() => setPopup(null)} hasDisplay={!!registerId} />
+        <SendPanel brand={brand} popup={popup} links={links} onSend={show} onClear={() => setPopup(null)} hasDisplay={!!registerId} source={source} />
       </Modal>
 
       <Modal open={typeof panel === "object" && panel !== null} onClose={() => setPanel(null)} title={typeof panel === "object" && panel ? panel.product.name : ""}>
@@ -1203,11 +1249,12 @@ function CodesForm({ codes, rejected, onChange }: { codes: string[]; rejected: {
 }
 
 /** Things to put on the customer's screen. */
-function SendPanel({ brand, popup, links, onSend, onClear, hasDisplay }: { brand: PosBrand; popup: PosPopup | null; links: RegisterLinks; onSend: (p: PosPopup) => void; onClear: () => void; hasDisplay: boolean }) {
+function SendPanel({ brand, popup, links, onSend, onClear, hasDisplay, source }: { brand: PosBrand; popup: PosPopup | null; links: RegisterLinks; onSend: (p: PosPopup) => void; onClear: () => void; hasDisplay: boolean; source: string }) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const tiles: { icon: string; label: string; hint: string; popup: () => PosPopup; show: boolean }[] = [
     { icon: "✉️", label: "Receipt email", hint: "They type their email", popup: () => ({ id: popupId(), kind: "email" }), show: true },
+    { icon: "💌", label: "Join LightLab updates", hint: "Name and email for news", popup: () => ({ id: popupId(), kind: "join", source }), show: brand === "lightlab" },
     { icon: "⭐", label: "Join rewards", hint: "Makes their account", popup: () => ({ id: popupId(), kind: "account" }), show: true },
     { icon: "📸", label: "Follow on Instagram", hint: "QR to @coastline.printz", popup: () => ({ id: popupId(), kind: "qr", title: "Follow along on Instagram", text: "New prints, behind the scenes and giveaways.", url: links.instagram }), show: brand === "coastline" },
     { icon: "💬", label: "Leave a review", hint: "QR to Google reviews", popup: () => ({ id: popupId(), kind: "qr", title: "Enjoyed it? Leave a review", text: "It really helps a small local shop.", url: links.review ?? "" }), show: brand === "coastline" && !!links.review },
@@ -1265,6 +1312,8 @@ function popupLabel(p: PosPopup) {
       return "Receipt email";
     case "account":
       return "Join rewards";
+    case "join":
+      return "Join LightLab updates";
     case "card-link":
       return "Scan to pay";
     case "etransfer":
