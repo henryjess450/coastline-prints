@@ -13,6 +13,7 @@ import { getStorage } from "@/lib/storage";
 import { slugify } from "@/lib/shop/types";
 import { queueRestockEmails } from "@/lib/shop/emails";
 import { sendNotificationsSoon } from "@/lib/notify/kick";
+import { setShopShips } from "@/lib/shop/shipping-switch.server";
 
 export type ShopActionState = { ok?: boolean; error?: string; message?: string; id?: string };
 
@@ -212,4 +213,18 @@ export async function reorderProductsAction(ids: string[]): Promise<ShopActionSt
   await db.$transaction(list.data.map((id, i) => db.shopProduct.updateMany({ where: { id }, data: { sortOrder: i + 1 } })));
   revalidateShop();
   return { ok: true };
+}
+
+/** Turn shipping on or off for a shop (off = pickup and markets only). */
+export async function setShopShippingAction(shopId: string, on: boolean): Promise<ShopActionState> {
+  await requireAdmin();
+  const shop = shopConfig(shopId);
+  try {
+    await setShopShips(shop.id, on);
+    revalidateShop(undefined, shop.id);
+    return { ok: true, message: on ? "Shipping is on." : "Pickup only. Shipping is off." };
+  } catch (err) {
+    logError("lightlab:shipping", err);
+    return { error: "Couldn't change shipping." };
+  }
 }

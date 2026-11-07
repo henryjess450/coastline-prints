@@ -33,7 +33,8 @@ export function MethodToggle({ value, onChange, shipping, markets = [] }: { valu
     {
       id: "ship" as const,
       title: "Ship in Canada",
-      detail: shipping ? (cheapest != null ? `${shipping.ok && shipping.options.length > 1 ? "from " : ""}${money(cheapest)}` : "Not available") : "…",
+      // Switched to pickup only in the shop's admin: say so instead of a price.
+      detail: shipping ? (cheapest != null ? `${shipping.ok && shipping.options.length > 1 ? "from " : ""}${money(cheapest)}` : !shipping.ok && shipping.pickupOnly ? "Pickup only right now" : "Not available") : "…",
       disabled: !shipping?.ok,
     },
     // On its own row underneath, so the two above keep their room.

@@ -4,9 +4,10 @@ import { getEffectiveConfig } from "@/lib/config/effective";
 import type { AppConfig } from "@/lib/config/types";
 import { db } from "@/lib/db";
 import { CartError } from "@/lib/pricing/server-quote";
-import { quoteShipping } from "@/lib/shipping/pack";
+import { quoteShipping, type ShippingQuote } from "@/lib/shipping/pack";
 import { toProductDto } from "./products.server";
 import { heldStock, withHolds } from "./holds.server";
+import { pickupOnlyReason, shopShips } from "./shipping-switch.server";
 import { inStock, needsVariant, poolKey, unitPrice, variantOf, type PricedShopLine, type ShopLineInput } from "./types";
 
 /**
@@ -49,7 +50,10 @@ export async function priceShopCart(lines: ShopLineInput[], cfg?: AppConfig, opt
   }
 
   const subtotalCents = shopLines.reduce((s, l) => s + l.lineCents, 0);
-  const shipping = quoteShipping(
+  // Switched to pickup only in the shop's admin: no shipping, whatever fits.
+  const shipping: ShippingQuote = !(await shopShips(shop))
+    ? { ok: false, reason: pickupOnlyReason(shop), pickupOnly: true }
+    : quoteShipping(
     shopLines.flatMap((l) => Array.from({ length: l.quantity }, () => ({ sizeMm: l.size, grams: l.grams }))),
     config.shipping,
   );

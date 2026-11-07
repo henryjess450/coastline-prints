@@ -135,7 +135,7 @@ function CartContents({ shop, onClose }: { shop: ShopId; onClose: () => void }) 
               <span className="text-sm text-muted">Subtotal</span>
               <span className="font-display text-2xl font-bold tabular-nums">{money(subtotal)}</span>
             </div>
-            <p className="mt-1 text-xs text-faint">Pickup is free. Shipping and codes are added at checkout.</p>
+            <p className="mt-1 text-xs text-faint">Pickup is free. Codes and any shipping are added at checkout.</p>
             <Link href={`${base}/checkout`} className={buttonClass("primary", "lg", "mt-4 w-full")}>
               Checkout
             </Link>

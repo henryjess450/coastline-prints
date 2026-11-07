@@ -11,18 +11,19 @@ import { ButtonLink } from "@/components/ui/Button";
 import { listProducts } from "@/lib/shop/products.server";
 import { shopToday, upcomingMarkets } from "@/lib/shop/markets.server";
 import { FindUsAt } from "@/components/lightlab/FindUsAt";
+import { shopShips } from "@/lib/shop/shipping-switch.server";
 
 export const metadata: Metadata = { title: { absolute: `${lightlab.name} · Novelty lamps` } };
 export const dynamic = "force-dynamic"; // prices and stock change in /lightlab/admin
 
 export default async function LightLabShop({ searchParams }: { searchParams: Promise<{ collection?: string | string[] }> }) {
-  const [products, markets, q] = await Promise.all([listProducts(), upcomingMarkets(6), searchParams]);
+  const [products, markets, q, ships] = await Promise.all([listProducts(), upcomingMarkets(6), searchParams, shopShips("lightlab")]);
   const featured = [...products].sort((a, b) => Number(b.featured) - Number(a.featured));
 
   return (
     <div className="overflow-x-clip">
       <section className="relative mx-auto grid max-w-7xl items-center gap-8 px-4 pb-16 pt-10 sm:px-6 sm:pt-16 lg:grid-cols-[minmax(0,1fr)_400px] lg:pb-24">
-        <LightLabHeroText nextMarket={markets[0] ?? null} today={shopToday()} />
+        <LightLabHeroText nextMarket={markets[0] ?? null} today={shopToday()} ships={ships} />
         {/* Fun-gi, Banana After Dark and Cloudy, drawn in line one after another */}
         <div className="mx-auto aspect-[4/5] w-full max-w-[300px] lg:max-w-[400px]">
           <OneLineLamps />
@@ -62,7 +63,7 @@ export default async function LightLabShop({ searchParams }: { searchParams: Pro
             <p className="ll-accent text-3xl">preferred partner</p>
             <h2 className="mt-2 font-display text-2xl font-bold tracking-tight sm:text-3xl">{lightlab.partnerLine}</h2>
             <p className="mt-4 max-w-2xl leading-relaxed text-muted">
-              LightLab orders go through Coastline Prints: the same checkout, the same pickup times and Canada Post shipping, and Coastline gift cards work here too. Got a design of your own? Coastline Prints will print it from your STL or 3MF file.
+              LightLab orders go through Coastline Prints: the same checkout, the same pickup times{ships ? " and Canada Post shipping" : ""}, and Coastline gift cards work here too. Got a design of your own? Coastline Prints will print it from your STL or 3MF file.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <ButtonLink href="/order" variant="secondary">

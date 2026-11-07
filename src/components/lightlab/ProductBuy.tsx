@@ -12,7 +12,7 @@ import { QuantityStepper } from "./QuantityStepper";
 import { RestockForm } from "./RestockForm";
 
 /** Photos, options, personalisation, quantity and "Add to cart" for one product (either shop). */
-export function ProductBuy({ product: p }: { product: ShopProductDto }) {
+export function ProductBuy({ product: p, ships = true }: { product: ShopProductDto; /** False while the shop is pickup only. */ ships?: boolean }) {
   const shop = shopConfig(p.shop);
   const ll = shop.id === "lightlab";
   const useCart = cartFor(shop.id);
@@ -156,7 +156,7 @@ export function ProductBuy({ product: p }: { product: ShopProductDto }) {
         {p.description && <div className="mt-10 whitespace-pre-line border-t border-line pt-8 leading-relaxed text-muted">{p.description}</div>}
 
         <ul className="mt-8 space-y-2 border-t border-line pt-6 text-sm text-muted">
-          <li>Free pickup, or Canada Post shipping anywhere in Canada.</li>
+          <li>{ships ? "Free pickup, or Canada Post shipping anywhere in Canada." : "Free pickup in Victoria."}</li>
           <li>Pay by Interac e-Transfer or card. {ll ? "Coastline gift cards work too." : "Gift cards work too."}</li>
         </ul>
       </div>

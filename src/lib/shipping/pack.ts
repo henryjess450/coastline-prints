@@ -44,7 +44,7 @@ export type ParcelMailer = { grams: number; sizeMm: [number, number, number]; pi
  * also fits a mailer sent as a parcel; its price needs the destination, so
  * the server adds that option once the customer enters a postal code.
  */
-export type ShippingQuote = { ok: true; options: ShippingOption[]; parcel: ParcelMailer | null } | { ok: false; reason: string };
+export type ShippingQuote = { ok: true; options: ShippingOption[]; parcel: ParcelMailer | null } | { ok: false; reason: string; /** The shop turned shipping off: checkout hides the Ship option. */ pickupOnly?: boolean };
 
 export const MAILER_ID = "mailer";
 export const PARCEL_MAILER_ID = "parcel-mailer";
