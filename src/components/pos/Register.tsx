@@ -1227,7 +1227,9 @@ function CodesForm({ codes, rejected, onChange }: { codes: string[]; rejected: {
           onSubmit={(e) => {
             e.preventDefault();
             if (!code.trim()) return;
-            onChange([...codes, pin.trim() ? `${code.trim()}:${pin.trim()}` : code.trim()]);
+            // A thank-you card's QR scanned with the barcode scanner types its whole link: keep just the code.
+            const typed = code.trim().match(/[?&]code=(\d{8,16})/)?.[1] ?? code.trim();
+            onChange([...codes, pin.trim() ? `${typed}:${pin.trim()}` : typed]);
             setCode("");
             setPin("");
           }}

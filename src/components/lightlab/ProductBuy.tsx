@@ -1,13 +1,15 @@
 "use client";
 import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { shopConfig } from "@config/shops";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 import { money } from "@/lib/format";
 import { cartFor } from "@/lib/shop/cart";
 import { CUSTOM_TEXT_MAX, inStock, unitPrice, variantOf, type ShopProductDto } from "@/lib/shop/types";
-import { ProductPlaceholder } from "./ProductGrid";
+import { buzz, play } from "@/lib/feel";
+import { flyToCart } from "@/lib/feel/fly";
+import { Gallery } from "./Gallery";
 import { QuantityStepper } from "./QuantityStepper";
 import { RestockForm } from "./RestockForm";
 
@@ -21,8 +23,15 @@ export function ProductBuy({ product: p, ships = true }: { product: ShopProductD
   // Start on the first option that's in stock.
   const [variantId, setVariantId] = useState<string | null>(() => p.variants.find((v) => inStock(p, v.id) !== 0)?.id ?? p.variants[0]?.id ?? null);
   const [qty, setQty] = useState(1);
-  const [photo, setPhoto] = useState(0);
   const add = useCart((s) => s.add);
+  const photoRef = useRef<HTMLDivElement>(null);
+  // The button shows a tick for a moment after adding.
+  const [justAdded, setJustAdded] = useState(false);
+  useEffect(() => {
+    if (!justAdded) return;
+    const t = setTimeout(() => setJustAdded(false), 1400);
+    return () => clearTimeout(t);
+  }, [justAdded]);
   const text = customText.trim();
   const inCart = useCart((s) => s.lines.find((l) => l.productId === p.id && l.variantId === variantId && (l.customText ?? "") === (p.personalize ? text : ""))?.quantity ?? 0);
   const [added, setAdded] = useState(0);
@@ -41,33 +50,20 @@ export function ProductBuy({ product: p, ships = true }: { product: ShopProductD
       document.getElementById("ll-custom-text")?.focus();
       return;
     }
-    add({ productId: p.id, variantId, quantity, customText: p.personalize ? text : null, slug: p.slug, name: p.name, variantName: variant?.name ?? null, swatch: variant?.hex ?? null, image: p.images[0] ?? null, unitCents: price, max: left });
+    const line = { productId: p.id, variantId, quantity, customText: p.personalize ? text : null, slug: p.slug, name: p.name, variantName: variant?.name ?? null, swatch: variant?.hex ?? null, image: p.images[0] ?? null, unitCents: price, max: left };
+    play("pop");
+    buzz();
+    setJustAdded(true);
     setAdded((n) => n + 1);
     setQty(1);
+    // The photo flies into the cart first; the drawer opens when it lands.
+    flyToCart(photoRef.current, p.images[0] ?? null, () => add(line));
   }
 
   return (
     <div className="grid gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-14">
-      <div className="min-w-0">
-        <div className="relative aspect-square overflow-hidden rounded-3xl border border-line bg-surface">
-          <AnimatePresence mode="popLayout" initial={false}>
-            {p.images.length ? (
-              <motion.img key={photo} src={p.images[photo]} alt={p.name} className="absolute inset-0 h-full w-full object-cover" initial={{ opacity: 0, scale: 1.02 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }} />
-            ) : (
-              <ProductPlaceholder shop={shop.id} />
-            )}
-          </AnimatePresence>
-        </div>
-        {p.images.length > 1 && (
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-            {p.images.map((src, i) => (
-              <button key={src} type="button" onClick={() => setPhoto(i)} aria-label={`Photo ${i + 1}`} aria-pressed={i === photo} className={cn("h-20 w-20 shrink-0 overflow-hidden rounded-2xl border-2 transition-[border-color,transform] active:scale-95", i === photo ? "border-accent-line" : "border-transparent opacity-70 hover:opacity-100")}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={src} alt="" className="h-full w-full object-cover" />
-              </button>
-            ))}
-          </div>
-        )}
+      <div ref={photoRef} className="min-w-0">
+        <Gallery images={p.images} name={p.name} shop={shop.id} glow={variant?.hex ?? null} tag={p.personalize ? text || null : null} />
       </div>
 
       <div className="min-w-0 lg:pt-4">
@@ -139,8 +135,23 @@ export function ProductBuy({ product: p, ships = true }: { product: ShopProductD
           ) : (
             <>
               {canAdd > 0 && <QuantityStepper value={quantity} max={canAdd} onChange={setQty} />}
-              <Button size="lg" className="min-w-48 flex-1 sm:flex-none" onClick={addToCart} disabled={canAdd <= 0}>
-                {canAdd <= 0 ? "All in your cart" : `Add to cart · ${money(price * quantity)}`}
+              <Button size="lg" className="min-w-48 flex-1 sm:flex-none" onClick={addToCart} disabled={canAdd <= 0 && !justAdded}>
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.span key={justAdded ? "tick" : "label"} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }} className="inline-flex items-center gap-2">
+                    {justAdded ? (
+                      <>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <motion.path d="M5 12.5l4.5 4.5L19 7.5" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.35, ease: "easeOut" }} />
+                        </svg>
+                        Added
+                      </>
+                    ) : canAdd <= 0 ? (
+                      "All in your cart"
+                    ) : (
+                      `Add to cart · ${money(price * quantity)}`
+                    )}
+                  </motion.span>
+                </AnimatePresence>
               </Button>
             </>
           )}

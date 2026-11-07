@@ -284,8 +284,11 @@ model PromoCode {
   comebackOrderId String?          @unique
   /// ...and the market it was handed out at, to see which markets bring people back.
   issuedMarket    String?
+  /// Printed thank-you cards (LightLab admin > Thank-you cards): the batch it was printed in.
+  cardBatch       String?
 
   @@index([ownerId])
+  @@index([cardBatch])
 }
 
 /// A code held for a checkout. RESERVED while paying, USED once paid, RELEASED if the payment failed.

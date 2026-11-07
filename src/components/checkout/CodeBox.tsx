@@ -6,6 +6,7 @@ import { applyCodes, isCardNumber, MAX_CODES, normalizeCode, normalizePin, type 
 import { money } from "@/lib/format";
 import type { WalletItem } from "@/lib/account/wallet";
 import { INVITE_KEY } from "@/components/account/SaveInvite";
+import { CARD_CODE_KEY } from "@/components/lightlab/CardCodeCatcher";
 
 /**
  * "Coupons or Gift Cards? Add them here!" with applied codes as removable chips.
@@ -60,7 +61,8 @@ export function CodeBox({
     invited.current = true;
     let code: string | null = null;
     try {
-      code = localStorage.getItem(INVITE_KEY);
+      // A friend's invite first; otherwise a coupon from a scanned thank-you card.
+      code = localStorage.getItem(INVITE_KEY) ?? localStorage.getItem(CARD_CODE_KEY);
     } catch {}
     if (code && !codes.some((c) => c.code === code)) void add(code, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -277,5 +279,6 @@ export function CodeBox({
 function forgetInvite() {
   try {
     localStorage.removeItem(INVITE_KEY);
+    localStorage.removeItem(CARD_CODE_KEY);
   } catch {}
 }

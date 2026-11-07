@@ -1,12 +1,13 @@
 "use client";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
 import { shopConfig, type ShopId } from "@config/shops";
 import { money } from "@/lib/format";
 import { inSeason, inStock, SEASON_FILTER, slugify, type ShopProductDto } from "@/lib/shop/types";
 import { useSeason } from "@/components/season/SeasonContext";
+import { FadeImg } from "./FadeImg";
 import { SeasonSparkle } from "./SeasonSparkle";
 
 /** Everything left to buy across a product's options. Null = made to order. */
@@ -33,6 +34,7 @@ export function ProductGrid({ products, initialCategory = null }: { products: Sh
   const [cat, setCatState] = useState<string | null>(initialCategory);
   const shown = !cat ? products : cat.startsWith(SEASON_FILTER) ? products.filter((p) => p.seasons.includes(cat.slice(SEASON_FILTER.length))) : products.filter((p) => p.category === cat);
   const lightlab = products[0]?.shop === "lightlab";
+  useReturnToPlace();
 
   // Keep ?collection= in the address bar so whatever's showing can be copied and shared.
   function setCat(c: string | null) {
@@ -85,7 +87,8 @@ export function ProductGrid({ products, initialCategory = null }: { products: Sh
       <motion.ul layout className="grid grid-cols-2 gap-x-4 gap-y-10 sm:gap-x-6 lg:grid-cols-3">
         <AnimatePresence mode="popLayout">
           {shown.map((p, i) => (
-            <motion.li key={p.id} layout initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.35, delay: Math.min(i, 8) * 0.04 }}>
+            // Each row rises in as it scrolls into view, left to right.
+            <motion.li key={p.id} layout initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "0px 0px -40px 0px" }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1], delay: (i % 3) * 0.08 }}>
               <ProductCard product={p} seasonId={season.id} />
             </motion.li>
           ))}
@@ -100,10 +103,10 @@ export function ProductCards({ products }: { products: ShopProductDto[] }) {
   const season = useSeason();
   return (
     <ul className="grid grid-cols-2 gap-x-4 gap-y-10 sm:gap-x-6 lg:grid-cols-3">
-      {products.map((p) => (
-        <li key={p.id}>
+      {products.map((p, i) => (
+        <motion.li key={p.id} initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "0px 0px -40px 0px" }} transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1], delay: (i % 3) * 0.08 }}>
           <ProductCard product={p} seasonId={season.id} />
-        </li>
+        </motion.li>
       ))}
     </ul>
   );
@@ -115,11 +118,10 @@ function ProductCard({ product: p, seasonId }: { product: ShopProductDto; season
   const soldOut = left === 0;
   const price = fromPrice(p);
   return (
-    <Link href={`${shopConfig(p.shop).base}/${p.slug}`} className="group block">
+    <Link href={`${shopConfig(p.shop).base}/${p.slug}`} onClick={rememberPlace} className="group block transition-transform duration-150 active:scale-[0.98]">
       <div className="relative aspect-square overflow-hidden rounded-3xl border border-line bg-surface">
         {p.images[0] ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={p.images[0]} alt={p.name} loading="lazy" className={cn("h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]", soldOut && "opacity-60")} />
+          <FadeImg src={p.images[0]} alt={p.name} loading="lazy" className={cn("h-full w-full object-cover transition-[transform,opacity] duration-500 ease-out group-hover:scale-[1.04]", soldOut && "!opacity-60")} />
         ) : (
           <ProductPlaceholder shop={p.shop} />
         )}
@@ -133,7 +135,7 @@ function ProductCard({ product: p, seasonId }: { product: ShopProductDto; season
           {soldOut ? (
             <Badge>Sold out</Badge>
           ) : left != null && left <= 3 ? (
-            <Badge>Only {left} left</Badge>
+            <Badge flicker>Only {left} left</Badge>
           ) : p.compareAtCents && p.compareAtCents > p.priceCents ? (
             <Badge solid>On sale</Badge>
           ) : null}
@@ -164,9 +166,9 @@ function ProductCard({ product: p, seasonId }: { product: ShopProductDto; season
   );
 }
 
-function Badge({ children, solid }: { children: React.ReactNode; /** Filled (black or white) instead of quiet. */ solid?: boolean }) {
+function Badge({ children, solid, flicker }: { children: React.ReactNode; /** Filled (black or white) instead of quiet. */ solid?: boolean; /** Flickers once like a bulb coming on, then stays steady. */ flicker?: boolean }) {
   return (
-    <span className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", solid ? "bg-accent text-accent-ink" : "bg-bg/85 text-fg backdrop-blur")}>
+    <span className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", solid ? "bg-accent text-accent-ink" : "bg-bg/85 text-fg backdrop-blur", flicker && "ll-flicker")}>
       {children}
     </span>
   );
@@ -193,4 +195,26 @@ export function LampPlaceholder() {
       <circle cx="50" cy="55" r="4" fill="var(--bg)" stroke="currentColor" strokeWidth="1.5" />
     </svg>
   );
+}
+
+/** Where the shopper was on the grid, so coming back puts them in the same spot. */
+const PLACE_KEY = "shop-place";
+
+function rememberPlace() {
+  try {
+    sessionStorage.setItem(PLACE_KEY, JSON.stringify({ url: location.pathname + location.search, y: window.scrollY, at: Date.now() }));
+  } catch {}
+}
+
+/** Back from a product (or "All pieces"): scroll to where they left the grid, with the same filter (it's in the URL). */
+function useReturnToPlace() {
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(PLACE_KEY) ?? "null") as { url: string; y: number; at: number } | null;
+      if (!saved || saved.url.split("?")[0] !== location.pathname || Date.now() - saved.at > 30 * 60_000) return;
+      sessionStorage.removeItem(PLACE_KEY);
+      // After the page has laid out (cards rise in, photos load).
+      requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top: saved.y, behavior: "instant" as ScrollBehavior })));
+    } catch {}
+  }, []);
 }

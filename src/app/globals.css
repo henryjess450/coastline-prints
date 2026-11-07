@@ -488,3 +488,40 @@ body {
 @media print {
   .sparkle-layer { display: none !important; }
 }
+
+/* ── LightLab little touches ──────────────────────────────────────────── */
+/* "Only 2 left": flickers on like a bulb once, then stays steady. */
+.ll-flicker { animation: ll-flicker 1.1s ease-out 0.4s both; }
+@keyframes ll-flicker {
+  0% { opacity: 0.2; }
+  10% { opacity: 1; }
+  16% { opacity: 0.3; }
+  24% { opacity: 1; }
+  30% { opacity: 0.55; }
+  40%, 100% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ll-flicker { animation: none; }
+}
+/* A warm light that follows the mouse on LightLab (dark mode only). */
+.ll-cursor-glow {
+  background: radial-gradient(circle, rgb(255 205 120 / 0.07), rgb(255 205 120 / 0) 60%);
+  mix-blend-mode: screen;
+}
+[data-theme="light"] .ll-cursor-glow { display: none; }
+/* LightLab pages cross-fade (view transitions). */
+::view-transition-old(.ll-page) { animation: ll-page-out 0.18s ease-in both; }
+::view-transition-new(.ll-page) { animation: ll-page-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes ll-page-out { to { opacity: 0; } }
+@keyframes ll-page-in { from { opacity: 0; transform: translateY(8px); } }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.35s; }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(*), ::view-transition-new(*), ::view-transition-group(*) { animation: none !important; }
+}
+/* Links on LightLab underline with a slide. */
+.lightlab-theme a.ll-link, .lightlab-theme .ll-link {
+  text-decoration: none;
+  background: linear-gradient(currentColor, currentColor) 0 100% / 0 1px no-repeat;
+  transition: background-size 0.3s ease;
+}
+.lightlab-theme .ll-link:hover { background-size: 100% 1px; }

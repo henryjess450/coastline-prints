@@ -28,6 +28,8 @@ type ShopCart = {
   add: (line: Omit<ShopCartLine, "key">) => void;
   setQuantity: (key: string, quantity: number) => void;
   remove: (key: string) => void;
+  /** Put a removed line back where it was (the cart's "Undo"). */
+  restore: (line: ShopCartLine, index: number) => void;
   reset: () => void;
   /** The server's current prices and names (the admin may have changed them). */
   sync: (priced: PricedShopLine[]) => void;
@@ -57,6 +59,13 @@ function makeShopCart(shop: ShopId) {
           }),
         setQuantity: (key, quantity) => set((s) => ({ lines: s.lines.map((l) => (l.key === key ? { ...l, quantity: clampQty(quantity, l.max) } : l)) })),
         remove: (key) => set((s) => ({ lines: s.lines.filter((l) => l.key !== key) })),
+        restore: (line, index) =>
+          set((s) => {
+            if (s.lines.some((l) => l.key === line.key) || s.lines.length >= maxLinesPerOrder) return {};
+            const lines = [...s.lines];
+            lines.splice(Math.min(index, lines.length), 0, line);
+            return { lines };
+          }),
         reset: () => set({ lines: [], open: false }),
         sync: (priced) =>
           set((s) => {

@@ -1,5 +1,6 @@
 "use client";
 import { cn } from "@/lib/cn";
+import { RollingNumber } from "./RollingNumber";
 
 /** − 2 + */
 export function QuantityStepper({ value, max, onChange, size = "md" }: { value: number; max: number; onChange: (v: number) => void; size?: "sm" | "md" }) {
@@ -9,8 +10,8 @@ export function QuantityStepper({ value, max, onChange, size = "md" }: { value: 
       <button type="button" className={btn} onClick={() => onChange(value - 1)} disabled={value <= 1} aria-label="One fewer">
         −
       </button>
-      <span className={cn("text-center font-mono tabular-nums", size === "sm" ? "w-7 text-sm" : "w-9")} aria-live="polite">
-        {value}
+      <span className={cn("flex justify-center font-mono", size === "sm" ? "w-7 text-sm" : "w-9")} aria-live="polite">
+        <RollingNumber value={value} />
       </span>
       <button type="button" className={btn} onClick={() => onChange(value + 1)} disabled={value >= max} aria-label="One more">
         +

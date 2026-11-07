@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { legal, site } from "@config/site";
 import { LightLabLogo } from "@/components/lightlab/LightLabLogo";
+import { SoundToggle } from "@/components/lightlab/SoundToggle";
 import { CircleMark } from "./CircleMark";
 import { Logo } from "./Logo";
 import { ProudlyCanadian } from "./ProudlyCanadian";
@@ -77,6 +78,9 @@ export function LightLabFooter() {
   return (
     <footer className="mt-32 pb-[env(safe-area-inset-bottom)]">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <div className="mb-6 flex justify-center">
+          <SoundToggle />
+        </div>
         <ProudlyCanadian />
       </div>
     </footer>

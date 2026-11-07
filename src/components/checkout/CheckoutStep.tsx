@@ -21,6 +21,7 @@ import { PaymentMethods, type PaymentMethodsHandle, type SquareConfig } from "./
 import { PickupPicker, type PickupChoice } from "./PickupPicker";
 import { CodeBox } from "./CodeBox";
 import { INVITE_KEY } from "@/components/account/SaveInvite";
+import { CARD_CODE_KEY } from "@/components/lightlab/CardCodeCatcher";
 import { Field, inputClass } from "./fields";
 import { AddressForm, BoxSummary, emptyAddress, MarketPicker, MethodToggle, ShipOptions, type AddressDraft, type AddressErrors, type DeliveryMethod } from "./Delivery";
 import type { MarketDto } from "@/lib/shop/markets";
@@ -382,6 +383,7 @@ export function CheckoutStep({
         if (data.badCode) setCodes((cs) => cs.filter((c) => c.code !== data.badCode));
         try {
           if (data.badCode && localStorage.getItem(INVITE_KEY) === data.badCode) localStorage.removeItem(INVITE_KEY);
+          if (data.badCode && localStorage.getItem(CARD_CODE_KEY) === data.badCode) localStorage.removeItem(CARD_CODE_KEY);
         } catch {}
         return fail(`${data.error ?? "One of your codes can't be used."} Your card was not charged.`);
       }
@@ -414,6 +416,7 @@ export function CheckoutStep({
     // A friend's invite code is spent on this first order.
     try {
       localStorage.removeItem(INVITE_KEY);
+      localStorage.removeItem(CARD_CODE_KEY);
     } catch {}
     if (sending.current) {
       // Let the send-off finish; it opens the confirmation when the Benchy is gone.

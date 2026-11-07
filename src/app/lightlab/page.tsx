@@ -69,7 +69,7 @@ export default async function LightLabShop({ searchParams }: { searchParams: Pro
               <ButtonLink href="/order" variant="secondary">
                 Print your own file
               </ButtonLink>
-              <Link href="/" className="inline-flex items-center px-2 text-sm text-accent-text underline underline-offset-4">
+              <Link href="/" className="ll-link inline-flex items-center px-2 text-sm text-accent-text">
                 About Coastline Prints
               </Link>
             </div>

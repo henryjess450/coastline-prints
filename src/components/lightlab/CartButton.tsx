@@ -2,12 +2,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { shopConfig, type ShopId } from "@config/shops";
 import { buttonClass } from "@/components/ui/Button";
 import { money } from "@/lib/format";
 import { cartFor, useShopCartHydrated } from "@/lib/shop/cart";
 import { QuantityStepper } from "./QuantityStepper";
+import { RollingNumber } from "./RollingNumber";
+import { TinyLamp } from "./TinyLamp";
+import type { ShopCartLine } from "@/lib/shop/cart";
 
 /** The cart in the header on a shop's pages (LightLab, or the Coastline shop), and the drawer it opens. */
 export function CartButton({ shop = "lightlab" }: { shop?: ShopId }) {
@@ -30,7 +33,7 @@ export function CartButton({ shop = "lightlab" }: { shop?: ShopId }) {
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} aria-label={`Cart, ${count} ${count === 1 ? "item" : "items"}`} className={buttonClass("secondary", "sm", "relative w-10 px-0")}>
+      <button type="button" data-cart-button onClick={() => setOpen(true)} aria-label={`Cart, ${count} ${count === 1 ? "item" : "items"}`} className={buttonClass("secondary", "sm", "relative w-10 px-0")}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="M5 8h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8L5 8Z" />
           <path d="M9 8V6a3 3 0 0 1 6 0v2" />
@@ -38,14 +41,14 @@ export function CartButton({ shop = "lightlab" }: { shop?: ShopId }) {
         <AnimatePresence>
           {count > 0 && (
             <motion.span
-              key={count}
+              key="count"
               initial={{ scale: 0.4 }}
               animate={{ scale: 1 }}
               exit={{ scale: 0 }}
               transition={{ type: "spring", stiffness: 520, damping: 18 }}
               className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-accent px-1 text-[11px] font-bold text-accent-ink"
             >
-              {count}
+              <RollingNumber value={count} />
             </motion.span>
           )}
         </AnimatePresence>
@@ -77,6 +80,18 @@ function CartContents({ shop, onClose }: { shop: ShopId; onClose: () => void }) 
   const lines = useCart((s) => s.lines);
   const setQuantity = useCart((s) => s.setQuantity);
   const remove = useCart((s) => s.remove);
+  const restore = useCart((s) => s.restore);
+  // The last thing taken out, for "Undo" (gone after a few seconds).
+  const [removed, setRemoved] = useState<{ line: ShopCartLine; index: number } | null>(null);
+  useEffect(() => {
+    if (!removed) return;
+    const t = setTimeout(() => setRemoved(null), 5000);
+    return () => clearTimeout(t);
+  }, [removed]);
+  const takeOut = (l: ShopCartLine) => {
+    setRemoved({ line: l, index: lines.findIndex((x) => x.key === l.key) });
+    remove(l.key);
+  };
   const subtotal = lines.reduce((s, l) => s + l.unitCents * l.quantity, 0);
 
   return (
@@ -87,9 +102,24 @@ function CartContents({ shop, onClose }: { shop: ShopId; onClose: () => void }) 
           ✕
         </button>
       </div>
+      <AnimatePresence>
+        {removed && (
+          <motion.div key="undo" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden border-b border-line bg-surface">
+            <div className="flex items-center justify-between gap-3 px-5 py-2.5 text-sm" role="status">
+              <span className="truncate text-muted">Removed {removed.line.name}</span>
+              <button type="button" onClick={() => (restore(removed.line, removed.index), setRemoved(null))} className="shrink-0 font-semibold text-accent-text underline-offset-4 hover:underline">
+                Undo
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {lines.length === 0 ? (
         <div className="grid flex-1 place-items-center px-6 text-center">
-          <div>
+          <div className="flex flex-col items-center">
+            <span className="mb-3 text-faint">
+              <TinyLamp on={false} size={56} />
+            </span>
             <p className="font-medium">Your cart is empty.</p>
             <button type="button" onClick={onClose} className="mt-3 text-sm text-accent-text underline underline-offset-4">
               Keep browsing
@@ -101,7 +131,7 @@ function CartContents({ shop, onClose }: { shop: ShopId; onClose: () => void }) 
           <ul className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
             <AnimatePresence initial={false}>
               {lines.map((l) => (
-                <motion.li key={l.key} layout initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 24, height: 0 }} className="flex gap-3">
+                <motion.li key={l.key} layout initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 80, height: 0, marginTop: 0, transition: { duration: 0.28, ease: [0.4, 0, 1, 1] } }} className="flex gap-3">
                   <Link href={`${base}/${l.slug}`} onClick={onClose} className="shrink-0">
                     {l.image ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -121,7 +151,7 @@ function CartContents({ shop, onClose }: { shop: ShopId; onClose: () => void }) 
                     </div>
                     <div className="mt-2 flex items-center justify-between">
                       <QuantityStepper value={l.quantity} max={Math.min(maxQuantityPerLine, l.max ?? Infinity)} onChange={(q) => setQuantity(l.key, q)} size="sm" />
-                      <button type="button" onClick={() => remove(l.key)} className="text-xs text-muted underline-offset-4 hover:text-danger hover:underline">
+                      <button type="button" onClick={() => takeOut(l)} className="text-xs text-muted underline-offset-4 hover:text-danger hover:underline">
                         Remove
                       </button>
                     </div>
@@ -132,7 +162,10 @@ function CartContents({ shop, onClose }: { shop: ShopId; onClose: () => void }) 
           </ul>
           <div className="border-t border-line px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-4">
             <div className="flex items-baseline justify-between">
-              <span className="text-sm text-muted">Subtotal</span>
+              <span className="flex items-center gap-2 text-sm text-muted">
+                <TinyLamp on size={28} />
+                Subtotal
+              </span>
               <span className="font-display text-2xl font-bold tabular-nums">{money(subtotal)}</span>
             </div>
             <p className="mt-1 text-xs text-faint">Pickup is free. Codes and any shipping are added at checkout.</p>

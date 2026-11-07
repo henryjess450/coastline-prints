@@ -8,6 +8,9 @@ import { pickupPlaceFor } from "@/lib/shop/market-pickup.server";
 import { site } from "@config/site";
 import { Reveal } from "@/components/home/Reveal";
 import { Celebration } from "@/components/motion/Celebration";
+import { LampOnCelebration } from "@/components/lightlab/LampOnCelebration";
+import { getLampSettings, inQuietHours } from "@/lib/lamp/server";
+import { LAMP_ANIMS, type LampAnim } from "@/lib/lamp/animations";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { db } from "@/lib/db";
@@ -33,6 +36,10 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
   if (!order) notFound();
 
   const firstName = order.customerName.split(/\s+/)[0];
+  // A LightLab order gets its own celebration: a lamp switching on, and the pattern the workshop lamp played.
+  const productIds = order.items.map((i) => i.productId).filter((id): id is string => !!id);
+  const lightlab = productIds.length > 0 && (await db.shopProduct.count({ where: { id: { in: productIds }, shop: "lightlab" } })) > 0;
+  const lamp = lightlab ? await getLampSettings().catch(() => null) : null;
   const place = order.fulfillment === "SHIP" ? null : await pickupPlaceFor(order);
   const pickupWhen = place?.market?.when ?? formatPickup(order.pickupDate, order.pickupTime, pickup);
   const statusHref = `/status?order=${encodeURIComponent(order.orderNumber)}`;
@@ -45,7 +52,7 @@ export default async function OrderConfirmationPage({ params }: { params: Promis
   return (
     <div className="mx-auto max-w-3xl px-4 pb-12 pt-12 sm:px-6 sm:pt-16">
       <div className="text-center">
-        <Celebration />
+        {lightlab && lamp ? <LampOnCelebration anim={(lamp.play.lightlab in LAMP_ANIMS ? lamp.play.lightlab : "lighthouse") as LampAnim} dollars={Math.max(1, Math.round(order.totalCents / 100))} lampPlayed={!inQuietHours(lamp, order.createdAt)} /> : <Celebration />}
         <h1 className="mt-8 font-display text-3xl font-bold tracking-tight sm:text-4xl">Thanks, {firstName}! Your order is in.</h1>
         <p className="mt-3 text-muted">
           Order <span className="font-mono font-semibold text-fg">{order.orderNumber}</span> · paid {money(order.totalCents)} CAD

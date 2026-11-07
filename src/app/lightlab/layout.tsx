@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
+import { ViewTransition } from "react";
 import { lightlab } from "@config/lightlab";
+import { CardCodeCatcher } from "@/components/lightlab/CardCodeCatcher";
+import { CursorGlow } from "@/components/lightlab/CursorGlow";
 
 export const metadata: Metadata = {
   title: { default: lightlab.name, template: `%s · ${lightlab.name}` },
@@ -8,5 +11,12 @@ export const metadata: Metadata = {
 
 export default function LightLabLayout({ children }: { children: React.ReactNode }) {
   // Black and white: see .lightlab-theme in globals.css.
-  return <div className="lightlab-theme">{children}</div>;
+  // Pages cross-fade into each other (browsers with view transitions; others just switch).
+  return (
+    <div className="lightlab-theme">
+      <CursorGlow />
+      <CardCodeCatcher />
+      <ViewTransition default="ll-page">{children}</ViewTransition>
+    </div>
+  );
 }

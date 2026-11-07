@@ -24,7 +24,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   if (!product) notFound();
   return (
     <div className="mx-auto max-w-7xl px-4 pb-10 pt-8 sm:px-6 sm:pt-12">
-      <Link href="/lightlab#shop" className="text-sm text-muted hover:text-fg">
+      <Link href="/lightlab#shop" className="ll-link text-sm text-muted hover:text-fg">
         ← All LightLab pieces
       </Link>
       <div className="mt-6">
