@@ -96,3 +96,10 @@ export function slugify(s: string) {
       .slice(0, 60) || "product"
   );
 }
+
+/** The category a ?collection= link names, e.g. "xmas-26" for "Xmas 26". Unknown or ended ones give null (All). */
+export function categoryFromParam(products: ShopProductDto[], param: string | string[] | undefined) {
+  const want = typeof param === "string" ? slugify(param) : "";
+  if (!want) return null;
+  return products.find((p) => p.category && slugify(p.category) === want)?.category ?? null;
+}

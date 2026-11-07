@@ -6,6 +6,7 @@ import { LightLabHeroText } from "@/components/lightlab/HeroText";
 import { OneLineLamps } from "@/components/lightlab/hero/OneLineLamps";
 import { LightLabLogo } from "@/components/lightlab/LightLabLogo";
 import { ProductGrid } from "@/components/lightlab/ProductGrid";
+import { categoryFromParam } from "@/lib/shop/types";
 import { ButtonLink } from "@/components/ui/Button";
 import { listProducts } from "@/lib/shop/products.server";
 import { shopToday, upcomingMarkets } from "@/lib/shop/markets.server";
@@ -14,8 +15,8 @@ import { FindUsAt } from "@/components/lightlab/FindUsAt";
 export const metadata: Metadata = { title: { absolute: `${lightlab.name} · Novelty lamps` } };
 export const dynamic = "force-dynamic"; // prices and stock change in /lightlab/admin
 
-export default async function LightLabShop() {
-  const [products, markets] = await Promise.all([listProducts(), upcomingMarkets(6)]);
+export default async function LightLabShop({ searchParams }: { searchParams: Promise<{ collection?: string | string[] }> }) {
+  const [products, markets, q] = await Promise.all([listProducts(), upcomingMarkets(6), searchParams]);
   const featured = [...products].sort((a, b) => Number(b.featured) - Number(a.featured));
 
   return (
@@ -37,7 +38,7 @@ export default async function LightLabShop() {
           {products.length > 0 && <p className="text-sm text-muted">{products.length} {products.length === 1 ? "piece" : "pieces"}</p>}
         </div>
         {products.length ? (
-          <ProductGrid products={featured} />
+          <ProductGrid products={featured} initialCategory={categoryFromParam(products, q.collection)} />
         ) : (
           <div className="rounded-3xl border border-line bg-surface px-6 py-16 text-center">
             <p className="font-display text-xl font-semibold">New pieces are on the way.</p>

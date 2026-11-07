@@ -5,7 +5,7 @@ import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { shopConfig, type ShopId } from "@config/shops";
 import { money } from "@/lib/format";
-import { inStock, type ShopProductDto } from "@/lib/shop/types";
+import { inStock, slugify, type ShopProductDto } from "@/lib/shop/types";
 
 /** Everything left to buy across a product's options. Null = made to order. */
 function stockLeft(p: ShopProductDto) {
@@ -21,10 +21,19 @@ function stockLeft(p: ShopProductDto) {
 
 const fromPrice = (p: ShopProductDto) => Math.min(p.priceCents, ...p.variants.map((v) => v.priceCents ?? p.priceCents));
 
-export function ProductGrid({ products }: { products: ShopProductDto[] }) {
+export function ProductGrid({ products, initialCategory = null }: { products: ShopProductDto[]; initialCategory?: string | null }) {
   const categories = [...new Set(products.map((p) => p.category).filter(Boolean))];
-  const [cat, setCat] = useState<string | null>(null);
+  const [cat, setCatState] = useState<string | null>(initialCategory);
   const shown = cat ? products.filter((p) => p.category === cat) : products;
+
+  // Keep ?collection= in the address bar so whatever's showing can be copied and shared.
+  function setCat(c: string | null) {
+    setCatState(c);
+    const url = new URL(window.location.href);
+    if (c) url.searchParams.set("collection", slugify(c));
+    else url.searchParams.delete("collection");
+    window.history.replaceState(window.history.state, "", url);
+  }
 
   return (
     <div>

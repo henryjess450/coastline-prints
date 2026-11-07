@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { seo } from "@config/site";
 import { ProductGrid } from "@/components/lightlab/ProductGrid";
+import { categoryFromParam } from "@/lib/shop/types";
 import { ButtonLink } from "@/components/ui/Button";
 import { SectionLabel } from "@/components/ui/Card";
 import { listProducts } from "@/lib/shop/products.server";
@@ -20,8 +21,8 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /** Coastline's ready-made products, for people who don't have a file. */
-export default async function ShopPage() {
-  const products = await listProducts({ shop: "coastline" });
+export default async function ShopPage({ searchParams }: { searchParams: Promise<{ collection?: string | string[] }> }) {
+  const [products, q] = await Promise.all([listProducts({ shop: "coastline" }), searchParams]);
   return (
     <div className="mx-auto max-w-7xl px-4 pb-16 pt-12 sm:px-6 sm:pt-16">
       <JsonLd data={breadcrumbs([{ name: "Home", path: "/" }, { name: "Shop", path: "/shop" }])} />
@@ -31,7 +32,7 @@ export default async function ShopPage() {
         <p className="mt-4 text-lg leading-relaxed text-muted">Pick a design, add a name if it asks for one, and we print it. Pickup in downtown {seo.city} or shipping anywhere in Canada.</p>
       </div>
       {products.length ? (
-        <ProductGrid products={products} />
+        <ProductGrid products={products} initialCategory={categoryFromParam(products, q.collection)} />
       ) : (
         <div className="rounded-3xl border border-line bg-surface px-6 py-16 text-center">
           <p className="font-display text-xl font-semibold">The shop opens soon.</p>
