@@ -35,8 +35,43 @@ export type ShopProductDto = {
   grams: number;
   active: boolean;
   featured: boolean;
+  /** The holidays it's for (config/seasons.ts ids). */
+  seasons: string[];
+  /** Hidden from the shop grid while none of its seasons is the site theme. */
+  seasonOnly: boolean;
+  /** Product ids picked by hand as "goes well with". */
+  pairings: string[];
   sortOrder: number;
 };
+
+/** Filter-pill value for "this holiday's pieces", e.g. "season:christmas". */
+export const SEASON_FILTER = "season:";
+
+/** Is this product for the holiday the site is themed for right now? */
+export const inSeason = (p: Pick<ShopProductDto, "seasons">, seasonId: string) => p.seasons.includes(seasonId);
+
+/**
+ * Up to `n` products to suggest next to the given ones (a product page, or a cart):
+ * hand-picked pairings first, then this season's pieces, then the same category,
+ * then featured, then the rest. Never the products themselves or anything sold out.
+ */
+export function suggestFor(base: Pick<ShopProductDto, "id" | "category" | "pairings">[], all: ShopProductDto[], seasonId: string, n = 3) {
+  const skip = new Set(base.map((b) => b.id));
+  const paired = base.flatMap((b) => b.pairings);
+  const cats = new Set(base.map((b) => b.category).filter(Boolean));
+  const left = (p: ShopProductDto) => (p.variants.length ? p.variants.some((v) => inStock(p, v.id) !== 0) : inStock(p, null) !== 0);
+  const score = (p: ShopProductDto) => {
+    const pairRank = paired.indexOf(p.id);
+    if (pairRank >= 0) return 1000 - pairRank;
+    return (inSeason(p, seasonId) ? 300 : 0) + (cats.has(p.category) ? 100 : 0) + (p.featured ? 50 : 0);
+  };
+  return all
+    .filter((p) => !skip.has(p.id) && left(p))
+    .map((p, i) => ({ p, s: score(p), i }))
+    .sort((a, b) => b.s - a.s || a.i - b.i)
+    .slice(0, n)
+    .map((x) => x.p);
+}
 
 /** One cart line as the browser sends it. Prices are never taken from the client. */
 export type ShopLineInput = { productId: string; variantId: string | null; quantity: number; /** Personalised products: the text, like a name. */ customText?: string | null };
@@ -101,5 +136,7 @@ export function slugify(s: string) {
 export function categoryFromParam(products: ShopProductDto[], param: string | string[] | undefined) {
   const want = typeof param === "string" ? slugify(param) : "";
   if (!want) return null;
+  // A holiday works too: ?collection=christmas is every Christmas piece.
+  if (products.some((p) => p.seasons.includes(want))) return `${SEASON_FILTER}${want}`;
   return products.find((p) => p.category && slugify(p.category) === want)?.category ?? null;
 }

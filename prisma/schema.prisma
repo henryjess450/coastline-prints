@@ -512,6 +512,13 @@ model ShopProduct {
   grams          Float    @default(300)
   active         Boolean  @default(true)
   featured       Boolean  @default(false)
+  /// JSON SeasonId[] (config/seasons.ts): the holidays it's for. When the
+  /// site theme is one of them it's promoted on the shop and gets a sparkle.
+  seasons        String   @default("[]")
+  /// Hidden from the shop grid while none of its seasons is the site theme.
+  seasonOnly     Boolean  @default(false)
+  /// JSON product ids picked by hand as "goes well with"; suggested first.
+  pairings       String   @default("[]")
   sortOrder      Int      @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

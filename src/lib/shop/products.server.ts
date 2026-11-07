@@ -2,6 +2,7 @@ import "server-only";
 import type { ShopProduct } from "@/generated/prisma/client";
 import type { ShopId } from "@config/shops";
 import { db } from "@/lib/db";
+import { getSeason } from "@/lib/season";
 import { heldStock, withHolds } from "./holds.server";
 import { shopImageUrl, type ShopProductDto, type ShopVariant } from "./types";
 
@@ -34,18 +35,25 @@ export function toProductDto(p: ShopProduct): ShopProductDto {
     grams: p.grams,
     active: p.active,
     featured: p.featured,
+    seasons: parse<string[]>(p.seasons, []),
+    seasonOnly: p.seasonOnly,
+    pairings: parse<string[]>(p.pairings, []),
     sortOrder: p.sortOrder,
   };
 }
 
 const order = [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }];
 
-/** What a shop shows: active products only, unless it's the admin asking. */
+/**
+ * What a shop shows: active products only, unless it's the admin asking.
+ * Season-only pieces are left out while their holiday isn't the site theme.
+ */
 export async function listProducts({ all = false, shop = "lightlab" }: { all?: boolean; shop?: ShopId } = {}) {
-  const rows = await db.shopProduct.findMany({ where: { shop, ...(all ? {} : { active: true }) }, orderBy: order });
-  const products = rows.map(toProductDto);
+  const [rows, season] = await Promise.all([db.shopProduct.findMany({ where: { shop, ...(all ? {} : { active: true }) }, orderBy: order }), all ? null : getSeason()]);
+  let products = rows.map(toProductDto);
   // The admin sees real stock; shoppers see what's left after checkouts in progress.
-  if (all) return products;
+  if (all || !season) return products;
+  products = products.filter((p) => !p.seasonOnly || p.seasons.includes(season.id));
   const held = await heldStock(products);
   return products.map((p) => withHolds(p, held));
 }

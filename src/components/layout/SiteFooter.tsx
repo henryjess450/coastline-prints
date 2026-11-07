@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { legal, site } from "@config/site";
+import { LightLabLogo } from "@/components/lightlab/LightLabLogo";
 import { CircleMark } from "./CircleMark";
 import { Logo } from "./Logo";
 import { ProudlyCanadian } from "./ProudlyCanadian";
@@ -45,8 +46,12 @@ export function SiteFooter() {
         </div>
       </div>
       <div className="mx-auto flex max-w-7xl flex-col gap-8 px-4 pb-4 pt-14 sm:px-6 md:flex-row md:items-start md:justify-between">
-        <div className="space-y-2">
+        <div className="space-y-5">
           <Logo />
+          <Link href="/lightlab" className="group block w-fit" aria-label="LightLab lamp shop, our partner">
+            <span className="block text-xs text-faint">Partner shop</span>
+            <LightLabLogo className="mt-1.5 h-7 opacity-80 transition-opacity group-hover:opacity-100" />
+          </Link>
         </div>
         <nav aria-label="Footer" className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm text-muted sm:flex sm:flex-wrap sm:gap-x-6">
           {links.map((l) => (

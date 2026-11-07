@@ -10,7 +10,9 @@ export default async function EditShopProductPage({ params }: { params: Promise<
   await requireAdmin();
   const row = await db.shopProduct.findUnique({ where: { id: (await params).id }, include: { files: { orderBy: { createdAt: "desc" } } } });
   if (!row) notFound();
-  const categories = [...new Set((await listProducts({ all: true, shop: "coastline" })).map((p) => p.category).filter(Boolean))];
+  const all = await listProducts({ all: true, shop: "coastline" });
+  const categories = [...new Set(all.map((p) => p.category).filter(Boolean))];
+  const others = all.map((p) => ({ id: p.id, name: p.name }));
   // Keyed so saving a new product (and landing here) starts a fresh editor.
-  return <ProductEditor key={`${row.id}:${row.updatedAt.getTime()}`} product={toProductDto(row)} categories={categories} files={row.files.map((f) => ({ id: f.id, fileName: f.fileName, sizeBytes: f.sizeBytes, createdAt: f.createdAt.toISOString() }))} />;
+  return <ProductEditor key={`${row.id}:${row.updatedAt.getTime()}`} product={toProductDto(row)} categories={categories} others={others} files={row.files.map((f) => ({ id: f.id, fileName: f.fileName, sizeBytes: f.sizeBytes, createdAt: f.createdAt.toISOString() }))} />;
 }

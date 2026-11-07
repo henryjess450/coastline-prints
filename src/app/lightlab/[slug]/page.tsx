@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PartnerBadge } from "@/components/lightlab/PartnerBadge";
+import { AlsoLike } from "@/components/lightlab/AlsoLike";
 import { ProductBuy } from "@/components/lightlab/ProductBuy";
 import { productBySlug } from "@/lib/shop/products.server";
 import { money } from "@/lib/format";
@@ -28,6 +29,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       <div className="mt-6">
         <ProductBuy product={product} />
       </div>
+      <AlsoLike product={product} />
       <div className="mt-20 flex justify-center">
         <PartnerBadge />
       </div>

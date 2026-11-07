@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { lightlab } from "@config/lightlab";
+import { seasons, type SeasonId } from "@config/seasons";
 import { SHOP_IDS, shopConfig } from "@config/shops";
 import { Prisma } from "@/generated/prisma/client";
 import { requireAdmin } from "@/lib/admin/auth";
@@ -48,6 +49,9 @@ const productSchema = z.object({
   grams: z.number().min(1).max(50_000),
   active: z.boolean(),
   featured: z.boolean(),
+  seasons: z.array(z.enum(seasons.map((x) => x.id) as [SeasonId, ...SeasonId[]])).max(12).default([]),
+  seasonOnly: z.boolean().default(false),
+  pairings: z.array(z.string().max(40)).max(6).default([]),
 });
 
 export type ProductInput = z.infer<typeof productSchema>;
@@ -111,6 +115,12 @@ export async function saveProductAction(input: ProductInput): Promise<ShopAction
       grams: d.grams,
       active: d.active,
       featured: d.featured,
+      seasons: JSON.stringify([...new Set(d.seasons)]),
+      seasonOnly: d.seasonOnly && d.seasons.length > 0,
+      // Only real products in the same shop, never itself.
+      pairings: JSON.stringify(
+        (await db.shopProduct.findMany({ where: { id: { in: d.pairings }, shop }, select: { id: true } })).map((r) => r.id).filter((id) => id !== d.id).sort((a, b) => d.pairings.indexOf(a) - d.pairings.indexOf(b)),
+      ),
     };
     const saved = existing
       ? await db.shopProduct.update({ where: { id: existing.id }, data })

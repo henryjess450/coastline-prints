@@ -4,6 +4,8 @@ import { listProducts } from "@/lib/shop/products.server";
 export const metadata = { title: "Add product" };
 
 export default async function NewProductPage() {
-  const categories = [...new Set((await listProducts({ all: true })).map((p) => p.category).filter(Boolean))];
-  return <ProductEditor product={null} categories={categories} />;
+  const all = await listProducts({ all: true });
+  const categories = [...new Set(all.map((p) => p.category).filter(Boolean))];
+  const others = all.map((p) => ({ id: p.id, name: p.name }));
+  return <ProductEditor product={null} categories={categories} others={others} />;
 }

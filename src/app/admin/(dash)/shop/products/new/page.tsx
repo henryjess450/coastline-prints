@@ -6,6 +6,8 @@ export const metadata = { title: "Add product" };
 
 export default async function NewShopProductPage() {
   await requireAdmin();
-  const categories = [...new Set((await listProducts({ all: true, shop: "coastline" })).map((p) => p.category).filter(Boolean))];
-  return <ProductEditor product={null} categories={categories} shop="coastline" />;
+  const all = await listProducts({ all: true, shop: "coastline" });
+  const categories = [...new Set(all.map((p) => p.category).filter(Boolean))];
+  const others = all.map((p) => ({ id: p.id, name: p.name }));
+  return <ProductEditor product={null} categories={categories} others={others} shop="coastline" />;
 }

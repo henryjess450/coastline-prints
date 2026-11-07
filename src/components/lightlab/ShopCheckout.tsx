@@ -8,9 +8,11 @@ import type { EtransferPublic } from "@/lib/payments/etransfer";
 import { shopConfig, type ShopId } from "@config/shops";
 import { cartFor, useShopCartHydrated, useShopQuote } from "@/lib/shop/cart";
 import type { MarketDto } from "@/lib/shop/markets";
+import type { ShopProductDto } from "@/lib/shop/types";
+import { CartSuggestions } from "./CartSuggestions";
 import { PartnerBadge } from "./PartnerBadge";
 
-export function ShopCheckout({ square, etransfer, shop = "lightlab", markets = [] }: { square: SquareConfig | null; etransfer: EtransferPublic; shop?: ShopId; markets?: MarketDto[] }) {
+export function ShopCheckout({ square, etransfer, shop = "lightlab", markets = [], products = [] }: { square: SquareConfig | null; etransfer: EtransferPublic; shop?: ShopId; markets?: MarketDto[]; /** For "Add a little extra". */ products?: ShopProductDto[] }) {
   const router = useRouter();
   const useCart = cartFor(shop);
   const { base } = shopConfig(shop);
@@ -47,6 +49,7 @@ export function ShopCheckout({ square, etransfer, shop = "lightlab", markets = [
               </button>
             </p>
           )}
+          <CartSuggestions products={products} shop={shop} />
           <CheckoutStep shop={{ lines, id: shop }} cartQuote={quote} square={square} etransfer={etransfer} markets={markets} onBack={() => (window.history.length > 1 ? router.back() : router.push(base))} />
         </>
       )}

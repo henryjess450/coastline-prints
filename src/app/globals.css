@@ -448,3 +448,43 @@ body {
   font-weight: 800;
   letter-spacing: -0.03em;
 }
+
+/* ── Product sparkle (components/lightlab/SeasonSparkle.tsx) ────────────
+   Flakes fade in after they start and out before they end, so the wrap is
+   invisible; bulbs and stars go bright → dim → bright. */
+.sparkle-flake {
+  position: absolute;
+  top: 0;
+  border-radius: 9999px;
+  background: #fff;
+  box-shadow: 0 0 4px rgb(255 255 255 / 0.8);
+  animation: sparkle-fall linear infinite;
+  will-change: transform, opacity;
+}
+@keyframes sparkle-fall {
+  0% { transform: translate3d(0, -10px, 0); opacity: 0; }
+  12% { opacity: 0.9; }
+  80% { opacity: 0.9; }
+  100% { transform: translate3d(var(--drift), 380px, 0); opacity: 0; }
+}
+.sparkle-bulb { animation: sparkle-glow 1.8s ease-in-out infinite; }
+@keyframes sparkle-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.sparkle-star {
+  position: absolute;
+  animation: sparkle-star 2.8s ease-in-out infinite;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+@keyframes sparkle-star {
+  0%, 100% { transform: scale(0.4) rotate(0deg); opacity: 0.15; }
+  50% { transform: scale(1) rotate(45deg); opacity: 0.95; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sparkle-flake { display: none; }
+  .sparkle-bulb, .sparkle-star { animation: none; }
+}
+@media print {
+  .sparkle-layer { display: none !important; }
+}

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, Reorder } from "framer-motion";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { lightlab } from "@config/lightlab";
+import { DEFAULT_SEASON, seasons } from "@config/seasons";
 import { shopConfig, type ShopId } from "@config/shops";
 import { deleteProductAction, discardImagesAction, saveProductAction, type ProductInput } from "@/app/lightlab/admin/actions";
 import { Button, buttonClass } from "@/components/ui/Button";
@@ -21,7 +22,7 @@ let seq = 0;
 const newKey = () => `v${Date.now()}${seq++}`;
 
 /** Add or edit one product, in LightLab or the Coastline shop. */
-export function ProductEditor({ product, categories, files = [], shop: newShop = "lightlab" }: { product: ShopProductDto | null; categories: string[]; /** The owner's print files (admin only). */ files?: ProductFileDto[]; /** For a new product. */ shop?: ShopId }) {
+export function ProductEditor({ product, categories, others = [], files = [], shop: newShop = "lightlab" }: { product: ShopProductDto | null; categories: string[]; /** The shop's other products, for "goes well with". */ others?: { id: string; name: string }[]; /** The owner's print files (admin only). */ files?: ProductFileDto[]; /** For a new product. */ shop?: ShopId }) {
   const router = useRouter();
   const shop = shopConfig(product?.shop ?? newShop);
   const [personalize, setPersonalize] = useState(product?.personalize ?? "");
@@ -43,6 +44,9 @@ export function ProductEditor({ product, categories, files = [], shop: newShop =
   const [grams, setGrams] = useState(String(product?.grams ?? 400));
   const [active, setActive] = useState(product?.active ?? true);
   const [featured, setFeatured] = useState(product?.featured ?? false);
+  const [productSeasons, setProductSeasons] = useState<string[]>(product?.seasons ?? []);
+  const [seasonOnly, setSeasonOnly] = useState(product?.seasonOnly ?? false);
+  const [pairings, setPairings] = useState<string[]>(product?.pairings ?? []);
   const [error, setError] = useState<{ text: string; n: number } | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -110,6 +114,9 @@ export function ProductEditor({ product, categories, files = [], shop: newShop =
       grams: dims[3],
       active,
       featured,
+      seasons: productSeasons as ProductInput["seasons"],
+      seasonOnly,
+      pairings,
     };
   }
 
@@ -240,6 +247,19 @@ export function ProductEditor({ product, categories, files = [], shop: newShop =
             <Switch on={active} onChange={touch(setActive)} label="On the shop" detail={active ? "People can see and buy it." : "Hidden. Only you can see it here."} />
             <Switch on={featured} onChange={touch(setFeatured)} label="Featured" detail="Shown first on the shop." />
           </div>
+        </Panel>
+
+        <Panel title="Seasons" note="When the site theme (Admin > Settings) is one of these, it's promoted at the top of the shop and gets a little sparkle.">
+          <SeasonPicker value={productSeasons} onChange={touch(setProductSeasons)} />
+          {productSeasons.length > 0 && (
+            <div className="mt-4">
+              <Switch on={seasonOnly} onChange={touch(setSeasonOnly)} label="Only in season" detail={seasonOnly ? "Hidden from the shop the rest of the year. Its link still works." : "On the shop all year."} />
+            </div>
+          )}
+        </Panel>
+
+        <Panel title="Goes well with" note="Suggested first on its page and in the cart. Leave empty and the shop picks for you.">
+          <Pairings value={pairings} onChange={touch(setPairings)} options={others.filter((o) => o.id !== product?.id)} />
         </Panel>
 
         <div className="space-y-3">
@@ -453,5 +473,54 @@ function SwatchPicker({ value, onChange }: { value: string | null; onChange: (v:
         </button>
       )}
     </span>
+  );
+}
+
+function SeasonPicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {seasons
+        .filter((x) => x.id !== DEFAULT_SEASON)
+        .map((x) => {
+          const on = value.includes(x.id);
+          return (
+            <button key={x.id} type="button" aria-pressed={on} onClick={() => onChange(on ? value.filter((v) => v !== x.id) : [...value, x.id])} className={cn("rounded-full border px-3 py-1 text-sm transition-colors active:scale-95", on ? "border-transparent bg-accent text-accent-ink" : "border-line text-muted hover:text-fg")}>
+              {x.name}
+            </button>
+          );
+        })}
+    </div>
+  );
+}
+
+function Pairings({ value, onChange, options }: { value: string[]; onChange: (v: string[]) => void; options: { id: string; name: string }[] }) {
+  const byId = new Map(options.map((o) => [o.id, o.name]));
+  const shown = value.filter((id) => byId.has(id));
+  const left = options.filter((o) => !value.includes(o.id));
+  return (
+    <div className="space-y-3">
+      {shown.length > 0 && (
+        <ul className="flex flex-wrap gap-2">
+          {shown.map((id) => (
+            <li key={id} className="flex items-center gap-1 rounded-full border border-line bg-elev py-1 pl-3 pr-1 text-sm">
+              {byId.get(id)}
+              <button type="button" aria-label={`Remove ${byId.get(id)}`} onClick={() => onChange(value.filter((v) => v !== id))} className="grid h-6 w-6 place-items-center rounded-full text-muted hover:bg-bg hover:text-fg">
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {shown.length < 6 && left.length > 0 && (
+        <select value="" onChange={(e) => e.target.value && onChange([...shown, e.target.value])} className={input} aria-label="Add a product that goes well with this one">
+          <option value="">Add a product…</option>
+          {left.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
   );
 }

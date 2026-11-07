@@ -9,6 +9,7 @@ import { useSeason } from "@/components/season/SeasonContext";
 import { Logo } from "./Logo";
 import { CoBrand } from "@/components/lightlab/CoBrand";
 import { CartButton } from "@/components/lightlab/CartButton";
+import { LightLabLogo } from "@/components/lightlab/LightLabLogo";
 
 const nav = [
   { href: "/#how-it-works", label: "How it works" },
@@ -47,8 +48,11 @@ export function SiteHeader({ shopOpen = false }: { shopOpen?: boolean }) {
               {n.label}
             </Link>
           ))}
+          <LightLabLink />
         </nav>
         <div className="flex items-center gap-3">
+          {/* Phones have no nav row, so the LightLab logo sits with the buttons. */}
+          {!lightlab && !pathname.startsWith("/admin") && <LightLabLink className="lg:hidden" />}
           {!pathname.startsWith("/admin") && (
             <Link href="/account" aria-label="Your account" title="Your account" className={buttonClass("secondary", "sm", "w-10 px-0")}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -71,3 +75,12 @@ export function SiteHeader({ shopOpen = false }: { shopOpen?: boolean }) {
   );
 }
 
+
+/** The partner shop's logo as a menu item. */
+function LightLabLink({ className }: { className?: string }) {
+  return (
+    <Link href="/lightlab" aria-label="LightLab lamp shop" title="LightLab lamp shop" className={`flex h-9 items-center rounded-md px-2.5 transition-[background-color,opacity] hover:bg-surface-strong ${className ?? ""}`}>
+      <LightLabLogo className="h-5" />
+    </Link>
+  );
+}

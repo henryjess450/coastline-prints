@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { site } from "@config/site";
+import { AlsoLike } from "@/components/lightlab/AlsoLike";
 import { ProductBuy } from "@/components/lightlab/ProductBuy";
 import { money } from "@/lib/format";
 import { productBySlug } from "@/lib/shop/products.server";
@@ -56,6 +57,7 @@ export default async function ShopProductPage({ params }: { params: Promise<{ sl
       <div className="mt-6">
         <ProductBuy product={p} />
       </div>
+      <AlsoLike product={p} />
     </div>
   );
 }
