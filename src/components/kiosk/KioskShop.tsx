@@ -190,6 +190,7 @@ export function KioskShop({
                 <span className="font-mono">−{money(d.cents)}</span>
               </motion.p>
             ))}
+          <CardFeeRow quote={quote} />
           <div className="mt-3 flex items-baseline justify-between">
             <span className="text-muted">Total</span>
             <motion.span key={total} initial={{ y: -8, opacity: 0, scale: 1.08 }} animate={{ y: 0, opacity: 1, scale: 1 }} className="font-display text-3xl font-bold tabular-nums">
@@ -356,6 +357,31 @@ function CodeEntry({ codes, setCodes, quote }: { codes: string[]; setCodes: (c: 
         </form>
       )}
       {rejected && <p className="mt-1 text-sm text-danger">{rejected.reason}</p>}
+    </div>
+  );
+}
+
+/** The card processing fee as its own line, with a tap-to-see "why". */
+export function CardFeeRow({ quote }: { quote: PosQuote | null }) {
+  const [why, setWhy] = useState(false);
+  const fee = quote?.lines.find((l) => l.key === "card-fee");
+  if (!fee?.cents) return null;
+  return (
+    <div className="mt-2 text-sm">
+      <p className="flex items-center justify-between gap-2 text-muted">
+        <button type="button" onClick={() => setWhy((w) => !w)} className="flex items-center gap-1.5 text-left">
+          {fee.name}
+          <span className="grid h-5 w-5 place-items-center rounded-full border border-line text-[11px] font-bold">?</span>
+        </button>
+        <span className="font-mono">{money(fee.cents)}</span>
+      </p>
+      <AnimatePresence initial={false}>
+        {why && (
+          <motion.p initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden text-xs text-faint">
+            {fee.detail}
+          </motion.p>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
-import { pairKioskAction, setKioskModeAction, unpairKioskAction } from "@/app/lightlab/admin/kiosk/actions";
+import { pairKioskAction, saveCardFeeAction, setKioskModeAction, unpairKioskAction } from "@/app/lightlab/admin/kiosk/actions";
+import { cardFeeFor, type CardFeeSettings } from "@/lib/pos/card-fee";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/Button";
 import { money } from "@/lib/format";
@@ -19,7 +20,7 @@ function ago(iso: string) {
 }
 
 /** Pair a self-checkout tablet, see what each one sold today, and any paid sales that need sorting out. */
-export function KioskAdmin({ kiosks, problems }: { kiosks: KioskRow[]; problems: Problem[] }) {
+export function KioskAdmin({ kiosks, problems, cardFee }: { kiosks: KioskRow[]; problems: Problem[]; cardFee: CardFeeSettings }) {
   const [code, setCode] = useState("");
   const [name, setName] = useState("Stand kiosk");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -62,6 +63,8 @@ export function KioskAdmin({ kiosks, problems }: { kiosks: KioskRow[]; problems:
           </p>
         )}
       </section>
+
+      <CardFeeCard initial={cardFee} />
 
       {problems.length > 0 && (
         <section className="rounded-3xl border border-danger/40 bg-danger/10 p-5">
@@ -116,5 +119,50 @@ export function KioskAdmin({ kiosks, problems }: { kiosks: KioskRow[]; problems:
         )}
       </section>
     </div>
+  );
+}
+
+/** Switch the card processing fee on or off for Square links, and set what it covers. */
+function CardFeeCard({ initial }: { initial: CardFeeSettings }) {
+  const [s, setS] = useState(initial);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const save = (next: CardFeeSettings) => {
+    setS(next);
+    setMsg(null);
+    start(async () => {
+      const r = await saveCardFeeAction(next);
+      setMsg(r.error ?? "Saved.");
+    });
+  };
+  const example = cardFeeFor(5000, s);
+  return (
+    <section className="rounded-3xl border border-line bg-surface p-5 sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="max-w-xl">
+          <h2 className="font-display text-lg font-semibold">Card processing fee</h2>
+          <p className="mt-1 text-sm text-muted">Adds Square&apos;s fee to the total whenever someone pays through a Square QR link: the kiosk, and Scan to pay on the register (you can waive it per sale there). It shows as its own line, &ldquo;Card processing fee&rdquo;, with a note saying it covers Square&apos;s charge.</p>
+        </div>
+        <label className="flex items-center gap-2 text-sm font-semibold">
+          <input type="checkbox" checked={s.on} disabled={pending} onChange={(e) => save({ ...s, on: e.target.checked })} className="h-5 w-5 accent-[var(--accent)]" />
+          {s.on ? "On" : "Off"}
+        </label>
+      </div>
+      <div className="mt-4 flex flex-wrap items-end gap-3 text-sm">
+        <label className="block w-28">
+          <span className="mb-1 block text-xs text-muted">Percent</span>
+          <input type="number" step="0.1" min={0} max={10} value={s.percent} onChange={(e) => setS({ ...s, percent: Number(e.target.value) })} onBlur={() => save(s)} className={input} />
+        </label>
+        <label className="block w-28">
+          <span className="mb-1 block text-xs text-muted">Plus (cents)</span>
+          <input type="number" min={0} max={500} value={s.fixedCents} onChange={(e) => setS({ ...s, fixedCents: Math.round(Number(e.target.value)) })} onBlur={() => save(s)} className={input} />
+        </label>
+        <p className="pb-3 text-muted">On a $50.00 sale the fee is {money(example)}.</p>
+      </div>
+      <p className="mt-3 rounded-xl bg-bg p-3 text-xs text-muted">
+        Canadian card rules: Visa and Mastercard allow a surcharge on <strong>credit</strong> cards only, up to <strong>2.4%</strong>, after you notify your processor at least 30 days ahead. Debit can&apos;t be surcharged, and Quebec doesn&apos;t allow it. A Square link can&apos;t tell credit from debit before paying, so check with Square before switching this on.
+      </p>
+      {msg && <p className="mt-2 text-sm text-muted">{msg}</p>}
+    </section>
   );
 }

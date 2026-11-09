@@ -27,7 +27,7 @@ export async function GET() {
 - Location: ${seo.neighbourhood}, ${seo.region}, Canada. Serves ${seo.areaServed.filter((a) => a !== "Canada").join(", ")}; ships Canada-wide by Canada Post.
 - Materials: ${cfg.materials.map((m) => m.name).join(", ")}. Multicolour prints up to 4 colours from painted 3MF files.
 - Pricing (CAD): ${money(p.baseFeeCents)} order fee, ${p.pricePerGramCents} cents per gram, ${money(p.pricePerHourCents)} per printer hour, ${money(p.markupPerPieceCents)} per piece, ${money(p.minimumOrderCents)} minimum order. Exact price shown before payment.
-- Payment: card, Apple Pay, Google Pay, Interac e-Transfer (${etransfer.discountPercent}% off).
+- Payment: card, Apple Pay, Google Pay, Interac e-Transfer${etransfer.discountPercent ? ` (${etransfer.discountPercent}% off)` : ""}.
 - Customers bring their own file, or find one through the site's model search.
 - Contact: ${legal.contactEmail}, Instagram ${seo.instagram}
 

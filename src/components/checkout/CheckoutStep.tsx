@@ -835,7 +835,7 @@ function AccountNote({ account }: { account: ReturnType<typeof useAccount> }) {
 /** e-Transfer (preferred) or card. */
 function PayByToggle({ value, onChange, discountPercent }: { value: "etransfer" | "card"; onChange: (v: "etransfer" | "card") => void; discountPercent: number }) {
   const options = [
-    { id: "etransfer" as const, title: "Interac e-Transfer", detail: `Preferred · ${discountPercent}% off · no fees` },
+    { id: "etransfer" as const, title: "Interac e-Transfer", detail: discountPercent ? `Preferred · ${discountPercent}% off · no fees` : "From your bank app" },
     { id: "card" as const, title: "Card", detail: "Visa, Mastercard, Apple Pay, Google Pay" },
   ];
   return (

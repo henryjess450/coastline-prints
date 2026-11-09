@@ -81,7 +81,8 @@ export const kioskCustomerSchema = z.object({
   needBy: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().default(null),
 });
 
-const posCart = (c: z.infer<typeof kioskCartSchema>, email = ""): PosCartInput => ({ brand: "lightlab", products: c.products, codes: c.codes, email });
+// The kiosk is always paid by Square link, so the card fee applies whenever it's switched on.
+const posCart = (c: z.infer<typeof kioskCartSchema>, email = ""): PosCartInput => ({ brand: "lightlab", products: c.products, codes: c.codes, email, cardFee: true });
 
 /** The cart's price, as the kiosk shows it. Order kiosks make things later, so stock doesn't limit them. */
 export async function quoteKioskCart(cart: z.infer<typeof kioskCartSchema>, order = false) {

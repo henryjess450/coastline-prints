@@ -47,6 +47,8 @@ export const posCartSchema = z
     codes: z.array(z.string().trim().min(1).max(60)).max(4).default([]),
     /** Only used to check invite codes against the customer. */
     email: z.union([z.literal(""), z.string().trim().toLowerCase().email()]).default(""),
+    /** Paying through a Square link: add the card processing fee (when it's switched on in admin). */
+    cardFee: z.boolean().default(false),
   })
   .refine((c) => c.brand === "coastline" || c.items.length === 0, { message: "Prints are sold as Coastline Prints.", path: ["items"] });
 

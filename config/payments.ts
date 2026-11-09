@@ -6,8 +6,8 @@
 export const etransfer = {
   /** Off: card only, even with the .env settings filled in. */
   enabled: true,
-  /** Off what's being sent by e-Transfer (no card fees), after coupons and gift cards. */
-  discountPercent: 2,
+  /** Off what's being sent by e-Transfer, after coupons and gift cards. 0 = full price (no e-Transfer discount). */
+  discountPercent: 0,
   /** Unpaid e-Transfer orders are cancelled after this, and held codes released. */
   payWindowMinutes: 120,
   /**

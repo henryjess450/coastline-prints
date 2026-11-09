@@ -33,7 +33,7 @@ type TakenOrder = { firstName: string; items: PosOrderItem[]; popupId: string; n
 export type RegisterMarket = { id: string; name: string };
 type Slip = "receipt" | "gift" | "claim";
 
-export type RegisterLinks = { etransferEmail: string | null; instagram: string; review: string | null; payLinks: boolean };
+export type RegisterLinks = { etransferEmail: string | null; instagram: string; review: string | null; payLinks: boolean; /** The card processing fee is switched on for Square links. */ cardFee: boolean };
 
 const store = {
   get: (k: string) => {
@@ -97,6 +97,10 @@ export function Register({ products, printOptions, links, markets }: { products:
   const [tendered, setTendered] = useState("");
   const [opts, setOpts] = useState({ handedOver: true, printTicket: false, emailCustomer: true });
   const [quote, setQuote] = useState<PosQuote | null>(null);
+  /** Which cart the quote is for, so a payment link is only made from an up-to-date total. */
+  const [quotedFor, setQuotedFor] = useState("");
+  /** The cashier can waive the card fee for this sale. */
+  const [waiveFee, setWaiveFee] = useState(false);
   /** No internet: the register prices lamps and custom items itself and keeps sales here until it's back. */
   const [offline, setOffline] = useState(false);
   const [queue, setQueueState] = useState<QueuedSale[]>([]);
@@ -180,8 +184,9 @@ export function Register({ products, printOptions, links, markets }: { products:
       custom: custom.map(({ name, unitCents, quantity }) => ({ name, unitCents, quantity })),
       codes,
       email: customer.email.trim(),
+      cardFee: pay === "LINK" && links.cardFee && !waiveFee,
     }),
-    [brand, files, lines, custom, codes, customer.email],
+    [brand, files, lines, custom, codes, customer.email, pay, links.cardFee, waiveFee],
   );
   const empty = !files.length && !lines.length && !custom.length;
 
@@ -200,6 +205,7 @@ export function Register({ products, printOptions, links, markets }: { products:
         const body = await res.json();
         setOffline(false);
         setQuote(res.ok ? body : { ok: false, error: body.error ?? "Couldn't price the cart.", lines: [], fees: [], discounts: [], rejected: [], totalCents: 0 });
+        setQuotedFor(JSON.stringify(cart));
       } catch (e) {
         if ((e as Error).name === "AbortError" && !timedOut) return;
         setOffline(true);
@@ -533,18 +539,36 @@ export function Register({ products, printOptions, links, markets }: { products:
     if (kind === "ETRANSFER" && links.etransferEmail) {
       setPopup({ id: popupId(), kind: "etransfer", sendTo: links.etransferEmail, amountCents: shownQuote.totalCents, message: `${brand === "lightlab" ? "LightLab" : "Coastline"} ${attemptId.slice(0, 4).toUpperCase()}` });
     }
-    if (kind === "LINK") {
+    // A Square link is made once the total (with the card fee, if it's on) has been priced: see below.
+  }
+
+  // Scan to pay: make the Square link from the latest total. Remade when the fee is waived or put back.
+  const linkMaking = useRef(false);
+  useEffect(() => {
+    if (pay !== "LINK" || link || linkMaking.current || !shownQuote?.ok || quotedFor !== JSON.stringify(cart)) return;
+    linkMaking.current = true;
+    const amountCents = shownQuote.totalCents;
+    (async () => {
       try {
-        const res = await fetch("/api/admin/pos/paylink", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ attemptId, amountCents: shownQuote.totalCents, brand }) });
+        const res = await fetch("/api/admin/pos/paylink", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ attemptId, amountCents, brand }) });
         const body = await res.json();
         if (!res.ok) throw new Error(body.error ?? "Couldn't make the link.");
-        const l = { ...body, amountCents: shownQuote.totalCents } as PayLink;
+        const l = { ...body, amountCents } as PayLink;
         setLink(l);
         setPopup({ id: popupId(), kind: "card-link", url: l.url, amountCents: l.amountCents });
       } catch (err) {
         setError((err as Error).message);
+      } finally {
+        linkMaking.current = false;
       }
-    }
+    })();
+  }, [pay, link, shownQuote, quotedFor, cart, attemptId, brand]);
+
+  function toggleFee() {
+    if (link) cancelLink(link);
+    setLink(null);
+    if (popup?.kind === "card-link") setPopup(null);
+    setWaiveFee((w) => !w);
   }
 
   function cancelLink(l: PayLink) {
@@ -556,6 +580,7 @@ export function Register({ products, printOptions, links, markets }: { products:
     if (popup?.kind === "card-link" || popup?.kind === "etransfer") setPopup(null);
     setLink(null);
     setPay(null);
+    setWaiveFee(false);
     setError(null);
   }
 
@@ -895,6 +920,15 @@ export function Register({ products, printOptions, links, markets }: { products:
               ) : (
                 <p className="text-muted">Set ETRANSFER_EMAIL on the server to show where to send it.</p>
               ))}
+            {pay === "LINK" && links.cardFee && !(popup?.kind === "card-link" && popup.paid) && (
+              <label className="flex items-center justify-between gap-3 rounded-2xl bg-surface p-3 text-sm">
+                <span>
+                  Card processing fee
+                  <span className="block text-xs text-muted">{waiveFee ? "Waived for this sale." : `${money(shownQuote?.lines.find((l) => l.key === "card-fee")?.cents ?? 0)} added. The customer sees why.`}</span>
+                </span>
+                <input type="checkbox" checked={!waiveFee} onChange={toggleFee} className="h-5 w-5 accent-[var(--accent)]" />
+              </label>
+            )}
             {pay === "LINK" && <LinkPanel link={link} paid={popup?.kind === "card-link" && !!popup.paid} hasDisplay={!!registerId} onShow={() => setFlip(true)} />}
             {error && (
               <motion.p initial={{ x: -6 }} animate={{ x: [0, -6, 6, 0] }} role="alert" className="rounded-2xl bg-danger/10 p-3 text-sm text-danger">

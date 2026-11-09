@@ -134,3 +134,58 @@ describe("order mode: made to order, paid on your phone", () => {
     await expect(startKioskSale(k.id, cart, { name: "Sam", email: "sam@example.com", phone: "250 555 0142", needBy: addDays(orderMinDate(), -2) })).rejects.toThrow("at least a week");
   });
 });
+
+describe("card processing fee on Square links", () => {
+  it("works out a fee that covers Square's cut of the whole total", async () => {
+    const { cardFeeFor } = await import("@/lib/pos/card-fee");
+    const fee = cardFeeFor(5000, { percent: 2.9, fixedCents: 30 });
+    const total = 5000 + fee;
+    // What Square keeps from the whole total is no more than the fee.
+    expect(Math.round(total * 0.029 + 30)).toBeLessThanOrEqual(fee);
+    expect(cardFeeFor(0, { percent: 2.9, fixedCents: 30 })).toBe(0);
+  });
+
+  it("adds it as its own line with why, charges it, and keeps it on the order", async () => {
+    const { saveCardFee } = await import("@/lib/pos/card-fee.server");
+    const { quoteKioskCart } = await import("@/lib/kiosk/server");
+    await saveCardFee({ on: true, percent: 2.9, fixedCents: 30 });
+    try {
+      const p = await lamp({ priceCents: 5000 });
+      const k = await kiosk("shop");
+      const cart = { products: [{ productId: p.id, variantId: null, quantity: 1, customText: null }], codes: [] };
+      const quote = await quoteKioskCart(cart);
+      const fee = quote.lines.find((l) => l.key === "card-fee");
+      expect(fee?.name).toBe("Card processing fee");
+      expect(fee?.detail).toContain("Square charges us 2.9% + 30¢");
+      expect(quote.totalCents).toBe(5000 + fee!.cents!);
+
+      const sale = await startKioskSale(k.id, cart, { name: "Jo", email: "jo@example.com" });
+      expect(sale.totalCents).toBe(quote.totalCents);
+      link.paid = true;
+      link.paymentId = "PAY-KIOSK-FEE";
+      square.payments.get.mockResolvedValue({ payment: { id: "PAY-KIOSK-FEE", status: "COMPLETED", amountMoney: { amount: BigInt(sale.totalCents), currency: "CAD" }, locationId: "TEST_LOCATION" } });
+      const done = await checkKioskSale(k.id, sale.id);
+      expect(done?.status).toBe("DONE");
+      const order = await db.order.findUnique({ where: { orderNumber: done!.orderNumber! }, include: { items: true } });
+      expect(order?.totalCents).toBe(sale.totalCents);
+      expect(order?.items.some((i) => i.fileName === "Card processing fee" && i.lineCents === fee!.cents)).toBe(true);
+    } finally {
+      await saveCardFee({ on: false, percent: 2.9, fixedCents: 30 });
+    }
+  });
+
+  it("isn't added when it's switched off, or when not paying by link", async () => {
+    const { pricePos } = await import("@/lib/pos/price.server");
+    const p = await lamp({ priceCents: 5000 });
+    const off = await pricePos({ brand: "lightlab", products: [{ productId: p.id, variantId: null, quantity: 1 }], cardFee: true });
+    expect(off.lines.some((l) => l.key === "card-fee")).toBe(false);
+    const { saveCardFee } = await import("@/lib/pos/card-fee.server");
+    await saveCardFee({ on: true, percent: 2.9, fixedCents: 30 });
+    try {
+      const cash = await pricePos({ brand: "lightlab", products: [{ productId: p.id, variantId: null, quantity: 1 }] });
+      expect(cash.totalCents).toBe(5000);
+    } finally {
+      await saveCardFee({ on: false, percent: 2.9, fixedCents: 30 });
+    }
+  });
+});

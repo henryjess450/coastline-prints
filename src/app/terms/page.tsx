@@ -33,7 +33,7 @@ export default function TermsPage() {
           <li>The total shown at checkout is the amount you pay. It is calculated by our server from your file, size, material and settings.</li>
           <li>Card payments are processed by Square. A card order is only placed once Square confirms the payment.</li>
           <li>
-            You can also pay by Interac e-Transfer, with {etransfer.discountPercent}% off. Send the exact amount shown, with your payment code in the message. Your order is confirmed once the money arrives. If it hasn&apos;t arrived within {etransfer.payWindowMinutes / 60} hours, the order is cancelled. If you send it after that, we&apos;ll confirm the order if we still can, or refund the transfer.
+            You can also pay by Interac e-Transfer{etransfer.discountPercent ? `, with ${etransfer.discountPercent}% off` : ""}. Send the exact amount shown, with your payment code in the message. Your order is confirmed once the money arrives. If it hasn&apos;t arrived within {etransfer.payWindowMinutes / 60} hours, the order is cancelled. If you send it after that, we&apos;ll confirm the order if we still can, or refund the transfer.
           </li>
           <li>If we can&apos;t print an order after you&apos;ve paid (for example, the file turns out to be unprintable), we&apos;ll contact you and refund the full amount.</li>
         </ul>

@@ -94,7 +94,7 @@ export function faqs(cfg: AppConfig): Faq[] {
     },
     {
       q: "Are there any discounts?",
-      a: `Paying by Interac e-Transfer takes ${etransfer.discountPercent}% off. With an account you also earn ${POINTS_PER_DOLLAR} points for every $1 you spend, and trade them for money off.`,
+      a: `${etransfer.discountPercent ? `Paying by Interac e-Transfer takes ${etransfer.discountPercent}% off. With an account you also earn` : "With an account you earn"} ${POINTS_PER_DOLLAR} points for every $1 you spend, and trade them for money off.`,
       link: { href: "/rewards", label: "Rewards" },
     },
     {

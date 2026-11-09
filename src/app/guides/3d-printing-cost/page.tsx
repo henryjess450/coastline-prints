@@ -81,7 +81,7 @@ export default async function CostGuide() {
         <li>Put everything in one order, so you pay the order fee once.</li>
         <li>Scale the model down a little. Plastic use drops fast as size shrinks, because it goes with the volume.</li>
         <li>Pick a lighter infill if the part doesn&apos;t need to be strong.</li>
-        <li>Pay by Interac e-Transfer for {etransfer.discountPercent}% off.</li>
+        {etransfer.discountPercent > 0 && <li>Pay by Interac e-Transfer for {etransfer.discountPercent}% off.</li>}
         <li>A small part on its own is mostly order fee. Add a second small part to the same order and it often costs only a dollar or two more.</li>
       </ul>
 

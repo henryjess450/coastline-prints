@@ -135,7 +135,7 @@ function Cart({ screen, lightlab }: { screen: PosScreen; lightlab: boolean }) {
                 </motion.span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xl font-medium">{l.name}</p>
-                  {l.detail && <p className="truncate text-muted">{l.detail}</p>}
+                  {l.detail && <p className={l.key === "card-fee" ? "text-sm text-muted" : "truncate text-muted"}>{l.detail}</p>}
                 </div>
                 <motion.span key={l.quantity} initial={{ scale: 1.5 }} animate={{ scale: 1 }} className="rounded-full bg-surface-strong px-3 py-1 font-mono text-lg">
                   ×{l.quantity}

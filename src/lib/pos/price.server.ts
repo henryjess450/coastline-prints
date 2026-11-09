@@ -1,3 +1,5 @@
+import { getCardFee } from "./card-fee.server";
+import { CARD_FEE_LINE, CARD_FEE_NAME, cardFeeFor, cardFeeWhy } from "./card-fee";
 import "server-only";
 import type { PromoCode } from "@/generated/prisma/client";
 import { applyCodes, type AppliedCode } from "@/lib/codes/apply";
@@ -67,20 +69,26 @@ export async function pricePos(raw: PosCartInput, opts: { ignoreStock?: boolean 
   // Market-only coupons work at the LightLab register.
   const { records, errors } = await lookupCodes(cart.codes, new Date(), null, cart.email || null, { channel: cart.brand === "lightlab" ? "market" : "online" });
   const discount = applyCodes(beforeCodes, records.map(toCodeInfo), 0, null);
+
+  // Paying by Square link with the fee switched on: one more line covering Square's cut of what's left to pay.
+  const feeSettings = cart.cardFee ? await getCardFee() : null;
+  const feeCents = feeSettings?.on ? cardFeeFor(discount.totalCents, feeSettings) : 0;
+  if (feeCents > 0) lines.push({ key: CARD_FEE_LINE, kind: "custom", name: CARD_FEE_NAME, detail: cardFeeWhy(feeSettings!), quantity: 1, cents: feeCents });
+  const feeLines = feeCents > 0 ? [{ name: CARD_FEE_NAME, unitCents: feeCents, quantity: 1, lineCents: feeCents }] : [];
   const rejected = [...errors, ...discount.rejected];
   const usable = records.filter((r) => discount.applied.some((a) => a.code === r.code));
 
   const snapshot: CartSnapshot = {
     lines: prints?.lines ?? [],
     shopLines: shop?.shopLines,
-    customLines: cart.custom.map((c) => ({ ...c, lineCents: c.unitCents * c.quantity })),
+    customLines: [...cart.custom.map((c) => ({ ...c, lineCents: c.unitCents * c.quantity })), ...feeLines],
     shop: cart.brand,
     quote: {
       items: prints?.items ?? [],
       baseFeeCents: prints?.baseFeeCents ?? 0,
       minimumAdjCents: prints?.minimumAdjCents ?? 0,
-      subtotalCents: (prints?.subtotalCents ?? 0) + (shop?.subtotalCents ?? 0) + customCents,
-      totalCents: beforeCodes,
+      subtotalCents: (prints?.subtotalCents ?? 0) + (shop?.subtotalCents ?? 0) + customCents + feeCents,
+      totalCents: beforeCodes + feeCents,
       shipping: null,
     },
   };
@@ -91,7 +99,7 @@ export async function pricePos(raw: PosCartInput, opts: { ignoreStock?: boolean 
     fees,
     discounts: discount.applied.map((a) => ({ label: a.label, cents: a.amountCents })),
     rejected,
-    totalCents: discount.totalCents,
+    totalCents: discount.totalCents + feeCents,
     snapshot,
     applied: discount.applied,
     records: usable,

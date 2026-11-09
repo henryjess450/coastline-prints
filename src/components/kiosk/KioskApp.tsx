@@ -238,6 +238,7 @@ export function KioskApp() {
   const liveQuote = lines.length ? quote : null;
   const total = liveQuote?.totalCents ?? lines.reduce((n, l) => n + l.unitCents * l.quantity, 0);
   const firstName = details.name.trim().split(/\s+/)[0] ?? "";
+  const feeLine = liveQuote?.lines.find((l) => l.key === "card-fee");
   const field = "h-16 w-full rounded-2xl border-2 border-line bg-surface px-5 text-xl outline-none transition-colors focus:border-accent-line";
 
   return (
@@ -372,6 +373,11 @@ export function KioskApp() {
                 {firstName ? `${firstName}, scan` : "Scan"} to pay {money(sale.totalCents)}
               </p>
               <p className="mt-2 text-xl text-muted">Point your phone&apos;s camera at the code. Card, Apple Pay or Google Pay.</p>
+              {feeLine?.cents ? (
+                <p className="mx-auto mt-3 max-w-md rounded-2xl bg-surface px-4 py-2 text-sm text-muted">
+                  Includes a {money(feeLine.cents)} card processing fee. {feeLine.detail}
+                </p>
+              ) : null}
               <motion.div className="relative mx-auto mt-8 w-80 overflow-hidden rounded-[28px] border-2 border-[#297f9d] bg-white p-3" initial={{ rotate: -6, scale: 0.85 }} animate={{ rotate: 0, scale: 1 }} transition={{ type: "spring", stiffness: 260, damping: 15 }}>
                 <Qr value={sale.url} className="w-full" />
                 {/* A scanner line gliding down and back, eased at both ends so it never snaps. */}

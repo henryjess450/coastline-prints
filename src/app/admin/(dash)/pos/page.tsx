@@ -1,3 +1,4 @@
+import { getCardFee } from "@/lib/pos/card-fee.server";
 import { Register } from "@/components/pos/Register";
 import { requireAdmin } from "@/lib/admin/auth";
 import { getEffectiveConfig } from "@/lib/config/effective";
@@ -20,7 +21,7 @@ export default async function RegisterPage() {
     <Register
       products={{ lightlab, coastline }}
       markets={names.map((name) => ({ id: name, name: today.some((m) => m.name === name) ? `${name} (today)` : name }))}
-      links={{ etransferEmail: process.env.ETRANSFER_EMAIL || null, instagram: seo.instagram, review: reviews.googleUrl || null, payLinks: payLinksAvailable() }}
+      links={{ etransferEmail: process.env.ETRANSFER_EMAIL || null, instagram: seo.instagram, review: reviews.googleUrl || null, payLinks: payLinksAvailable(), cardFee: (await getCardFee()).on }}
       printOptions={{
         materials: cfg.materials.map((m) => ({ id: m.id, name: m.name, colors: m.colors.filter((c) => c.available).map((c) => ({ id: c.id, name: c.name, hex: c.hex })) })),
         qualities: cfg.qualityPresets.map((q) => ({ id: q.id, name: q.name })),

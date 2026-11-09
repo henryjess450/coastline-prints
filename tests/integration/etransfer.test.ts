@@ -30,7 +30,8 @@ async function placeEtransferOrder(over: { quantity?: number } = {}) {
   const up = await cubeUpload();
   const items = [cartItem(up.id, { quantity: over.quantity ?? 1 })];
   const full = (await (await quote(jsonRequest("http://test/api/quote", { items }))).json()).quote.totalCents as number;
-  const due = full - Math.round(full * 0.02);
+  // e-Transfer is full price (no discount).
+  const due = full;
   const attemptId = randomUUID();
   const res = await checkout(jsonRequest("http://test/api/checkout", { attemptId, payment: "etransfer", customer, items, expectedTotalCents: due, fulfillment: await validPickup() }));
   return { res, data: await res.json(), due, full, attemptId };
@@ -52,7 +53,7 @@ beforeEach(async () => {
 });
 
 describe("e-Transfer checkout", () => {
-  it("holds the order with a code, 2% off, and never charges a card", async () => {
+  it("holds the order with a code, at full price, and never charges a card", async () => {
     const { res, data, due, attemptId } = await placeEtransferOrder();
     expect(res.status).toBe(200);
     expect(data).toMatchObject({ status: "awaiting_etransfer", amountCents: due, sendTo: "pay@coastline.test" });
@@ -71,7 +72,7 @@ describe("e-Transfer checkout", () => {
     expect(dep?.status).toBe("MATCHED");
     const order = await db.order.findFirstOrThrow({ where: { checkout: { idempotencyKey: attemptId } } });
     expect(order).toMatchObject({ paymentMethod: "ETRANSFER", totalCents: due, status: "PAID" });
-    expect(order.etransferDiscountCents).toBeGreaterThan(0);
+    expect(order.etransferDiscountCents).toBe(0);
     const polled = await (await poll(new Request(`http://test/api/checkout/${attemptId}`), { params: Promise.resolve({ attemptId }) })).json();
     expect(polled).toMatchObject({ status: "paid", viewToken: order.viewToken });
     // The same email again does nothing.
