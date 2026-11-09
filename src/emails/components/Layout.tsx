@@ -1,6 +1,7 @@
 import { Body, Container, Head, Hr, Html, Img, Link, Preview, Section, Text } from "@react-email/components";
 import { site } from "@config/site";
 import { lightlab } from "@config/lightlab";
+import { LightLabFrame } from "../lightlab/parts";
 
 export const colors = {
   brand: "#0e4471",
@@ -29,6 +30,8 @@ export const font = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helv
 export function EmailLayout({ preview, children, footerNote, brand = "coastline" }: { preview: string; children: React.ReactNode; footerNote?: string; /** LightLab shop orders: black header with the LightLab logo. */ brand?: "coastline" | "lightlab" }) {
   const base = (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
   const ll = brand === "lightlab";
+  // LightLab emails (ready, shipped, updates) use LightLab's own frame.
+  if (ll) return <LightLabFrame preview={preview}>{children}</LightLabFrame>;
   return (
     <Html lang="en">
       <Head />

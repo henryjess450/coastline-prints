@@ -11,6 +11,7 @@ const links = [
   { href: "/lightlab/admin/markets", label: "Markets" },
   { href: "/admin/price-tags?shop=lightlab", label: "Price tags" },
   { href: "/lightlab/admin/cards", label: "Thank-you cards" },
+  { href: "/lightlab/admin/kiosk", label: "Kiosk" },
 ];
 
 export function LightLabAdminNav() {

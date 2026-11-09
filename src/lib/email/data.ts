@@ -8,6 +8,9 @@ import type { AppliedCode } from "@/lib/codes/apply";
 import { formatPickup } from "@/lib/pickup";
 import { trackingUrl } from "@/lib/orders/status";
 import { isLightLabOrder } from "@/lib/shop/brand";
+import { upcomingMarkets } from "@/lib/shop/markets.server";
+import { clock, type MarketDto } from "@/lib/shop/markets";
+import { shopImageUrl } from "@/lib/shop/types";
 import { isTracked, shippingAddressLines, shippingSummary } from "@/lib/shipping/address";
 
 /** Everything an order email needs, as plain data (easy to render and to test). */
@@ -38,7 +41,15 @@ export type OrderEmailData = {
     lineCents: number;
     /** A LightLab product bought ready-made (no print settings to show). */
     product: boolean;
+    /** Its cover photo (full URL), for the LightLab emails. */
+    image?: string | null;
   }[];
+  /** Sold in person (the stand register or the kiosk) and handed over there. */
+  inPerson?: boolean;
+  /** Where it was sold in person, like "LightLab market stall". */
+  source?: string | null;
+  /** LightLab: the next market, for the footer. */
+  nextMarket?: { name: string; when: string } | null;
   baseFeeCents: number;
   minimumAdjCents: number;
   /** Coupon and gift card lines, already labelled (gift cards masked). */
@@ -78,8 +89,20 @@ export async function loadOrderEmailData(orderId: string): Promise<OrderEmailDat
   const ship = order.fulfillment === "SHIP";
   const place = ship ? null : await pickupPlaceFor(order);
   const totalHours = order.items.reduce((h, i) => h + i.hoursEach * i.quantity, 0);
+  const lightlab = isLightLabOrder(order.items);
+  const productIds = order.items.map((i) => i.productId).filter((id): id is string => !!id);
+  const products = productIds.length ? await db.shopProduct.findMany({ where: { id: { in: productIds } }, select: { id: true, images: true } }) : [];
+  const cover = (id: string | null) => {
+    const keys = JSON.parse(products.find((p) => p.id === id)?.images ?? "[]") as string[];
+    return keys[0] ? `${base}${shopImageUrl(keys[0])}` : null;
+  };
+  const next = lightlab ? (await upcomingMarkets(1).catch(() => []))[0] : null;
   return {
-    lightlab: isLightLabOrder(order.items),
+    lightlab,
+    // Rung up at the stand register or the kiosk and handed over there (not an order taken to make later).
+    inPerson: soldInPerson(order.sourceDetail) && order.fulfillment !== "SHIP" && !order.pickupDate,
+    source: order.source,
+    nextMarket: next ? { name: next.name, when: marketWhen(next) } : null,
     products: order.items.some((i) => !!i.productId),
     orderId: order.id,
     orderNumber: order.orderNumber,
@@ -102,6 +125,7 @@ export async function loadOrderEmailData(orderId: string): Promise<OrderEmailDat
       hoursLabel: hours(i.hoursEach * i.quantity),
       lineCents: i.lineCents,
       product: !!i.productId,
+      image: cover(i.productId),
     })),
     baseFeeCents: order.baseFeeCents,
     minimumAdjCents: order.minimumAdjCents,
@@ -140,4 +164,18 @@ function brand(b: string | null) {
     .split("_")
     .map((w) => w[0].toUpperCase() + w.slice(1))
     .join(" ");
+}
+
+/** "Saturday, November 28 · 10 am to 4 pm" */
+export function marketWhen(m: MarketDto) {
+  const day = new Date(`${m.date}T12:00:00Z`).toLocaleDateString("en-CA", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" });
+  return `${day} · ${clock(m.startTime)} to ${clock(m.endTime)}`;
+}
+
+function soldInPerson(sourceDetail: string | null) {
+  try {
+    return !!(JSON.parse(sourceDetail ?? "{}") as { pos?: boolean }).pos;
+  } catch {
+    return false;
+  }
 }

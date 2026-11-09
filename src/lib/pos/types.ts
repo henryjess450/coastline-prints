@@ -86,6 +86,8 @@ export const posSaleSchema = z.object({
   registerId: z.string().max(40).nullable().default(null),
   /** Taken with Start order: made later and picked up on this day. Makes their account and emails them and the owner. */
   order: z.object({ needBy: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).nullable().default(null),
+  /** From the self-checkout kiosk: its orders are paid by Square link and made to order (stock isn't checked). */
+  kiosk: z.boolean().default(false),
 });
 
 export type PosCartInput = z.input<typeof posCartSchema>;

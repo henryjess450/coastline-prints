@@ -638,3 +638,49 @@ model PrintJob {
 
   @@index([status, createdAt])
 }
+
+/// A self-checkout tablet at the LightLab stand (/kiosk). It shows a code until
+/// the owner pairs it in LightLab admin > Kiosk; then its cookie (token) lets it
+/// start sales that the shopper pays for on their own phone.
+model Kiosk {
+  id         String      @id @default(cuid())
+  name       String      @default("Kiosk")
+  /// "shop": take lamps home now. "order": made to order, ready by a day they pick. Both are paid on the shopper's phone.
+  mode       String      @default("shop")
+  /// Shown on the tablet until it's paired.
+  pairCode   String?     @unique
+  token      String      @unique
+  pairedAt   DateTime?
+  lastSeenAt DateTime    @default(now())
+  createdAt  DateTime    @default(now())
+  sales      KioskSale[]
+}
+
+/// One self-checkout at a kiosk: the cart as the server priced it, and the
+/// Square payment link the shopper scans. Rung up once Square says it's paid.
+model KioskSale {
+  /// Also the register sale's attemptId, so it can only be rung up once.
+  id           String   @id
+  kioskId      String
+  kiosk        Kiosk    @relation(fields: [kioskId], references: [id], onDelete: Cascade)
+  /// JSON PosCartInput.
+  cart         String
+  totalCents   Int
+  linkId       String
+  linkUrl      String
+  squareOrder  String
+  customerName String   @default("")
+  email        String   @default("")
+  phone        String   @default("")
+  notes        String   @default("")
+  /// Order-mode kiosks: the day it's to be ready ("YYYY-MM-DD"). Null = taken home now.
+  needBy       String?
+  /// PENDING → DONE (order made) or CANCELLED; PROBLEM = paid but the sale couldn't be saved (see `problem`).
+  status       String   @default("PENDING")
+  orderNumber  String?
+  problem      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([kioskId, createdAt])
+}

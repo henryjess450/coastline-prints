@@ -41,8 +41,9 @@ let ctx: AudioContext | null = null;
  * A short sound made on the spot (no audio files): "click" is a light-switch
  * tick, "pop" a soft bubble for adding to the cart, "chime" two warm notes.
  */
-export function play(kind: "click" | "pop" | "chime") {
-  if (!readSound()) return;
+export function play(kind: "click" | "pop" | "chime" | "sparkle", opts: { force?: boolean } = {}) {
+  // `force`: the stand kiosk has its own sound switch, so it doesn't follow this browser's setting.
+  if (!opts.force && !readSound()) return;
   try {
     ctx ??= new AudioContext();
     if (ctx.state === "suspended") void ctx.resume();
@@ -65,6 +66,8 @@ export function play(kind: "click" | "pop" | "chime") {
       tone(900, 0.03, 0.03, 0.06, "square", 500);
     } else if (kind === "pop") {
       tone(420, 0, 0.12, 0.18, "sine", 880);
+    } else if (kind === "sparkle") {
+      [1320, 1760, 2093, 2637].forEach((f, i) => tone(f, i * 0.06, 0.25, 0.06));
     } else {
       tone(660, 0, 0.35, 0.12);
       tone(990, 0.12, 0.5, 0.1);

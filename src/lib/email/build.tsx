@@ -5,6 +5,8 @@ import { render, toPlainText } from "@react-email/render";
 import { legal } from "@config/site";
 import { privateSite } from "@config/private.server";
 import { CustomerReceipt } from "@/emails/CustomerReceipt";
+import { LightLabOrderConfirmed } from "@/emails/lightlab/OrderConfirmed";
+import { LightLabStandReceipt } from "@/emails/lightlab/StandReceipt";
 import { OwnerNewOrder } from "@/emails/OwnerNewOrder";
 import { ReadyForPickup } from "@/emails/ReadyForPickup";
 import { Shipped } from "@/emails/Shipped";
@@ -29,8 +31,17 @@ export async function buildEmail(template: EmailTemplate, d: OrderEmailData, opt
 
   switch (template) {
     case "customer-receipt":
-      subject = `Your ${d.lightlab ? "LightLab" : "Coastline Prints"} order ${d.orderNumber} is confirmed`;
-      node = <CustomerReceipt d={d} signInUrl={opts.signInUrl} />;
+      // LightLab has its own designs: one for website orders, one for sales made at the stand or kiosk.
+      if (d.lightlab && d.inPerson) {
+        subject = `Your LightLab receipt (${d.orderNumber})`;
+        node = <LightLabStandReceipt d={d} signInUrl={opts.signInUrl} />;
+      } else if (d.lightlab) {
+        subject = `Your LightLab order ${d.orderNumber} is confirmed`;
+        node = <LightLabOrderConfirmed d={d} signInUrl={opts.signInUrl} />;
+      } else {
+        subject = `Your Coastline Prints order ${d.orderNumber} is confirmed`;
+        node = <CustomerReceipt d={d} signInUrl={opts.signInUrl} />;
+      }
       break;
     case "owner-new-order":
       to = privateSite.ownerEmail;

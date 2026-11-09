@@ -36,15 +36,16 @@ export async function ringUpSale(raw: PosSaleInput) {
 
   const offline = sale.offline;
   if (offline && (sale.squarePaymentId || sale.cart.items.length || sale.cart.codes.length)) throw new PosSaleError("Offline sales can't have prints, codes or Square links.");
-  const priced = await pricePos({ ...sale.cart, email: sale.customer.email }, { ignoreStock: !!offline });
+  // Kiosk orders are made later, so a lamp being out of stock right now doesn't stop them.
+  const priced = await pricePos({ ...sale.cart, email: sale.customer.email }, { ignoreStock: !!offline || (sale.kiosk && !!sale.order) });
   if (!priced.ok) throw new PosSaleError(priced.error ?? "Something in the cart can't be sold.", publicQuote(priced));
   if (!offline && priced.totalCents !== sale.expectedTotalCents) throw new PosSaleError(`The total changed to ${money(priced.totalCents)}. Check it with the customer.`, publicQuote(priced));
   if (sale.payment === "CASH" && sale.tenderedCents != null && sale.tenderedCents < priced.totalCents) throw new PosSaleError("That's less cash than the total.");
   if (sale.order) {
     // Start order: paid now by cash or e-Transfer, made later, and they need an email for the account and updates.
     if (!sale.customer.email) throw new PosSaleError("An order needs the customer's email.");
-    if (sale.payment !== "CASH" && sale.payment !== "ETRANSFER") throw new PosSaleError("Orders are paid by cash or e-Transfer.");
-    if (sale.squarePaymentId) throw new PosSaleError("Orders are paid by cash or e-Transfer.");
+    // At the register: cash or e-Transfer. At the kiosk: the shopper's own phone, through a Square link.
+    if (sale.kiosk ? !sale.squarePaymentId : (sale.payment !== "CASH" && sale.payment !== "ETRANSFER") || !!sale.squarePaymentId) throw new PosSaleError(sale.kiosk ? "Kiosk orders are paid on your phone." : "Orders are paid by cash or e-Transfer.");
     if (sale.order.needBy < orderMinDate()) throw new PosSaleError("The day they need it by has to be at least a week away.");
   }
 
@@ -98,7 +99,7 @@ export async function ringUpSale(raw: PosSaleInput) {
       squarePayment ?? { id: `${ADMIN_PAYMENT_PREFIX}${checkout.id}`, status: "COMPLETED", amountCents: checkout.totalCents, currency: checkout.currency },
       {
         note: [
-          sale.order ? "Order taken at the register" : "Rung up at the register",
+          sale.kiosk ? (sale.order ? "Ordered at the kiosk" : "Paid at the kiosk") : sale.order ? "Order taken at the register" : "Rung up at the register",
           sale.source,
           squarePayment ? "Paid by Square link" : paid,
           offline && `Rung up offline at ${new Date(offline.at).toLocaleTimeString("en-CA", { timeZone: "America/Vancouver", hour: "numeric", minute: "2-digit" })}, sent when back online`,
