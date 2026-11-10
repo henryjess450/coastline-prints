@@ -26,6 +26,8 @@ const variantSchema = z.object({
   priceCents: cents.nullable(),
   stock: z.number().int().min(0).max(100_000).nullable(),
   hex: hex.nullable(),
+  /** Photos (storage keys) that show this option. */
+  imageKeys: z.array(z.string().max(80)).max(30).default([]),
 });
 
 const productSchema = z.object({
@@ -53,6 +55,9 @@ const productSchema = z.object({
   seasons: z.array(z.enum(seasons.map((x) => x.id) as [SeasonId, ...SeasonId[]])).max(12).default([]),
   seasonOnly: z.boolean().default(false),
   pairings: z.array(z.string().max(40)).max(6).default([]),
+  addon: z.boolean().default(false),
+  editionSize: z.number().int().min(1).max(100_000).nullable().default(null),
+  dropAt: z.string().datetime().nullable().default(null),
 });
 
 export type ProductInput = z.infer<typeof productSchema>;
@@ -90,6 +95,10 @@ export async function saveProductAction(input: ProductInput): Promise<ShopAction
   if (d.compareAtCents != null && d.compareAtCents <= d.priceCents) return { error: "The \"was\" price has to be higher than the price, or left empty." };
   const names = d.variants.map((v) => v.name.toLowerCase());
   if (new Set(names).size !== names.length) return { error: "Two options have the same name." };
+  if (d.editionSize != null && d.id) {
+    const sold = (await db.shopProduct.findUnique({ where: { id: d.id }, select: { editionSold: true } }))?.editionSold ?? 0;
+    if (d.editionSize < sold) return { error: `${sold} of the run are already sold, so it can't be smaller than that.` };
+  }
 
   try {
     const existing = d.id ? await db.shopProduct.findUnique({ where: { id: d.id } }) : null;
@@ -97,6 +106,9 @@ export async function saveProductAction(input: ProductInput): Promise<ShopAction
     const slug = await freeSlug(d.slug || d.name, d.id);
     const shop = existing?.shop ?? d.shop;
     const data = {
+      addon: d.addon,
+      editionSize: d.editionSize,
+      dropAt: d.dropAt ? new Date(d.dropAt) : null,
       shop,
       personalize: d.personalize,
       slug,
@@ -108,7 +120,7 @@ export async function saveProductAction(input: ProductInput): Promise<ShopAction
       compareAtCents: d.compareAtCents,
       stock: d.stock,
       // Keep option ids stable so carts and past orders still match.
-      variants: JSON.stringify(d.variants.map((v) => ({ ...v, id: v.id ?? randomBytes(5).toString("hex") }))),
+      variants: JSON.stringify(d.variants.map((v) => ({ ...v, id: v.id ?? randomBytes(5).toString("hex"), imageKeys: v.imageKeys.filter((k) => d.images.includes(k)) }))),
       images: JSON.stringify(d.images),
       sizeXMm: d.sizeXMm,
       sizeYMm: d.sizeYMm,

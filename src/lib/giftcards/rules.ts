@@ -46,6 +46,8 @@ export const giftRequestSchema = giftDetailsSchema.extend({
   expectedTotalCents: z.number().int(),
   /** The bonus the page showed, so a promotion ending mid-checkout is caught. */
   expectedBonusCents: z.number().int().min(0).optional().default(0),
+  /** They chose to cover the card processing fee. */
+  coverFee: z.boolean().optional().default(false),
 });
 
 /** The earliest and latest days a gift can be scheduled for. */

@@ -5,7 +5,8 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
 import { shopConfig, type ShopId } from "@config/shops";
 import { money } from "@/lib/format";
-import { inSeason, inStock, SEASON_FILTER, slugify, type ShopProductDto } from "@/lib/shop/types";
+import { dropShort } from "@/lib/shop/drop-time";
+import { editionLeft, inSeason, inStock, notDropped, photosFor, SEASON_FILTER, slugify, type ShopProductDto, type ShopVariant } from "@/lib/shop/types";
 import { useSeason } from "@/components/season/SeasonContext";
 import { FadeImg } from "./FadeImg";
 import { SeasonSparkle } from "./SeasonSparkle";
@@ -24,7 +25,9 @@ function stockLeft(p: ShopProductDto) {
 
 const fromPrice = (p: ShopProductDto) => Math.min(p.priceCents, ...p.variants.map((v) => v.priceCents ?? p.priceCents));
 
-export function ProductGrid({ products, initialCategory = null }: { products: ShopProductDto[]; initialCategory?: string | null }) {
+export function ProductGrid({ products: all, initialCategory = null }: { products: ShopProductDto[]; initialCategory?: string | null }) {
+  // Add-ons are offered in the cart, not on the shop.
+  const products = all.filter((p) => !p.addon);
   const season = useSeason();
   const seasonal = products.filter((p) => inSeason(p, season.id));
   const seasonKey = `${SEASON_FILTER}${season.id}`;
@@ -117,8 +120,11 @@ function ProductCard({ product: p, seasonId }: { product: ShopProductDto; season
   const left = stockLeft(p);
   const soldOut = left === 0;
   const price = fromPrice(p);
+  // Hovering a colour dot shows that colour's own photo (and the link opens on that colour).
+  const [hoverV, setHoverV] = useState<ShopVariant | null>(null);
+  const hoverSrc = hoverV?.imageKeys?.length ? (photosFor(p, hoverV.id).images[0] ?? null) : null;
   return (
-    <Link href={`${shopConfig(p.shop).base}/${p.slug}`} onClick={rememberPlace} className="group block transition-transform duration-150 active:scale-[0.98]">
+    <Link href={`${shopConfig(p.shop).base}/${p.slug}${hoverV ? `?colour=${slugify(hoverV.name)}` : ""}`} onClick={rememberPlace} className="group block transition-transform duration-150 active:scale-[0.98]">
       <div className="relative aspect-square overflow-hidden rounded-3xl border border-line bg-surface">
         {p.images[0] ? (
           <FadeImg src={p.images[0]} alt={p.name} loading="lazy" className={cn("h-full w-full object-cover transition-[transform,opacity] duration-500 ease-out group-hover:scale-[1.04]", soldOut && "!opacity-60")} />
@@ -130,10 +136,17 @@ function ProductCard({ product: p, seasonId }: { product: ShopProductDto; season
           // eslint-disable-next-line @next/next/no-img-element
           <img src={p.images[1]} alt="" aria-hidden loading="lazy" className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
         )}
+        <AnimatePresence>
+          {hoverSrc && <motion.img key={hoverSrc} src={hoverSrc} alt="" aria-hidden initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }} className="absolute inset-0 h-full w-full object-cover" />}
+        </AnimatePresence>
         {festive && !soldOut && <SeasonSparkle seasonId={seasonId} />}
         <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
-          {soldOut ? (
+          {notDropped(p) && p.dropAt ? (
+            <Badge solid>Drops {dropShort(p.dropAt)}</Badge>
+          ) : soldOut ? (
             <Badge>Sold out</Badge>
+          ) : p.editionSize != null ? (
+            <Badge flicker={left != null && left <= 3}>Limited · {left ?? editionLeft(p)} of {p.editionSize} left</Badge>
           ) : left != null && left <= 3 ? (
             <Badge flicker>Only {left} left</Badge>
           ) : p.compareAtCents && p.compareAtCents > p.priceCents ? (
@@ -153,12 +166,14 @@ function ProductCard({ product: p, seasonId }: { product: ShopProductDto; season
         </p>
       </div>
       {p.variants.some((v) => v.hex) && (
-        <div className="mt-2 flex gap-1" aria-hidden>
+        <div className="-ml-1 mt-1 flex" aria-hidden onMouseLeave={() => setHoverV(null)}>
           {p.variants
             .filter((v) => v.hex)
             .slice(0, 6)
             .map((v) => (
-              <span key={v.id} className="h-3.5 w-3.5 rounded-full border border-line-strong" style={{ background: v.hex! }} />
+              <span key={v.id} className="p-1" onMouseEnter={() => setHoverV(v)}>
+                <span className={cn("block h-3.5 w-3.5 rounded-full border border-line-strong transition-transform duration-150", hoverV?.id === v.id && "scale-125")} style={{ background: v.hex! }} />
+              </span>
             ))}
         </div>
       )}

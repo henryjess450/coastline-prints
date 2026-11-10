@@ -7,6 +7,7 @@ import { shopConfig, type ShopId } from "@config/shops";
 import { buttonClass } from "@/components/ui/Button";
 import { money } from "@/lib/format";
 import { cartFor, useShopCartHydrated } from "@/lib/shop/cart";
+import { AddOns } from "./AddOns";
 import { QuantityStepper } from "./QuantityStepper";
 import { RollingNumber } from "./RollingNumber";
 import { TinyLamp } from "./TinyLamp";
@@ -159,6 +160,9 @@ function CartContents({ shop, onClose }: { shop: ShopId; onClose: () => void }) 
                 </motion.li>
               ))}
             </AnimatePresence>
+            <li>
+              <AddOns shop={shop} />
+            </li>
           </ul>
           <div className="border-t border-line px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-4">
             <div className="flex items-baseline justify-between">

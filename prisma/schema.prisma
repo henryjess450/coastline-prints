@@ -61,6 +61,8 @@ model Checkout {
   customerEmail          String
   customerPhone          String
   notes                  String?
+  /// LightLab: a gift note to print and tuck in with the order.
+  giftNote               String?
   pickupDate             String? // "YYYY-MM-DD", shop time zone
   pickupTime             String? // "HH:MM" slot start
   /// Picking up at a LightLab market day (Market.id) instead of the home pickup.
@@ -114,6 +116,8 @@ model Order {
   customerEmail          String
   customerPhone          String
   notes                  String?
+  /// LightLab: a gift note to print and tuck in with the order.
+  giftNote               String?
   pickupDate             String? // "YYYY-MM-DD", shop time zone
   pickupTime             String? // "HH:MM" slot start
   /// Picking up at a LightLab market day (Market.id) instead of the home pickup.
@@ -195,6 +199,9 @@ model OrderItem {
   colorName   String
   /// Multicolour 3MF: JSON ColorSlot[] (which stock colour each file colour prints in).
   colorSlots  String?
+  /// Limited runs: the numbers this line got (No. editionFrom to editionTo of the run).
+  editionFrom Int?
+  editionTo   Int?
   quality     String
   infill      String
   quantity    Int
@@ -313,6 +320,8 @@ model GiftPurchase {
   status          String     @default("PENDING") // PENDING | PAID | FAILED
   idempotencyKey  String     @unique
   amountCents     Int
+  /// Card processing fee the buyer chose to cover (charged on top of amountCents).
+  feeCents       Int      @default(0)
   /// Extra value from a promotion (like the holiday bonus), added to the card on top of what was paid.
   bonusCents      Int        @default(0)
   /// coastline | holiday (src/lib/giftcards/designs.ts). Every design works everywhere.
@@ -522,6 +531,14 @@ model ShopProduct {
   seasonOnly     Boolean  @default(false)
   /// JSON product ids picked by hand as "goes well with"; suggested first.
   pairings       String   @default("[]")
+  /// An add-on (spare bulb, smart bulb, inline switch): offered as a one-tap extra in the cart, not on the shop grid.
+  addon          Boolean  @default(false)
+  /// Numbered limited run: how many will ever be sold ("No. 7 of 25"). Null = not limited.
+  editionSize    Int?
+  /// How many numbers of the run are taken so far (the next buyer gets editionSold + 1).
+  editionSold    Int      @default(0)
+  /// Drop date: shown with a countdown and can't be bought before this. Null = on sale now.
+  dropAt         DateTime?
   sortOrder      Int      @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -683,4 +700,59 @@ model KioskSale {
   updatedAt    DateTime @updatedAt
 
   @@index([kioskId, createdAt])
+}
+
+/// "In the wild": a customer's photo of their LightLab lamp at home, added by the owner (usually from an Instagram tag).
+model WildPhoto {
+  id         String   @id @default(cuid())
+  /// Storage key under shop/ (uploaded like product photos).
+  storageKey String   @unique
+  /// Who took it, shown as credit ("@name"). Empty = no credit.
+  handle     String   @default("")
+  caption    String   @default("")
+  /// The lamp in the photo, so it also shows on that product's page.
+  productId  String?
+  active     Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([active, sortOrder])
+  @@index([productId])
+}
+
+/// "Make me a lamp": a LightLab commission request, quoted by the owner and paid online.
+model LampCommission {
+  id            String    @id @default(cuid())
+  /// Unguessable token for the customer's request page (quote, accept, pay).
+  token         String    @unique
+  /// NEW (waiting for a quote) | QUOTED | ACCEPTED (waiting for payment) | PAID | DECLINED (by the customer) | CLOSED (by the owner)
+  status        String    @default("NEW")
+  name          String
+  email         String
+  phone         String    @default("")
+  /// What they want: the figure, the idea.
+  idea          String
+  /// Shade colour picked (a stock colour name), or "" for "help me choose".
+  shade         String    @default("")
+  shadeHex      String?
+  /// "YYYY-MM-DD" they'd like it by, or "" for whenever.
+  neededBy      String    @default("")
+  /// JSON string[] of storage keys under commission/.
+  photos        String    @default("[]")
+  quoteCents    Int?
+  /// The owner's note with the quote (what's included, how long it takes).
+  quoteNote     String    @default("")
+  quotedAt      DateTime?
+  acceptedAt    DateTime?
+  /// The PENDING checkout made on accept (e-Transfer code), and the card one with its Square pay link.
+  checkoutId    String?   @unique
+  cardCheckoutId String?  @unique
+  payLinkId     String?
+  payLinkUrl    String?
+  payLinkOrder  String?
+  orderId       String?   @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status, createdAt])
 }

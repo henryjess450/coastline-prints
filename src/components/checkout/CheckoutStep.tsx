@@ -30,6 +30,8 @@ import { useAccount } from "@/components/account/use-account";
 import { applyCodes, codeEntry, type CodeInfo, type SaleInfo } from "@/lib/codes/apply";
 import { etransferDiscount, type EtransferPublic } from "@/lib/payments/etransfer";
 import { EtransferWaiting, type EtransferDetails } from "./EtransferWaiting";
+import { CoverFee, useCardFee } from "./CoverFee";
+import { cardFeeFor } from "@/lib/pos/card-fee";
 import { lightlab } from "@config/lightlab";
 import type { ShopId } from "@config/shops";
 import { cartFor, shopPayload, type ShopCartLine } from "@/lib/shop/cart";
@@ -39,6 +41,8 @@ type Contact = {
   email: string;
   phone: string;
   notes: string;
+  /** LightLab: printed on a card and tucked in with the order. */
+  giftNote: string;
   pickupAcknowledged: boolean;
   termsAccepted: boolean;
 };
@@ -85,6 +89,7 @@ export function CheckoutStep({
     email: "",
     phone: "",
     notes: "",
+    giftNote: "",
     pickupAcknowledged: false,
     termsAccepted: false,
   });
@@ -133,7 +138,9 @@ export function CheckoutStep({
 
   const quote = cartQuote.quote;
   const [codes, setCodes] = useState<CodeInfo[]>([]);
-  const orderTotal = quote?.ok ? quote.totalCents : 0;
+  // LightLab gift note: a small extra on the order.
+  const giftNoteCents = shop && shop.id !== "coastline" && contact.giftNote.trim() ? lightlab.giftNoteCents : 0;
+  const orderTotal = quote?.ok ? quote.totalCents + giftNoteCents : 0;
   const shippingQuote = quote?.ok ? quote.shipping : null;
   // The cart changed and can't ship any more: fall back to pickup.
   const ships = method === "ship" && !!shippingQuote?.ok;
@@ -177,9 +184,16 @@ export function CheckoutStep({
   const byEtransfer = payBy === "etransfer" && !!etransfer;
   const covered = !!quote?.ok && discount.totalCents === 0;
   const etransferOff = byEtransfer && !covered ? etransferDiscount(discount.totalCents, etransfer.discountPercent) : 0;
-  const total = discount.totalCents - etransferOff;
+  // Paying by card with the fee switched on: the customer chooses whether to cover it.
+  const cardFee = useCardFee();
+  const [coverFee, setCoverFee] = useState<boolean | null>(null);
+  const [feeAsked, setFeeAsked] = useState(false);
+  const asksFee = !!cardFee?.on && !byEtransfer && !covered && !!quote?.ok && !!square;
+  const possibleFee = asksFee ? cardFeeFor(discount.totalCents - etransferOff, cardFee!) : 0;
+  const feeCents = coverFee ? possibleFee : 0;
+  const total = discount.totalCents - etransferOff + feeCents;
   const [waiting, setWaiting] = useState<EtransferDetails | null>(null);
-  const canPay = (covered || (byEtransfer ? true : !!square)) && !!quote?.ok && cartQuote.confirmed && !busy && (method === "pickup" || method === "market" || ships);
+  const canPay = (covered || (byEtransfer ? true : !!square)) && !!quote?.ok && cartQuote.confirmed && !busy && (method === "pickup" || method === "market" || ships) && (!asksFee || coverFee != null);
 
   // The pay button hops once when everything is ready.
   const payButton = useRef<HTMLButtonElement>(null);
@@ -297,6 +311,7 @@ export function CheckoutStep({
     const { customer } = checked;
     // Gift cards cover everything, or paying by e-Transfer: no card needed.
     if (covered || byEtransfer) return submit("", checked);
+    if (asksFee && coverFee == null) return setFeeAsked(true);
     if (!payRef.current) return;
     setBusy("verifying");
     const [givenName, ...rest] = customer.name.split(/\s+/);
@@ -343,6 +358,7 @@ export function CheckoutStep({
       fulfillment,
       ...cartBody,
       expectedTotalCents: total,
+      coverFee: payment === "card" && asksFee ? !!coverFee : false,
       codes: codes.map(codeEntry),
     });
 
@@ -502,6 +518,7 @@ export function CheckoutStep({
                 className={cn(inputClass(), "h-auto py-2.5")}
               />
             </Field>
+            {shop && shop.id !== "coastline" && <GiftNote value={contact.giftNote} onChange={(v) => set("giftNote", v)} />}
           </div>
 
           <div className="mt-6 space-y-4">
@@ -587,7 +604,10 @@ export function CheckoutStep({
                 {etransfer.payWindowMinutes >= 60 ? `${etransfer.payWindowMinutes / 60} hour${etransfer.payWindowMinutes === 60 ? "" : "s"}` : `${etransfer.payWindowMinutes} minutes`} to send it.
               </p>
             ) : square ? (
-              <PaymentMethods ref={payRef} config={square} totalCents={total} disabled={!canPay} onWalletToken={payWithWallet} onWalletError={fail} />
+              <>
+                {asksFee && <CoverFee fee={cardFee!} feeCents={possibleFee} value={coverFee} onChange={setCoverFee} error={feeAsked} className="mb-5" />}
+                <PaymentMethods ref={payRef} config={square} totalCents={total} disabled={!canPay} onWalletToken={payWithWallet} onWalletError={fail} />
+              </>
             ) : (
               <p className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm">
                 Online payments aren&apos;t set up yet. Add the Square keys to <code className="font-mono">.env</code> to enable checkout.
@@ -702,6 +722,18 @@ export function CheckoutStep({
               <div className="flex justify-between">
                 <dt className="text-muted">Minimum order top-up</dt>
                 <dd className="font-mono">{money(quote.minimumAdjCents)}</dd>
+              </div>
+            )}
+            {feeCents > 0 && (
+              <div className="flex justify-between">
+                <dt className="text-muted">Card processing fee</dt>
+                <dd className="font-mono">{money(feeCents)}</dd>
+              </div>
+            )}
+            {giftNoteCents > 0 && (
+              <div className="flex justify-between">
+                <dt className="text-muted">Gift note card</dt>
+                <dd className="font-mono">{money(giftNoteCents)}</dd>
               </div>
             )}
             <div className="flex justify-between">
@@ -857,6 +889,40 @@ function PayByToggle({ value, onChange, discountPercent }: { value: "etransfer" 
           </button>
         );
       })}
+    </div>
+  );
+}
+
+export const GIFT_NOTE_MAX = 300;
+
+/** LightLab: "It's a gift" opens a note we print on a card and tuck in with the lamp. */
+function GiftNote({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(value.length > 0);
+  return (
+    <div className="sm:col-span-2">
+      <label className="inline-flex cursor-pointer items-center gap-2.5 text-sm font-medium">
+        <input type="checkbox" checked={open} onChange={(e) => (setOpen(e.target.checked), !e.target.checked && onChange(""))} className="h-4 w-4 accent-[var(--accent)]" />
+        It&apos;s a gift: add a note on a card (+{money(lightlab.giftNoteCents)})
+      </label>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+            <textarea
+              id="co-giftNote"
+              rows={4}
+              maxLength={GIFT_NOTE_MAX}
+              placeholder={"Happy birthday, Sam! Thought this would look perfect on your desk.\nLove, Alex"}
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              className={cn(inputClass(), "mt-3 h-auto py-2.5 leading-relaxed")}
+              aria-label="Gift note"
+            />
+            <p className="mt-1.5 text-xs text-faint">
+              We print it on a card and tuck it in with your order. {value.length}/{GIFT_NOTE_MAX}
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

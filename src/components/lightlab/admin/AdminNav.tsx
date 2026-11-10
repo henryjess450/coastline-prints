@@ -9,6 +9,8 @@ const links = [
   { href: "/lightlab/admin/products/new", label: "Add product" },
   { href: "/lightlab/admin/orders", label: "Orders" },
   { href: "/lightlab/admin/markets", label: "Markets" },
+  { href: "/lightlab/admin/wild", label: "In the wild" },
+  { href: "/lightlab/admin/commissions", label: "Commissions" },
   { href: "/admin/price-tags?shop=lightlab", label: "Price tags" },
   { href: "/lightlab/admin/cards", label: "Thank-you cards" },
   { href: "/lightlab/admin/kiosk", label: "Kiosk" },

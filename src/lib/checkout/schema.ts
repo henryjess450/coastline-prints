@@ -14,6 +14,8 @@ export const customerSchema = z.object({
     .regex(/^\+?[\d\s().-]{10,20}$/, "Please enter a valid phone number.")
     .refine((p) => p.replace(/\D/g, "").length >= 10, "Please enter a valid phone number."),
   notes: z.string().trim().max(1000).optional().default(""),
+  /** LightLab gift note, printed on a card. */
+  giftNote: z.string().trim().max(300).optional().default(""),
   /** Required for pickup orders only (checked with the delivery choice). */
   pickupAcknowledged: z.boolean().optional().default(false),
   termsAccepted: z.literal(true, { message: "Please accept the Terms & Conditions." }),
@@ -53,6 +55,8 @@ export const checkoutRequestSchema = z.object({
   attemptId: z.string().uuid(),
   /** card (Square) or etransfer (Interac, confirmed when the deposit email arrives). */
   payment: z.enum(["card", "etransfer"]).default("card"),
+  /** Paying by card: the customer chose to cover the card processing fee. */
+  coverFee: z.boolean().default(false),
   /** Square card/wallet token. Empty only when gift cards cover the whole order. */
   sourceId: z.string().max(500).default(""),
   /** Coupon and gift card codes the customer added. */

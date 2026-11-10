@@ -77,6 +77,8 @@ export async function replyFromDisplay(r: PosRegister, answer: { popupId: string
   if (answer.kind === "email" && popup.kind !== "email") return null;
   if (answer.kind === "account" && popup.kind !== "account") return null;
   if (answer.kind === "join" && popup.kind !== "join") return null;
+  const feeAnswer = answer.kind === "fee-yes" || answer.kind === "fee-no";
+  if (feeAnswer && popup.kind !== "fee-ask") return null;
   if (answer.kind === "order") {
     // Their order details: checked against the form that was showing.
     if (popup.kind !== "order" || !answer.order) return null;
@@ -85,7 +87,7 @@ export async function replyFromDisplay(r: PosRegister, answer: { popupId: string
     answer = { ...answer, email: answer.order.email, name: popup.firstName };
   }
   const email = answer.email?.trim().toLowerCase() || undefined;
-  if (answer.kind !== "dismiss" && !email) return null;
+  if (answer.kind !== "dismiss" && !feeAnswer && !email) return null;
 
   const created =
     answer.kind === "account" ? await joinRewards(email!, answer.name ?? null) : answer.kind === "join" ? await joinUpdates(email!, answer.name ?? null, popup.kind === "join" ? (popup.source ?? null) : null) : undefined;

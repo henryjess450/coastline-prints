@@ -152,7 +152,12 @@ describe("card processing fee on Square links", () => {
     try {
       const p = await lamp({ priceCents: 5000 });
       const k = await kiosk("shop");
-      const cart = { products: [{ productId: p.id, variantId: null, quantity: 1, customText: null }], codes: [] };
+      // Said no: nothing added.
+      const declined = await quoteKioskCart({ products: [{ productId: p.id, variantId: null, quantity: 1, customText: null }], codes: [], coverFee: false });
+      expect(declined.lines.some((l) => l.key === "card-fee")).toBe(false);
+      expect(declined.totalCents).toBe(5000);
+      // Said yes: the fee is its own line.
+      const cart = { products: [{ productId: p.id, variantId: null, quantity: 1, customText: null }], codes: [], coverFee: true };
       const quote = await quoteKioskCart(cart);
       const fee = quote.lines.find((l) => l.key === "card-fee");
       expect(fee?.name).toBe("Card processing fee");

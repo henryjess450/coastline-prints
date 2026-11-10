@@ -138,6 +138,8 @@ export type PosPopup =
   | { id: string; kind: "join"; source?: string }
   /** A Square payment link to scan and pay on their phone. */
   | { id: string; kind: "card-link"; url: string; amountCents: number; paid?: boolean }
+  /** Before Scan to pay, when the card fee is on: "Would you like to cover our payment processing fees?" */
+  | { id: string; kind: "fee-ask"; feeCents: number; why: string }
   /** Where to send an e-Transfer. */
   | { id: string; kind: "etransfer"; sendTo: string; amountCents: number; message: string }
   /** A link to scan: Instagram, a Google review... */
@@ -148,7 +150,7 @@ export type PosPopup =
   | { id: string; kind: "order"; firstName: string; items: PosOrderItem[]; minDate: string };
 
 /** The customer's answer to a popup, picked up by the register. */
-export type PosReply = { popupId: string; kind: "email" | "account" | "join" | "order" | "dismiss"; email?: string; name?: string; created?: boolean; order?: PosOrderDetails; at: number };
+export type PosReply = { popupId: string; kind: "email" | "account" | "join" | "order" | "dismiss" | "fee-yes" | "fee-no"; email?: string; name?: string; created?: boolean; order?: PosOrderDetails; at: number };
 
 /**
  * Start order: things made later and picked up (or shipped) on a day at

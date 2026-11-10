@@ -141,7 +141,7 @@ function CardFeeCard({ initial }: { initial: CardFeeSettings }) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-xl">
           <h2 className="font-display text-lg font-semibold">Card processing fee</h2>
-          <p className="mt-1 text-sm text-muted">Adds Square&apos;s fee to the total whenever someone pays through a Square QR link: the kiosk, and Scan to pay on the register (you can waive it per sale there). It shows as its own line, &ldquo;Card processing fee&rdquo;, with a note saying it covers Square&apos;s charge.</p>
+          <p className="mt-1 text-sm text-muted">Whenever someone pays by card anywhere on the site (online checkout for prints and both shops, gift cards, LightLab commissions, the kiosk, and Scan to pay on the register), they&apos;re asked &ldquo;Would you like to cover our payment processing fees for this order?&rdquo; Yes adds it as its own line, &ldquo;Card processing fee&rdquo;; no adds nothing. e-Transfer and cash are never asked.</p>
         </div>
         <label className="flex items-center gap-2 text-sm font-semibold">
           <input type="checkbox" checked={s.on} disabled={pending} onChange={(e) => save({ ...s, on: e.target.checked })} className="h-5 w-5 accent-[var(--accent)]" />

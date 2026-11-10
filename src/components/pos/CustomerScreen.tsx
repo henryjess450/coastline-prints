@@ -1,4 +1,5 @@
 "use client";
+import { COVER_FEE_QUESTION } from "@/components/checkout/CoverFee";
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import { useState } from "react";
 import { Logo } from "@/components/layout/Logo";
@@ -277,6 +278,22 @@ function PopupBody({ popup, onReply }: { popup: PosPopup; onReply?: ReplyFn }) {
           onSubmit={(email, name) => send("join", { email, name })}
           onSkip={() => send("dismiss")}
         />
+      );
+    case "fee-ask":
+      return (
+        <div className="text-center">
+          <p className="font-display text-3xl font-bold leading-tight">{COVER_FEE_QUESTION}</p>
+          <p className="mt-3 text-lg text-muted">{popup.why} It&apos;s up to you.</p>
+          <div className="mt-8 grid grid-cols-2 gap-3">
+            <Button size="lg" disabled={busy} onClick={() => send("fee-yes")}>
+              Yes, add {money(popup.feeCents)}
+            </Button>
+            <Button size="lg" variant="secondary" disabled={busy} onClick={() => send("fee-no")}>
+              No thanks
+            </Button>
+          </div>
+          {error && <p className="mt-4 text-danger">{error}</p>}
+        </div>
       );
     case "card-link":
       return (

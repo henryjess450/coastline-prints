@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { useAccount } from "@/components/account/use-account";
 
 /** Sold out: leave an email and hear the moment it's back. */
-export function RestockForm({ productId, variantId, label }: { productId: string; variantId: string | null; label: string }) {
+export function RestockForm({ productId, variantId, label, drop = false }: { productId: string; variantId: string | null; label: string; /** Not out yet: "Tell me when it drops". */ drop?: boolean }) {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<{ status: "idle" | "busy" | "done" | "error"; message?: string }>({ status: "idle" });
   // Signed in: fill in their email.
@@ -26,12 +26,12 @@ export function RestockForm({ productId, variantId, label }: { productId: string
     <AnimatePresence mode="wait" initial={false}>
       {state.status === "done" ? (
         <motion.p key="done" role="status" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl bg-accent-soft p-4 text-sm">
-          Got it. We&apos;ll email <strong>{email}</strong> as soon as {label} is back.
+          Got it. We&apos;ll email <strong>{email}</strong> as soon as {label} {drop ? "drops" : "is back"}.
         </motion.p>
       ) : (
         <motion.form key="form" onSubmit={submit} exit={{ opacity: 0 }} className="w-full">
           <label htmlFor="restock-email" className="mb-2 block text-sm font-medium">
-            Tell me when it&apos;s back
+            {drop ? "Email me when it drops" : "Tell me when it's back"}
           </label>
           <div className="flex flex-wrap gap-2">
             <input
@@ -53,7 +53,7 @@ export function RestockForm({ productId, variantId, label }: { productId: string
               {state.message}
             </p>
           )}
-          <p className="mt-2 text-xs text-faint">One email when it&apos;s restocked, nothing else.</p>
+          <p className="mt-2 text-xs text-faint">{drop ? "One email the moment it's on sale, nothing else." : "One email when it's restocked, nothing else."}</p>
         </motion.form>
       )}
     </AnimatePresence>

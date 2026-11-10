@@ -5,7 +5,7 @@ import { apiError, logError } from "@/lib/api";
 import { db } from "@/lib/db";
 import { clientIp, rateLimit } from "@/lib/ratelimit";
 import { toProductDto } from "@/lib/shop/products.server";
-import { inStock, variantOf } from "@/lib/shop/types";
+import { inStock, notDropped, variantOf } from "@/lib/shop/types";
 
 export const runtime = "nodejs";
 
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     if (!row || row.shop !== lightlab.id || !row.active) return apiError(404, "That product isn't available any more.");
     const p = toProductDto(row);
     if (variantId && !variantOf(p, variantId)) return apiError(404, "That option isn't available any more.");
-    if (inStock(p, variantId) !== 0) return apiError(409, "Good news: it's in stock right now.");
+    if (inStock(p, variantId) !== 0 && !notDropped(p)) return apiError(409, "Good news: it's in stock right now.");
     // Asking twice is fine: one email either way.
     await db.restockRequest.upsert({
       where: { productId_variantId_email: { productId, variantId: variantId ?? "", email } },

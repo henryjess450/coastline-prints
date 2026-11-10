@@ -31,6 +31,8 @@ export async function heldStock(products: Pick<ShopProductDto, "id" | "variants"
       if (!p) continue;
       const key = poolKey(p, l.variantId);
       held.set(key, (held.get(key) ?? 0) + l.quantity);
+      // Limited runs: numbers of the run held across all options.
+      held.set(`${p.id}:#`, (held.get(`${p.id}:#`) ?? 0) + l.quantity);
     }
   }
   return held;
@@ -42,6 +44,7 @@ export function withHolds(p: ShopProductDto, held: Map<string, number>): ShopPro
   return {
     ...p,
     stock: less(p.stock, poolKey(p, null)),
+    editionSold: p.editionSold + (held.get(`${p.id}:#`) ?? 0),
     variants: p.variants.map((v) => (v.stock == null ? v : { ...v, stock: less(v.stock, poolKey(p, v.id)) })),
   };
 }

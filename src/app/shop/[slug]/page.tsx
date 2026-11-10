@@ -7,7 +7,7 @@ import { ProductBuy } from "@/components/lightlab/ProductBuy";
 import { money } from "@/lib/format";
 import { productBySlug } from "@/lib/shop/products.server";
 import { absolute, breadcrumbs, JsonLd } from "@/lib/seo";
-import { inStock } from "@/lib/shop/types";
+import { inStock, variantFromParam } from "@/lib/shop/types";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return { title: p.name, description, alternates: { canonical: `/shop/${p.slug}` }, openGraph: { title: `${p.name} · ${site.name}`, description, images: p.images[0] ? [p.images[0]] : undefined } };
 }
 
-export default async function ShopProductPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function ShopProductPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ colour?: string | string[] }> }) {
   const p = await productBySlug((await params).slug, "coastline");
   if (!p) notFound();
   const left = p.variants.length ? null : inStock(p, null);
@@ -55,7 +55,7 @@ export default async function ShopProductPage({ params }: { params: Promise<{ sl
         ← All ready-made prints
       </Link>
       <div className="mt-6">
-        <ProductBuy product={p} />
+        <ProductBuy product={p} initialVariant={variantFromParam(p, (await searchParams).colour)?.id ?? null} />
       </div>
       <AlsoLike product={p} />
     </div>

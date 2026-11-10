@@ -9,6 +9,7 @@ import { shopConfig, type ShopId } from "@config/shops";
 import { cartFor, useShopCartHydrated, useShopQuote } from "@/lib/shop/cart";
 import type { MarketDto } from "@/lib/shop/markets";
 import type { ShopProductDto } from "@/lib/shop/types";
+import { AddOns } from "./AddOns";
 import { CartSuggestions } from "./CartSuggestions";
 import { PartnerBadge } from "./PartnerBadge";
 
@@ -49,6 +50,7 @@ export function ShopCheckout({ square, etransfer, shop = "lightlab", markets = [
               </button>
             </p>
           )}
+          <AddOns shop={shop} products={products} closeOnAdd className="mb-6" />
           <CartSuggestions products={products} shop={shop} />
           <CheckoutStep shop={{ lines, id: shop }} cartQuote={quote} square={square} etransfer={etransfer} markets={markets} onBack={() => (window.history.length > 1 ? router.back() : router.push(base))} />
         </>

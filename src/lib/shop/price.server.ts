@@ -8,7 +8,7 @@ import { quoteShipping, type ShippingQuote } from "@/lib/shipping/pack";
 import { toProductDto } from "./products.server";
 import { heldStock, withHolds } from "./holds.server";
 import { pickupOnlyReason, shopShips } from "./shipping-switch.server";
-import { inStock, needsVariant, poolKey, unitPrice, variantOf, type PricedShopLine, type ShopLineInput } from "./types";
+import { editionLeft, inStock, needsVariant, notDropped, poolKey, unitPrice, variantOf, type PricedShopLine, type ShopLineInput } from "./types";
 
 /**
  * The authoritative price of a product cart (LightLab or the Coastline shop),
@@ -33,6 +33,7 @@ export async function priceShopCart(lines: ShopLineInput[], cfg?: AppConfig, opt
   for (const line of lines) {
     const p = byId.get(line.productId);
     if (!p || !p.active) throw new CartError("One of the products in your cart is no longer available. Please remove it.");
+    if (notDropped(p) && !opts.ignoreStock) throw new CartError(`${p.name} isn't out yet. It drops ${new Date(p.dropAt!).toLocaleString("en-CA", { timeZone: "America/Vancouver", dateStyle: "medium", timeStyle: "short" })}.`);
     const variant = variantOf(p, line.variantId);
     if (line.variantId && !variant) throw new CartError(`That option of ${p.name} is no longer available. Please choose another.`);
     if (!variant && needsVariant(p)) throw new CartError(`Please choose an option for ${p.name}.`);
@@ -45,6 +46,11 @@ export async function priceShopCart(lines: ShopLineInput[], cfg?: AppConfig, opt
     if (left != null && total > left && !opts.ignoreStock) {
       throw new CartError(left <= 0 ? `${p.name}${variant ? ` (${variant.name})` : ""} just sold out.` : `Only ${left} of ${p.name}${variant ? ` (${variant.name})` : ""} left. Please lower the quantity.`);
     }
+    // A limited run counts every option together.
+    const run = editionLeft(p);
+    const runTotal = (wanted.get(`${p.id}:#`) ?? 0) + line.quantity;
+    wanted.set(`${p.id}:#`, runTotal);
+    if (run != null && runTotal > run && !opts.ignoreStock) throw new CartError(run <= 0 ? `${p.name} is all gone: every number of the run is taken.` : `Only ${run} of ${p.name} left in the run. Please lower the quantity.`);
     const unitCents = unitPrice(p, variant?.id ?? null);
     shopLines.push({ ...line, customText, variantId: variant?.id ?? null, name: p.name, variantName: variant?.name ?? null, unitCents, lineCents: unitCents * line.quantity, size: p.size, grams: p.grams });
   }

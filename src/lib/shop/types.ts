@@ -10,6 +10,8 @@ export type ShopVariant = {
   stock: number | null;
   /** A swatch colour shown next to the name. */
   hex: string | null;
+  /** Storage keys of the product photos that show this option. Photos no option claims are shared. */
+  imageKeys?: string[];
 };
 
 export type ShopProductDto = {
@@ -42,7 +44,24 @@ export type ShopProductDto = {
   /** Product ids picked by hand as "goes well with". */
   pairings: string[];
   sortOrder: number;
+  /** An add-on (spare bulb, smart bulb...): a one-tap extra in the cart, kept off the shop grid. */
+  addon: boolean;
+  /** Numbered limited run: how many will ever be sold. Null = not limited. */
+  editionSize: number | null;
+  /** Numbers of the run already taken (or held for checkouts in progress). */
+  editionSold: number;
+  /** ISO time it goes on sale. Null = on sale now. */
+  dropAt: string | null;
 };
+
+/** Not out yet: a drop date still to come. */
+export const notDropped = (p: Pick<ShopProductDto, "dropAt">, now = Date.now()) => !!p.dropAt && new Date(p.dropAt).getTime() > now;
+
+/** How many numbers of a limited run are left. Null = not a limited run. */
+export const editionLeft = (p: Pick<ShopProductDto, "editionSize" | "editionSold">) => (p.editionSize == null ? null : Math.max(0, p.editionSize - p.editionSold));
+
+/** "No. 7 of 25", or "No. 7 to 9 of 25" for a few at once. */
+export const editionLabel = (from: number, to: number, size: number) => (to > from ? `No. ${from} to ${to} of ${size}` : `No. ${from} of ${size}`);
 
 /** Filter-pill value for "this holiday's pieces", e.g. "season:christmas". */
 export const SEASON_FILTER = "season:";
@@ -59,7 +78,7 @@ export function suggestFor(base: Pick<ShopProductDto, "id" | "category" | "pairi
   const skip = new Set(base.map((b) => b.id));
   const paired = base.flatMap((b) => b.pairings);
   const cats = new Set(base.map((b) => b.category).filter(Boolean));
-  const left = (p: ShopProductDto) => (p.variants.length ? p.variants.some((v) => inStock(p, v.id) !== 0) : inStock(p, null) !== 0);
+  const left = (p: ShopProductDto) => !p.addon && !notDropped(p) && (p.variants.length ? p.variants.some((v) => inStock(p, v.id) !== 0) : inStock(p, null) !== 0);
   const score = (p: ShopProductDto) => {
     const pairRank = paired.indexOf(p.id);
     if (pairRank >= 0) return 1000 - pairRank;
@@ -91,6 +110,41 @@ export type PricedShopLine = ShopLineInput & {
 
 export const shopImageUrl = (key: string) => `/api/shop/images/${encodeURIComponent(key.replace(/^shop\//, ""))}`;
 
+/**
+ * The photos to show for a chosen option, as URLs: the ones tagged with it
+ * first, then the shared (untagged) ones. Photos of other options are left out,
+ * unless the option has none of its own: then everything shows, shared first,
+ * and `picturedIn` names the option the first photo actually shows.
+ */
+export function photosFor(p: Pick<ShopProductDto, "images" | "imageKeys" | "variants">, variantId: string | null): { images: string[]; picturedIn: ShopVariant | null } {
+  const tagged = new Map<string, ShopVariant[]>();
+  for (const v of p.variants) for (const k of v.imageKeys ?? []) tagged.set(k, [...(tagged.get(k) ?? []), v]);
+  const v = variantOf(p, variantId);
+  if (!v || !tagged.size) return { images: p.images, picturedIn: null };
+  const idx = p.imageKeys.map((_, i) => i);
+  const own = idx.filter((i) => tagged.get(p.imageKeys[i])?.some((t) => t.id === v.id));
+  const shared = idx.filter((i) => !tagged.has(p.imageKeys[i]));
+  if (own.length) return { images: [...own, ...shared].map((i) => p.images[i]), picturedIn: null };
+  const others = idx.filter((i) => tagged.has(p.imageKeys[i]));
+  const order = [...shared, ...others];
+  return { images: order.map((i) => p.images[i]), picturedIn: order.length ? (tagged.get(p.imageKeys[order[0]])?.[0] ?? null) : null };
+}
+
+/** The option a photo (by URL) is tagged with, when it's exactly one. Shared and group photos give null. */
+export function variantForPhoto(p: Pick<ShopProductDto, "images" | "imageKeys" | "variants">, url: string): ShopVariant | null {
+  const key = p.imageKeys[p.images.indexOf(url)];
+  if (!key) return null;
+  const vs = p.variants.filter((v) => v.imageKeys?.includes(key));
+  return vs.length === 1 ? vs[0] : null;
+}
+
+/** The option a ?colour= link names (by name, like "dark-blue", or by id). */
+export function variantFromParam(p: Pick<ShopProductDto, "variants">, param: string | string[] | undefined) {
+  const want = typeof param === "string" ? param.trim().toLowerCase() : "";
+  if (!want) return null;
+  return p.variants.find((v) => v.id === want || slugify(v.name) === slugify(want)) ?? null;
+}
+
 export function variantOf(p: Pick<ShopProductDto, "variants">, variantId: string | null) {
   return variantId ? (p.variants.find((v) => v.id === variantId) ?? null) : null;
 }
@@ -100,10 +154,12 @@ export function unitPrice(p: Pick<ShopProductDto, "priceCents" | "variants">, va
 }
 
 /** How many can be bought. Null = no limit (made to order). */
-export function inStock(p: Pick<ShopProductDto, "stock" | "variants">, variantId: string | null): number | null {
+export function inStock(p: Pick<ShopProductDto, "stock" | "variants"> & Partial<Pick<ShopProductDto, "editionSize" | "editionSold">>, variantId: string | null): number | null {
   const v = variantOf(p, variantId);
-  if (v && v.stock != null) return v.stock;
-  return p.stock;
+  const n = v && v.stock != null ? v.stock : p.stock;
+  // A limited run can't sell past its last number, whatever the counts say.
+  const run = p.editionSize == null ? null : Math.max(0, p.editionSize - (p.editionSold ?? 0));
+  return run == null ? n : n == null ? run : Math.min(n, run);
 }
 
 /**

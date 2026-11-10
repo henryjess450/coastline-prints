@@ -193,6 +193,15 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
                 <p className="whitespace-pre-wrap rounded-xl bg-accent-soft p-3">{order.notes}</p>
               </>
             )}
+            {order.giftNote && (
+              <>
+                <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-faint">Gift note (print and tuck in)</h3>
+                <p className="whitespace-pre-wrap rounded-xl border border-line p-3 font-serif italic">{order.giftNote}</p>
+                <a href={`/api/admin/orders/${order.id}/gift-note`} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm text-accent-text underline underline-offset-4">
+                  Print the gift note card (PDF)
+                </a>
+              </>
+            )}
           </Card>
 
           <Card className="p-5 text-sm">

@@ -10,7 +10,7 @@ import { appUrl } from "@/lib/email/data";
 import type { OutgoingEmail } from "@/lib/email/transport";
 import { money } from "@/lib/format";
 import { toProductDto } from "./products.server";
-import { inStock, unitPrice, variantOf } from "./types";
+import { inStock, notDropped, unitPrice, variantOf } from "./types";
 
 const accent = accentFor(true);
 
@@ -52,15 +52,18 @@ export async function buildRestockEmail(payload: { requestId?: string }): Promis
   const p = toProductDto(req.product);
   const variantId = req.variantId || null;
   if (variantId && !variantOf(p, variantId)) return null;
-  if (inStock(p, variantId) === 0) return null;
+  if (inStock(p, variantId) === 0 || notDropped(p)) return null;
   const option = variantOf(p, variantId);
   const label = option ? `${p.name} (${option.name})` : p.name;
   const url = `${appUrl()}/lightlab/${p.slug}`;
-  const subject = `${label} is back at LightLab`;
+  // A drop: it's new, not back. Limited runs say how many there are.
+  const dropped = !!p.dropAt;
+  const run = p.editionSize != null ? ` Only ${p.editionSize} will ever be made, each one numbered.` : "";
+  const subject = dropped ? `${label} just dropped at LightLab` : `${label} is back at LightLab`;
   const html = await render(
-    <EmailLayout brand="lightlab" preview={`${label} is back in stock. ${money(unitPrice(p, variantId))}`} footerNote={`You asked ${lightlab.name} to tell you when this was back. This is the only email you'll get about it.`}>
-      <H1>It&apos;s back: {label}</H1>
-      <P muted>You asked us to let you know, so here it is: it&apos;s in stock now.</P>
+    <EmailLayout brand="lightlab" preview={`${dropped ? `${label} is out now.` : `${label} is back in stock.`} ${money(unitPrice(p, variantId))}`} footerNote={`You asked ${lightlab.name} to tell you when this was ${dropped ? "out" : "back"}. This is the only email you'll get about it.`}>
+      <H1>{dropped ? `It's out: ${label}` : `It's back: ${label}`}</H1>
+      <P muted>{dropped ? `You asked us to let you know when it dropped, so here it is: it's on sale now.${run}` : "You asked us to let you know, so here it is: it's in stock now."}</P>
       {p.images[0] && <Img src={`${appUrl()}${p.images[0]}`} alt={p.name} width={260} style={{ display: "block", width: 260, height: "auto", borderRadius: 16, margin: "10px 0 14px" }} />}
       <Text style={{ margin: "0 0 18px", fontSize: 18, fontWeight: 700, color: accent.brand }}>{money(unitPrice(p, variantId))}</Text>
       <PillButton accent={accent} href={url}>
@@ -79,6 +82,7 @@ export async function queueRestockEmails(productId: string) {
   const row = await db.shopProduct.findUnique({ where: { id: productId }, include: { restockRequests: { where: { notifiedAt: null } } } });
   if (!row || !row.active || !row.restockRequests.length) return 0;
   const p = toProductDto(row);
+  if (notDropped(p)) return 0;
   const ready = row.restockRequests.filter((r) => {
     const v = r.variantId || null;
     return (!v || variantOf(p, v)) && inStock(p, v) !== 0;
@@ -89,4 +93,12 @@ export async function queueRestockEmails(productId: string) {
     db.restockRequest.updateMany({ where: { id: { in: ready.map((r) => r.id) } }, data: { notifiedAt: new Date() } }),
   ]);
   return ready.length;
+}
+
+/** Drops that have gone live with people waiting: email them now (run every minute). */
+export async function releaseDrops(now = new Date()) {
+  const due = await db.shopProduct.findMany({ where: { active: true, dropAt: { lte: now }, restockRequests: { some: { notifiedAt: null } } }, select: { id: true } });
+  let n = 0;
+  for (const p of due) n += await queueRestockEmails(p.id);
+  return n;
 }

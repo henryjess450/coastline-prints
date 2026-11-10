@@ -11,10 +11,17 @@ import { ProductPlaceholder } from "./ProductGrid";
  * colour, an optional name tag that writes itself as the shopper types, and a
  * full-screen view on tap (pinch or double-tap to zoom, swipe down to close).
  */
-export function Gallery({ images, name, shop, glow, tag }: { images: string[]; name: string; shop: string; /** The chosen option's colour. */ glow: string | null; /** Personalised text, shown on a little tag. */ tag: string | null }) {
+export function Gallery({ images, name, shop, glow, tag, note = null, onPick }: { images: string[]; name: string; shop: string; /** The chosen option's colour. */ glow: string | null; /** Personalised text, shown on a little tag. */ tag: string | null; /** A small line on the photo, like "Pictured in Pink". */ note?: string | null; /** A thumbnail was tapped (its URL), so the page can pick the option it shows. */ onPick?: (src: string) => void }) {
   const [photo, setPhoto] = useState(0);
   const [dir, setDir] = useState(0);
   const [zoomed, setZoomed] = useState(false);
+  // A new set of photos (another option picked): start again from its first one, crossfading.
+  const [shown, setShown] = useState(images.join("|"));
+  if (shown !== images.join("|")) {
+    setShown(images.join("|"));
+    setPhoto(0);
+    setDir(0);
+  }
   const go = (i: number) => {
     const next = (i + images.length) % images.length;
     setDir(next > photo ? 1 : -1);
@@ -32,7 +39,7 @@ export function Gallery({ images, name, shop, glow, tag }: { images: string[]; n
           {images.length ? (
             <AnimatePresence initial={false} custom={dir} mode="popLayout">
               <motion.img
-                key={photo}
+                key={images[photo]}
                 src={images[photo]}
                 alt={images.length > 1 ? `${name}, photo ${photo + 1} of ${images.length}` : name}
                 custom={dir}
@@ -58,6 +65,13 @@ export function Gallery({ images, name, shop, glow, tag }: { images: string[]; n
             <ProductPlaceholder shop={shop} />
           )}
           <NameTag text={tag} />
+          <AnimatePresence>
+            {note && (
+              <motion.p key={note} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="pointer-events-none absolute right-3 top-3 rounded-full bg-bg/85 px-3 py-1 text-xs text-fg backdrop-blur">
+                {note}
+              </motion.p>
+            )}
+          </AnimatePresence>
         </div>
         {images.length > 1 && (
           <div className="mt-3 flex justify-center gap-1.5 sm:hidden" aria-hidden>
@@ -70,7 +84,7 @@ export function Gallery({ images, name, shop, glow, tag }: { images: string[]; n
       {images.length > 1 && (
         <div className="mt-3 hidden gap-2 overflow-x-auto pb-1 sm:flex">
           {images.map((src, i) => (
-            <button key={src} type="button" onClick={() => go(i)} aria-label={`Photo ${i + 1}`} aria-pressed={i === photo} className={cn("h-20 w-20 shrink-0 overflow-hidden rounded-2xl border-2 transition-[border-color,transform,opacity] active:scale-95", i === photo ? "border-accent-line" : "border-transparent opacity-70 hover:opacity-100")}>
+            <button key={src} type="button" onClick={() => (go(i), onPick?.(src))} aria-label={`Photo ${i + 1}`} aria-pressed={i === photo} className={cn("h-20 w-20 shrink-0 overflow-hidden rounded-2xl border-2 transition-[border-color,transform,opacity] active:scale-95", i === photo ? "border-accent-line" : "border-transparent opacity-70 hover:opacity-100")}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={src} alt="" className="h-full w-full object-cover" />
             </button>

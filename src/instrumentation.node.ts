@@ -1,11 +1,17 @@
 import { cleanupFiles } from "@/lib/cleanup";
 import { processOutbox } from "@/lib/notify/outbox";
+import { releaseDrops } from "@/lib/shop/emails";
 import { checkInbox, etransferSettings, expireEtransfers, hasWaitingEtransfers } from "@/lib/payments/etransfer.server";
 
 const INTERVAL_MS = 60_000;
 const g = globalThis as unknown as { __outboxTimer?: NodeJS.Timeout; __cleanupTimer?: NodeJS.Timeout; __etransferTimer?: NodeJS.Timeout };
 
-const tick = () => processOutbox().catch((err) => console.error("[outbox:interval]", err));
+// Drops that just went live email their waiting list first, so it goes out on the same tick.
+const tick = () =>
+  releaseDrops()
+    .catch((err) => console.error("[drops]", err))
+    .then(() => processOutbox())
+    .catch((err) => console.error("[outbox:interval]", err));
 
 // Guard against double-starting in dev hot reloads.
 if (!g.__outboxTimer) {

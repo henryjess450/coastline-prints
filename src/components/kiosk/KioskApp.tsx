@@ -12,6 +12,8 @@ import type { KioskSaleView } from "@/lib/kiosk/server";
 import type { PosQuote } from "@/lib/pos/types";
 import type { ShopProductDto } from "@/lib/shop/types";
 import { toCart, type KioskLine } from "./kiosk-cart";
+import { CoverFee, useCardFee } from "@/components/checkout/CoverFee";
+import { cardFeeFor } from "@/lib/pos/card-fee";
 import { Greeting, Steps, type KioskMode } from "./KioskBits";
 import { KioskShop } from "./KioskShop";
 
@@ -63,6 +65,9 @@ export function KioskApp() {
   const [lines, setLines] = useState<KioskLine[]>([]);
   const [codes, setCodes] = useState<string[]>([]);
   const [quote, setQuote] = useState<PosQuote | null>(null);
+  // The card processing fee (when switched on): the customer chooses whether to cover it.
+  const cardFee = useCardFee();
+  const [coverFee, setCoverFee] = useState<boolean | null>(null);
   const [details, setDetails] = useState({ name: "", email: "", phone: "", needBy: "", notes: "" });
   const [sale, setSale] = useState<KioskSaleView | null>(null);
   const [done, setDone] = useState<Done | null>(null);
@@ -116,11 +121,11 @@ export function KioskApp() {
     if (!lines.length) return;
     const ctrl = new AbortController();
     const t = setTimeout(async () => {
-      const r = await api<PosQuote>("/api/kiosk/quote", { method: "POST", body: JSON.stringify(toCart(lines, codes)), signal: ctrl.signal });
+      const r = await api<PosQuote>("/api/kiosk/quote", { method: "POST", body: JSON.stringify(toCart(lines, codes, !!coverFee)), signal: ctrl.signal });
       if (r.ok) setQuote(r.data);
     }, 250);
     return () => (clearTimeout(t), ctrl.abort());
-  }, [lines, codes]);
+  }, [lines, codes, coverFee]);
 
   const reset = useCallback(
     async (cancel = true) => {
@@ -129,6 +134,7 @@ export function KioskApp() {
       setCodes([]);
       setQuote(null);
       setDetails({ name: "", email: "", phone: "", needBy: "", notes: "" });
+      setCoverFee(null);
       setSale(null);
       setDone(null);
       setError(null);
@@ -205,10 +211,11 @@ export function KioskApp() {
 
   async function submitDetails() {
     if (detailsProblem) return setError(detailsProblem);
+    if (cardFee?.on && coverFee == null) return setError("Please answer: cover the card fee, yes or no?");
     setBusy(true);
     setError(null);
     const customer = order ? { name: details.name, email: details.email, phone: details.phone, notes: details.notes, needBy: details.needBy } : { name: details.name, email: details.email };
-    const r = await api<KioskSaleView>("/api/kiosk/sale", { method: "POST", body: JSON.stringify({ cart: toCart(lines, codes), customer }) });
+    const r = await api<KioskSaleView>("/api/kiosk/sale", { method: "POST", body: JSON.stringify({ cart: toCart(lines, codes, !!coverFee), customer }) });
     setBusy(false);
     if (!r.ok) return setError(r.error);
     setSale(r.data);
@@ -343,6 +350,7 @@ export function KioskApp() {
                 </>
               )}
 
+              {cardFee?.on && <CoverFee size="lg" fee={cardFee} feeCents={cardFeeFor(total - (feeLine?.cents ?? 0), cardFee)} value={coverFee} onChange={setCoverFee} className="mt-6" />}
               <AnimatePresence>
                 {error && (
                   <motion.p key={error} role="alert" className="mt-5 rounded-2xl bg-danger/15 p-4 text-lg text-danger" initial={{ opacity: 0, x: 0 }} animate={{ opacity: 1, x: [0, -10, 10, -6, 6, 0] }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}>

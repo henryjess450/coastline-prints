@@ -9,7 +9,7 @@ import { creditInvite } from "@/lib/rewards/invite";
 import type { ItemQuote, OrderQuote } from "@/lib/pricing/quote";
 import type { PricedCart } from "@/lib/pricing/server-quote";
 import type { ShippingOption } from "@/lib/shipping/pack";
-import type { PricedShopLine } from "@/lib/shop/types";
+import { editionLabel, type PricedShopLine } from "@/lib/shop/types";
 import { shopConfig, type ShopId } from "@config/shops";
 import { newOrderNumber, newViewToken } from "./number";
 
@@ -102,6 +102,8 @@ export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
       const order = await db.$transaction(async (tx) => {
+        // Limited runs: each line takes the next numbers of its product's run.
+        const editions = await takeEditionNumbers(tx, cart.shopLines ?? []);
         const order = await tx.order.create({
           data: {
             orderNumber: newOrderNumber(new Date(), shopSale ? shopConfig(cart.shop).orderPrefix : "CP"),
@@ -112,6 +114,7 @@ export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts
             customerEmail: checkout.customerEmail,
             customerPhone: checkout.customerPhone,
             notes: checkout.notes,
+            giftNote: checkout.giftNote,
             pickupDate: checkout.pickupDate,
             pickupTime: checkout.pickupTime,
             pickupMarketId: checkout.pickupMarketId,
@@ -145,7 +148,7 @@ export async function finalizeCheckout(checkoutId: string, payment: PaymentFacts
             receiptUrl: payment.receiptUrl,
             cardBrand: payment.cardBrand,
             cardLast4: payment.last4,
-            items: { create: [...cart.lines.map((line, i) => orderItemData(line, cart.quote.items[i])), ...(cart.shopLines ?? []).map((l) => shopItemData(l, cart.shop)), ...(cart.customLines ?? []).map((l) => customItemData(l, cart.shop))] },
+            items: { create: [...cart.lines.map((line, i) => orderItemData(line, cart.quote.items[i])), ...(cart.shopLines ?? []).map((l, i) => shopItemData(l, cart.shop, editions[i])), ...(cart.customLines ?? []).map((l) => (cart.lines.length ? { ...customItemData(l, cart.shop), material: "Extra", printerId: "extra", printerName: "Extra" } : customItemData(l, cart.shop)))] },
             events: { create: { fromStatus: null, toStatus: "PAID", note: admin?.note ?? "Payment completed" } },
           },
         });
@@ -204,14 +207,34 @@ function orderItemData(line: CartSnapshot["lines"][number], q: ItemQuote) {
   };
 }
 
+type Edition = { from: number; to: number; size: number } | null;
+
+/** Numbers for lines of limited-run products, in line order (null for the rest). */
+async function takeEditionNumbers(tx: Prisma.TransactionClient, lines: PricedShopLine[]): Promise<Edition[]> {
+  const out: Edition[] = [];
+  for (const line of lines) {
+    const p = await tx.shopProduct.findUnique({ where: { id: line.productId }, select: { editionSize: true } });
+    if (p?.editionSize == null) {
+      out.push(null);
+      continue;
+    }
+    const after = await tx.shopProduct.update({ where: { id: line.productId }, data: { editionSold: { increment: line.quantity } }, select: { editionSold: true } });
+    out.push({ from: after.editionSold - line.quantity + 1, to: after.editionSold, size: p.editionSize });
+  }
+  return out;
+}
+
 /** A shop product as an order item. Print fields hold the product's packed size and a shop label. */
-function shopItemData(line: PricedShopLine, shopId?: ShopId) {
+function shopItemData(line: PricedShopLine, shopId?: ShopId, edition: Edition = null) {
   const shop = shopConfig(shopId);
+  const name = line.customText ? `${line.name}: "${line.customText}"` : line.name;
   return {
     productId: line.productId,
     variantId: line.variantId,
-    // A personalised product carries its text in the name, so the admin, receipts and emails all show it.
-    fileName: line.customText ? `${line.name}: "${line.customText}"` : line.name,
+    // A personalised product carries its text in the name, and a limited run its number, so the admin, receipts and emails all show them.
+    fileName: edition ? `${name} (${editionLabel(edition.from, edition.to, edition.size)})` : name,
+    editionFrom: edition?.from ?? null,
+    editionTo: edition?.to ?? null,
     unitFactor: 1,
     scaleX: 1,
     scaleY: 1,

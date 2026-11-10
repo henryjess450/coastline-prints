@@ -31,7 +31,7 @@ export async function finalizeGiftPurchase(purchaseId: string, payment: PaymentF
   if (payment.status !== "COMPLETED") return null;
 
   const expectedLocation = process.env.SQUARE_LOCATION_ID;
-  if (payment.amountCents !== purchase.amountCents || payment.currency !== "CAD" || (expectedLocation && payment.locationId && payment.locationId !== expectedLocation)) {
+  if (payment.amountCents !== purchase.amountCents + purchase.feeCents || payment.currency !== "CAD" || (expectedLocation && payment.locationId && payment.locationId !== expectedLocation)) {
     await db.giftPurchase.update({ where: { id: purchaseId }, data: { status: "FAILED", failureReason: `Payment ${payment.id} amount/currency/location mismatch` } });
     throw new PaymentMismatchError(`Payment ${payment.id} does not match gift purchase ${purchaseId}`);
   }

@@ -28,7 +28,8 @@ export function toProductDto(p: ShopProduct): ShopProductDto {
     priceCents: p.priceCents,
     compareAtCents: p.compareAtCents,
     stock: p.stock,
-    variants: parse<ShopVariant[]>(p.variants, []),
+    // Tags on photos that were since removed are dropped.
+    variants: parse<ShopVariant[]>(p.variants, []).map((v) => ({ ...v, imageKeys: (v.imageKeys ?? []).filter((k) => keys.includes(k)) })),
     images: keys.map(shopImageUrl),
     imageKeys: keys,
     size: { x: p.sizeXMm, y: p.sizeYMm, z: p.sizeZMm },
@@ -39,6 +40,10 @@ export function toProductDto(p: ShopProduct): ShopProductDto {
     seasonOnly: p.seasonOnly,
     pairings: parse<string[]>(p.pairings, []),
     sortOrder: p.sortOrder,
+    addon: p.addon,
+    editionSize: p.editionSize,
+    editionSold: p.editionSold,
+    dropAt: p.dropAt?.toISOString() ?? null,
   };
 }
 

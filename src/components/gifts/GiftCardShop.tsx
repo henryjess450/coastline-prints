@@ -2,6 +2,8 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccount } from "@/components/account/use-account";
+import { CoverFee, useCardFee } from "@/components/checkout/CoverFee";
+import { cardFeeFor } from "@/lib/pos/card-fee";
 import { PaymentMethods, type PaymentMethodsHandle, type SquareConfig } from "@/components/checkout/PaymentMethods";
 import { AnimatedNumber } from "@/components/motion/AnimatedNumber";
 import { bounce, Button } from "@/components/ui/Button";
@@ -69,7 +71,15 @@ export function GiftCardShop({
   const customCents = Math.round(Number(custom.replace(/[$,\s]/g, "")) * 100);
   const amountCents = preset === "custom" ? (Number.isFinite(customCents) ? customCents : 0) : preset;
   const bonusCents = bonus && amountCents >= bonus.minCents ? bonus.bonusCents : 0;
-  const canPay = (!!square || demo) && !checking && phase === "form";
+  // The card processing fee, when it's switched on: the buyer chooses whether to cover it.
+  const cardFee = useCardFee();
+  const [coverFee, setCoverFee] = useState<boolean | null>(null);
+  const [feeAsked, setFeeAsked] = useState(false);
+  const asksFee = !!cardFee?.on && !demo && amountCents >= GIFT_MIN_CENTS;
+  const possibleFee = asksFee ? cardFeeFor(amountCents, cardFee!) : 0;
+  const feeCents = coverFee ? possibleFee : 0;
+  const chargeCents = amountCents + feeCents;
+  const canPay = (!!square || demo) && !checking && phase === "form" && (!asksFee || coverFee != null);
 
   const set = (k: keyof Fields, v: string) => {
     setFields((f) => ({ ...f, [k]: v }));
@@ -102,7 +112,7 @@ export function GiftCardShop({
       await sleep(1800);
       return { ok: true, recipientName: details.recipientName, sendOn: details.sendOn };
     }
-    const body = JSON.stringify({ ...details, attemptId, sourceId, expectedTotalCents: details.amountCents, expectedBonusCents: bonusCents });
+    const body = JSON.stringify({ ...details, attemptId, sourceId, expectedTotalCents: details.amountCents + feeCents, expectedBonusCents: bonusCents, coverFee: asksFee && !!coverFee });
     for (let attempt = 0; attempt < 2; attempt++) {
       let res: Response;
       try {
@@ -132,7 +142,7 @@ export function GiftCardShop({
       return { ok: false, message: data.error ?? "The payment didn't go through. Your card was not charged." };
     }
     return { ok: false, message: "The payment didn't go through. Your card was not charged." };
-  }, [demo, bonusCents]);
+  }, [demo, bonusCents, feeCents, asksFee, coverFee]);
 
   /** Card checked: start the animation and the payment together. */
   async function send(details: GiftDetails, sourceId: string) {
@@ -157,12 +167,13 @@ export function GiftCardShop({
     const details = validate();
     if (!details) return;
     if (demo) return send(details, "demo");
+    if (asksFee && coverFee == null) return setFeeAsked(true);
     if (!payRef.current) return;
     setChecking(true);
     const [givenName, ...rest] = details.buyerName.split(/\s+/);
     try {
       const token = await payRef.current.tokenizeCard({
-        amount: (details.amountCents / 100).toFixed(2),
+        amount: ((details.amountCents + feeCents) / 100).toFixed(2),
         currencyCode: "CAD",
         intent: "CHARGE",
         billingContact: { givenName, familyName: rest.join(" ") || undefined, email: details.buyerEmail, countryCode: "CA" },
@@ -334,7 +345,10 @@ export function GiftCardShop({
             {demo ? (
               <p className="rounded-xl border border-sand/50 bg-sand/10 p-3 text-sm">Demo mode (development only): no card is charged.</p>
             ) : square ? (
-              <PaymentMethods ref={payRef} config={square} totalCents={amountCents} disabled={!canPay} onWalletToken={payWithWallet} onWalletError={fail} />
+              <>
+                {asksFee && <CoverFee fee={cardFee!} feeCents={possibleFee} value={coverFee} onChange={setCoverFee} error={feeAsked} className="mb-5" />}
+                <PaymentMethods ref={payRef} config={square} totalCents={chargeCents} disabled={!canPay} onWalletToken={payWithWallet} onWalletError={fail} />
+              </>
             ) : (
               <p className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm">Online payments aren&apos;t set up yet.</p>
             )}
@@ -350,7 +364,7 @@ export function GiftCardShop({
             )}
           </AnimatePresence>
           <Button ref={payButton} size="lg" className="mt-6 w-full" disabled={!canPay} onClick={payWithCard}>
-            {checking ? "Checking your card…" : `Pay ${amountCents >= GIFT_MIN_CENTS ? money(amountCents) : ""} and send`}
+            {checking ? "Checking your card…" : `Pay ${amountCents >= GIFT_MIN_CENTS ? money(chargeCents) : ""} and send`}
           </Button>
         </Card>
       </div>

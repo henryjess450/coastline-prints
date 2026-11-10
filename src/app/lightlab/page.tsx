@@ -11,13 +11,18 @@ import { ButtonLink } from "@/components/ui/Button";
 import { listProducts } from "@/lib/shop/products.server";
 import { shopToday, upcomingMarkets } from "@/lib/shop/markets.server";
 import { FindUsAt } from "@/components/lightlab/FindUsAt";
+import { WildWall } from "@/components/lightlab/WildWall";
+import { wildPhotos } from "@/lib/shop/wild.server";
 import { shopShips } from "@/lib/shop/shipping-switch.server";
 
 export const metadata: Metadata = { title: { absolute: `${lightlab.name} · Novelty lamps` } };
 export const dynamic = "force-dynamic"; // prices and stock change in /lightlab/admin
 
 export default async function LightLabShop({ searchParams }: { searchParams: Promise<{ collection?: string | string[] }> }) {
-  const [products, markets, q, ships] = await Promise.all([listProducts(), upcomingMarkets(6), searchParams, shopShips("lightlab")]);
+  const [all, markets, q, ships, wild] = await Promise.all([listProducts(), upcomingMarkets(6), searchParams, shopShips("lightlab"), wildPhotos()]);
+  // Add-ons are offered in the cart, not counted as pieces here.
+  const products = all.filter((p) => !p.addon);
+  const lamps = new Map(products.map((p) => [p.id, { name: p.name, href: `/lightlab/${p.slug}` }]));
   const featured = [...products].sort((a, b) => Number(b.featured) - Number(a.featured));
 
   return (
@@ -47,6 +52,19 @@ export default async function LightLabShop({ searchParams }: { searchParams: Pro
           </div>
         )}
       </section>
+
+      <section className="mx-auto mt-24 max-w-7xl px-4 sm:px-6">
+        <Link href="/lightlab/commission" className="group grid gap-6 rounded-3xl border border-line bg-surface p-8 transition-colors hover:border-accent-line sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-12">
+          <div>
+            <p className="ll-accent text-3xl">one of a kind</p>
+            <h2 className="mt-2 font-display text-3xl font-bold tracking-tight sm:text-4xl">Make me a lamp</h2>
+            <p className="mt-3 max-w-xl leading-relaxed text-muted">Your pet, a favourite character, an inside joke. Send the idea and a photo, pick a shade colour, and we&apos;ll send you a price.</p>
+          </div>
+          <span className="inline-flex h-12 items-center justify-center rounded-full bg-accent px-6 font-semibold text-accent-ink transition-transform group-hover:-translate-y-0.5 group-active:scale-95">Start your lamp →</span>
+        </Link>
+      </section>
+
+      <WildWall photos={wild} products={lamps} />
 
       <FindUsAt markets={markets} />
 

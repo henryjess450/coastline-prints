@@ -71,6 +71,8 @@ export const setKioskMode = (id: string, mode: "shop" | "order") => db.kiosk.upd
 export const kioskCartSchema = z.object({
   products: z.array(shopLineSchema).min(1, "The cart is empty.").max(20),
   codes: z.array(z.string().trim().min(1).max(60)).max(2).default([]),
+  /** The customer chose to cover the card processing fee (asked when it's switched on). */
+  coverFee: z.boolean().default(false),
 });
 export const kioskCustomerSchema = z.object({
   name: z.string().trim().min(1, "Add your name.").max(100),
@@ -81,12 +83,12 @@ export const kioskCustomerSchema = z.object({
   needBy: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().default(null),
 });
 
-// The kiosk is always paid by Square link, so the card fee applies whenever it's switched on.
-const posCart = (c: z.infer<typeof kioskCartSchema>, email = ""): PosCartInput => ({ brand: "lightlab", products: c.products, codes: c.codes, email, cardFee: true });
+// The kiosk is always paid by Square link: the card fee is added only when the customer chose to cover it.
+const posCart = (c: z.infer<typeof kioskCartSchema>, email = ""): PosCartInput => ({ brand: "lightlab", products: c.products, codes: c.codes, email, cardFee: c.coverFee });
 
 /** The cart's price, as the kiosk shows it. Order kiosks make things later, so stock doesn't limit them. */
-export async function quoteKioskCart(cart: z.infer<typeof kioskCartSchema>, order = false) {
-  return publicQuote(await pricePos(posCart(cart), { ignoreStock: order }));
+export async function quoteKioskCart(cart: z.input<typeof kioskCartSchema>, order = false) {
+  return publicQuote(await pricePos(posCart(kioskCartSchema.parse(cart)), { ignoreStock: order }));
 }
 
 export type KioskSaleView = { id: string; status: "PENDING" | "DONE" | "CANCELLED" | "PROBLEM"; url: string; totalCents: number; orderNumber: string | null; emailed: boolean };

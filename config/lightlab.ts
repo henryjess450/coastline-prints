@@ -22,4 +22,6 @@ export const lightlab = {
   maxImageMb: 8,
   /** Email the owner when a product (or option) gets down to this many, and again when it sells out. */
   lowStockAt: 2,
+  /** A gift note printed on a card and tucked in with the order (cents). */
+  giftNoteCents: 75,
 } as const;

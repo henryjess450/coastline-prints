@@ -13,9 +13,10 @@ import { money } from "@/lib/format";
 import { shopImageUrl, slugify, type ShopProductDto } from "@/lib/shop/types";
 import type { ProductFileDto } from "@/lib/shop/files";
 import { dollars, parseDollars } from "./money";
+import { fromShopLocal, toShopLocal } from "@/lib/shop/drop-time";
 import { ProductFiles } from "./ProductFiles";
 
-type VariantDraft = { key: string; id?: string; name: string; price: string; stock: string; hex: string | null };
+type VariantDraft = { key: string; id?: string; name: string; price: string; stock: string; hex: string | null; /** Photos (storage keys) that show this option. */ imageKeys: string[] };
 
 const input = "h-11 w-full rounded-xl border border-line bg-elev px-3 text-sm outline-none transition-[border-color,box-shadow] focus:border-accent-line focus:shadow-[0_0_0_4px_var(--accent-soft)]";
 let seq = 0;
@@ -37,7 +38,7 @@ export function ProductEditor({ product, categories, others = [], files = [], sh
   const [tracked, setTracked] = useState(product ? product.stock != null : true);
   const [stock, setStock] = useState(product?.stock != null ? String(product.stock) : "1");
   const [variants, setVariants] = useState<VariantDraft[]>(
-    () => product?.variants.map((v) => ({ key: v.id, id: v.id, name: v.name, price: dollars(v.priceCents), stock: v.stock == null ? "" : String(v.stock), hex: v.hex })) ?? [],
+    () => product?.variants.map((v) => ({ key: v.id, id: v.id, name: v.name, price: dollars(v.priceCents), stock: v.stock == null ? "" : String(v.stock), hex: v.hex, imageKeys: v.imageKeys ?? [] })) ?? [],
   );
   const [images, setImages] = useState<string[]>(product?.imageKeys ?? []);
   const [size, setSize] = useState({ x: String(product?.size.x ?? 150), y: String(product?.size.y ?? 150), z: String(product?.size.z ?? 200) });
@@ -47,6 +48,9 @@ export function ProductEditor({ product, categories, others = [], files = [], sh
   const [productSeasons, setProductSeasons] = useState<string[]>(product?.seasons ?? []);
   const [seasonOnly, setSeasonOnly] = useState(product?.seasonOnly ?? false);
   const [pairings, setPairings] = useState<string[]>(product?.pairings ?? []);
+  const [addon, setAddon] = useState(product?.addon ?? false);
+  const [editionSize, setEditionSize] = useState(product?.editionSize != null ? String(product.editionSize) : "");
+  const [dropAt, setDropAt] = useState(toShopLocal(product?.dropAt ?? null));
   const [error, setError] = useState<{ text: string; n: number } | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -90,8 +94,12 @@ export function ProductEditor({ product, categories, others = [], files = [], sh
       if (Number.isNaN(vp)) return fail(`${v.name || "An option"}: price should look like 34.99, or be empty to use the product's price.`), null;
       const vsN = v.stock.trim() === "" ? null : Number(v.stock);
       if (vsN != null && (!Number.isInteger(vsN) || vsN < 0)) return fail(`${v.name || "An option"}: stock is a whole number, or empty.`), null;
-      vs.push({ id: v.id, name: v.name, priceCents: vp, stock: vsN, hex: v.hex });
+      vs.push({ id: v.id, name: v.name, priceCents: vp, stock: vsN, hex: v.hex, imageKeys: v.imageKeys.filter((k) => images.includes(k)) });
     }
+    const run = editionSize.trim() === "" ? null : Number(editionSize);
+    if (run != null && (!Number.isInteger(run) || run < 1)) return fail("The limited run is a whole number, like 25, or empty."), null;
+    if (run != null && product && run < product.editionSold) return fail(`${product.editionSold} of the run are already sold, so it can't be smaller than that.`), null;
+    if (dropAt && !fromShopLocal(dropAt)) return fail("Pick a full drop date and time, or clear it."), null;
     const dims = [size.x, size.y, size.z, grams].map(Number);
     if (dims.some((n) => !(n > 0))) return fail("Fill in the boxed size and weight (used for shipping prices)."), null;
     return {
@@ -117,6 +125,9 @@ export function ProductEditor({ product, categories, others = [], files = [], sh
       seasons: productSeasons as ProductInput["seasons"],
       seasonOnly,
       pairings,
+      addon,
+      editionSize: run,
+      dropAt: dropAt ? fromShopLocal(dropAt) : null,
     };
   }
 
@@ -188,10 +199,12 @@ export function ProductEditor({ product, categories, others = [], files = [], sh
           </div>
         </Panel>
 
-        <Panel title="Photos" note={`The first photo is the cover. Drag to reorder. JPG, PNG or WebP, up to ${lightlab.maxImageMb} MB.`}>
+        <Panel title="Photos" note={`The first photo is the cover. Drag to reorder. JPG, PNG or WebP, up to ${lightlab.maxImageMb} MB.${variants.length ? " Tap the dots under a photo to say which options it shows; photos with none show for every option." : ""}`}>
           <Photos
             images={images}
             onChange={touch(setImages)}
+            variants={variants}
+            onTag={(vKey, imgKey) => touch(setVariants)(variants.map((v) => (v.key !== vKey ? v : { ...v, imageKeys: v.imageKeys.includes(imgKey) ? v.imageKeys.filter((k) => k !== imgKey) : [...v.imageKeys, imgKey] })))}
             onUploaded={(k) => fresh.current.add(k)}
             onError={fail}
           />
@@ -246,6 +259,25 @@ export function ProductEditor({ product, categories, others = [], files = [], sh
           <div className="space-y-3">
             <Switch on={active} onChange={touch(setActive)} label="On the shop" detail={active ? "People can see and buy it." : "Hidden. Only you can see it here."} />
             <Switch on={featured} onChange={touch(setFeatured)} label="Featured" detail="Shown first on the shop." />
+            <Switch on={addon} onChange={touch(setAddon)} label="Add-on" detail={addon ? "Offered as a one-tap extra in the cart and at checkout (and on the register). Not on the shop grid." : "Like a spare bulb or a smart bulb: offered in the cart instead of on the shop."} />
+          </div>
+        </Panel>
+
+        <Panel title="Limited run and drop date" note="A numbered run sells each one as No. 7 of 25 and stops at the last number. A drop date shows a countdown and opens sales at that time; people can ask to be emailed when it drops.">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Run size" hint={product && product.editionSold > 0 ? `${product.editionSold} taken` : "empty = not limited"}>
+              <input value={editionSize} onChange={(e) => touch(setEditionSize)(e.target.value)} inputMode="numeric" placeholder="25" className={cn(input, "font-mono")} />
+            </Field>
+            <Field label="Drop date (Victoria time)" hint="empty = on sale now">
+              <span className="flex gap-2">
+                <input type="datetime-local" value={dropAt} onChange={(e) => touch(setDropAt)(e.target.value)} className={cn(input, "font-mono")} />
+                {dropAt && (
+                  <button type="button" onClick={() => touch(setDropAt)("")} className="shrink-0 px-2 text-sm text-muted hover:text-danger" aria-label="Clear drop date">
+                    ✕
+                  </button>
+                )}
+              </span>
+            </Field>
           </div>
         </Panel>
 
@@ -332,7 +364,7 @@ function Switch({ on, onChange, label, detail }: { on: boolean; onChange: (v: bo
   );
 }
 
-function Photos({ images, onChange, onUploaded, onError }: { images: string[]; onChange: (v: string[]) => void; onUploaded: (key: string) => void; onError: (msg: string) => void }) {
+function Photos({ images, onChange, variants, onTag, onUploaded, onError }: { images: string[]; onChange: (v: string[]) => void; /** The product's options, to tag photos with. */ variants: VariantDraft[]; onTag: (variantKey: string, imageKey: string) => void; onUploaded: (key: string) => void; onError: (msg: string) => void }) {
   const [uploading, setUploading] = useState(0);
   const [over, setOver] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -370,13 +402,16 @@ function Photos({ images, onChange, onUploaded, onError }: { images: string[]; o
     <div>
       <Reorder.Group axis="x" values={images} onReorder={onChange} className="flex flex-wrap gap-3">
         {images.map((k, i) => (
-          <Reorder.Item key={k} value={k} className="group relative h-28 w-28 cursor-grab overflow-hidden rounded-2xl border border-line bg-elev active:cursor-grabbing">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={shopImageUrl(k)} alt="" draggable={false} className="h-full w-full object-cover" />
-            {i === 0 && <span className="absolute left-1.5 top-1.5 rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-accent-ink">Cover</span>}
-            <button type="button" onClick={() => onChange(images.filter((x) => x !== k))} className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-bg/85 text-sm opacity-100 backdrop-blur transition-opacity hover:text-danger sm:opacity-0 sm:group-hover:opacity-100" aria-label={`Remove photo ${i + 1}`}>
-              ✕
-            </button>
+          <Reorder.Item key={k} value={k} className="group w-28 cursor-grab active:cursor-grabbing">
+            <div className="relative h-28 w-28 overflow-hidden rounded-2xl border border-line bg-elev">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={shopImageUrl(k)} alt="" draggable={false} className="h-full w-full object-cover" />
+              {i === 0 && <span className="absolute left-1.5 top-1.5 rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-accent-ink">Cover</span>}
+              <button type="button" onClick={() => onChange(images.filter((x) => x !== k))} className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-bg/85 text-sm opacity-100 backdrop-blur transition-opacity hover:text-danger sm:opacity-0 sm:group-hover:opacity-100" aria-label={`Remove photo ${i + 1}`}>
+                ✕
+              </button>
+            </div>
+            {variants.length > 0 && <PhotoTags variants={variants} imageKey={k} photo={i + 1} onTag={onTag} />}
           </Reorder.Item>
         ))}
         {Array.from({ length: uploading }, (_, i) => (
@@ -420,6 +455,38 @@ function Photos({ images, onChange, onUploaded, onError }: { images: string[]; o
   );
 }
 
+/** Under a photo: one dot per option, filled when the photo shows it. None filled = shown for every option. */
+function PhotoTags({ variants, imageKey, photo, onTag }: { variants: VariantDraft[]; imageKey: string; photo: number; onTag: (variantKey: string, imageKey: string) => void }) {
+  const any = variants.some((v) => v.imageKeys.includes(imageKey));
+  return (
+    <div className="mt-1.5">
+      <div className="flex flex-wrap gap-1" role="group" aria-label={`Options photo ${photo} shows`}>
+        {variants.map((v) => {
+          const on = v.imageKeys.includes(imageKey);
+          const label = v.name || "Unnamed option";
+          return (
+            <button
+              key={v.key}
+              type="button"
+              title={label}
+              aria-label={label}
+              aria-pressed={on}
+              // Taps shouldn't start dragging the photo.
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => onTag(v.key, imageKey)}
+              className={cn("grid h-6 w-6 place-items-center rounded-full border text-[10px] font-semibold transition-[transform,opacity,box-shadow] active:scale-90", on ? "border-fg opacity-100 shadow-[0_0_0_2px_var(--bg),0_0_0_3.5px_var(--fg)]" : "border-line-strong opacity-35 hover:opacity-70")}
+              style={v.hex ? { background: v.hex } : undefined}
+            >
+              {!v.hex && (v.name.trim()[0]?.toUpperCase() ?? "?")}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-1 truncate text-[10px] text-faint">{any ? variants.filter((v) => v.imageKeys.includes(imageKey)).map((v) => v.name || "?").join(", ") : "All options"}</p>
+    </div>
+  );
+}
+
 function Variants({ value, onChange, basePrice }: { value: VariantDraft[]; onChange: (v: VariantDraft[]) => void; basePrice: number | null }) {
   const set = (key: string, patch: Partial<VariantDraft>) => onChange(value.map((v) => (v.key === key ? { ...v, ...patch } : v)));
   const small = "h-10 w-full rounded-lg border border-line bg-elev px-2.5 text-sm outline-none focus:border-accent-line";
@@ -449,7 +516,7 @@ function Variants({ value, onChange, basePrice }: { value: VariantDraft[]; onCha
           ))}
         </AnimatePresence>
       </Reorder.Group>
-      <button type="button" onClick={() => onChange([...value, { key: newKey(), name: "", price: "", stock: "", hex: null }])} className={buttonClass("secondary", "sm", "mt-3")}>
+      <button type="button" onClick={() => onChange([...value, { key: newKey(), name: "", price: "", stock: "", hex: null, imageKeys: [] }])} className={buttonClass("secondary", "sm", "mt-3")}>
         + Add option
       </button>
       {value.length > 0 && basePrice != null && (

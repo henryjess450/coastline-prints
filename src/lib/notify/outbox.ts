@@ -31,7 +31,7 @@ export function backoffMs(attempts: number) {
   return BACKOFF_MIN[Math.min(attempts - 1, BACKOFF_MIN.length - 1)] * 60_000;
 }
 
-type Payload = { orderId: string; productId?: string; variantId?: string; left?: number; requestId?: string; checkoutId?: string; giftId?: string; codeId?: string; customerId?: string; broadcastId?: string; note?: string | null; test?: boolean; signIn?: boolean; slip?: string; marketId?: string | null };
+type Payload = { orderId: string; productId?: string; variantId?: string; left?: number; requestId?: string; checkoutId?: string; giftId?: string; codeId?: string; customerId?: string; broadcastId?: string; note?: string | null; test?: boolean; signIn?: boolean; slip?: string; marketId?: string | null; commissionId?: string };
 
 let running: Promise<ProcessResult> | null = null;
 export type ProcessResult = { sent: number; failed: number; retrying: number };
@@ -151,6 +151,14 @@ async function deliver(kind: string, template: string, payload: Payload, jobId: 
     // LightLab: running-low alerts to the owner, and "it's back" to shoppers (skipped if no longer true).
     const { buildRestockEmail, buildStockAlertEmail } = await import("@/lib/shop/emails");
     const email = template === "lightlab-stock-alert" ? await buildStockAlertEmail(payload) : await buildRestockEmail(payload);
+    if (email) await (mailer ?? getMailer()).send(email, jobId);
+    return;
+  }
+  if (kind === "email" && template.startsWith("commission-")) {
+    // LightLab "Make me a lamp" requests: to the customer and the owner.
+    const { buildCommissionEmail, COMMISSION_EMAILS } = await import("@/lib/commissions/emails");
+    if (!(COMMISSION_EMAILS as readonly string[]).includes(template)) throw new UnknownJobError(`Unknown commission email ${template}`);
+    const email = await buildCommissionEmail(template as (typeof COMMISSION_EMAILS)[number], payload.commissionId ?? "");
     if (email) await (mailer ?? getMailer()).send(email, jobId);
     return;
   }

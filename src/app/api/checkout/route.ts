@@ -1,3 +1,6 @@
+import { getCardFee } from "@/lib/pos/card-fee.server";
+import { CARD_FEE_NAME, cardFeeFor } from "@/lib/pos/card-fee";
+import { lightlab } from "@config/lightlab";
 import { NextResponse } from "next/server";
 import { sourceFields } from "@/lib/attribution";
 import { liveSale } from "@/lib/sales";
@@ -53,7 +56,7 @@ export async function POST(req: Request) {
     const first = parsed.error.issues[0];
     return apiError(400, first?.path[0] === "customer" ? first.message : "Some order details are missing or invalid.");
   }
-  const { attemptId, sourceId, customer, items, products, expectedTotalCents, fulfillment, codes, payment } = parsed.data;
+  const { attemptId, sourceId, customer, items, products, expectedTotalCents, fulfillment, codes, payment, coverFee } = parsed.data;
   const shop = products.length > 0;
   const etransfer = payment === "etransfer" ? etransferSettings() : null;
   if (payment === "etransfer" && !etransfer) return apiError(503, "e-Transfer isn't available right now. Please pay by card.");
@@ -110,6 +113,9 @@ export async function POST(req: Request) {
       if (!ship) return apiError(409, "That shipping option isn't available for this order any more. Please choose another.", { code: "SHIPPING_CHANGED" });
     }
     const shippingCents = ship?.totalCents ?? 0;
+    // A LightLab gift note is a small extra on the order (a line of its own).
+    const giftNoteCents = shop && customer.giftNote && (priced as Awaited<ReturnType<typeof priceShopCart>>).shop === "lightlab" ? lightlab.giftNoteCents : 0;
+    const goodsCents = priced.totalCents + giftNoteCents;
     // Codes saved to an account only work when signed in to it.
     const account = await customerFromRequest(req);
     // Signed in and ordering with their own email: keep the name and phone for next time, if not saved yet.
@@ -119,12 +125,15 @@ export async function POST(req: Request) {
     const { records, errors } = await lookupCodes(codes, new Date(), account?.id ?? null, customer.email);
     if (errors.length) return apiError(409, `${errors[0].code}: ${errors[0].reason}`, { code: "CODE_INVALID", badCode: errors[0].code });
     // Site sales are for Coastline prints, not LightLab products.
-    const discount = applyCodes(priced.totalCents, records.map(toCodeInfo), shippingCents, shop ? null : await liveSale());
+    const discount = applyCodes(goodsCents, records.map(toCodeInfo), shippingCents, shop ? null : await liveSale());
     if (discount.rejected.length) return apiError(409, `${discount.rejected[0].code}: ${discount.rejected[0].reason}`, { code: "CODE_INVALID", badCode: discount.rejected[0].code });
 
     // Paying by e-Transfer: a little off what's sent, since there are no card fees.
     const etransferDiscountCents = etransfer ? etransferDiscount(discount.totalCents, etransferCfg.discountPercent) : 0;
-    const dueCents = discount.totalCents - etransferDiscountCents;
+    // Paying by card and they chose to cover the processing fee (when it's switched on).
+    const feeSettings = !etransfer && coverFee ? await getCardFee() : null;
+    const cardFeeCents = feeSettings?.on ? cardFeeFor(discount.totalCents - etransferDiscountCents, feeSettings) : 0;
+    const dueCents = discount.totalCents - etransferDiscountCents + cardFeeCents;
     if (dueCents !== expectedTotalCents) {
       return apiError(409, "The price changed while you were checking out. Please review the new total.", { code: "PRICE_CHANGED", totalCents: dueCents });
     }
@@ -137,7 +146,11 @@ export async function POST(req: Request) {
       lines: priced.lines,
       shopLines: shop ? (priced as Awaited<ReturnType<typeof priceShopCart>>).shopLines : undefined,
       shop: shop ? (priced as Awaited<ReturnType<typeof priceShopCart>>).shop : undefined,
-      quote: { items: priced.items, baseFeeCents: priced.baseFeeCents, subtotalCents: priced.subtotalCents, minimumAdjCents: priced.minimumAdjCents, totalCents: priced.totalCents, shipping: ship },
+      customLines: [
+        ...(giftNoteCents ? [{ name: "Gift note card", unitCents: giftNoteCents, quantity: 1, lineCents: giftNoteCents }] : []),
+        ...(cardFeeCents ? [{ name: CARD_FEE_NAME, unitCents: cardFeeCents, quantity: 1, lineCents: cardFeeCents }] : []),
+      ],
+      quote: { items: priced.items, baseFeeCents: priced.baseFeeCents, subtotalCents: priced.subtotalCents + giftNoteCents + cardFeeCents, minimumAdjCents: priced.minimumAdjCents, totalCents: goodsCents + cardFeeCents, shipping: ship },
     };
     const checkout = await db.checkout.create({
       data: {
@@ -157,6 +170,7 @@ export async function POST(req: Request) {
         customerEmail: customer.email,
         customerPhone: customer.phone,
         notes: customer.notes || null,
+        giftNote: giftNoteCents ? customer.giftNote : null,
         ...(fulfillment.method === "pickup"
           ? { fulfillment: "PICKUP", pickupDate: fulfillment.date, pickupTime: fulfillment.time }
           : fulfillment.method === "market"

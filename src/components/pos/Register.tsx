@@ -11,7 +11,8 @@ import { money } from "@/lib/format";
 import { formatPickup } from "@/lib/pickup";
 import { orderMinDate, POS_BRANDS, type CustomLine, type PosBrand, type PosCartInput, type PosLineView, type PosOrderItem, type PosPayment, type PosPopup, type PosQuote, type PosReply, type PosSaleInput, type PosScreen } from "@/lib/pos/types";
 import { pickup } from "@config/pickup";
-import { needsVariant, unitPrice, type ShopProductDto } from "@/lib/shop/types";
+import { cardFeeFor, cardFeeWhy, type CardFeeSettings } from "@/lib/pos/card-fee";
+import { needsVariant, photosFor, unitPrice, type ShopProductDto } from "@/lib/shop/types";
 import { AnimatedMoney, DrawnCheck, Modal, Qr, Thumb, useForceDark } from "./bits";
 import { CustomerScreen, type ReplyFn } from "./CustomerScreen";
 
@@ -33,7 +34,7 @@ type TakenOrder = { firstName: string; items: PosOrderItem[]; popupId: string; n
 export type RegisterMarket = { id: string; name: string };
 type Slip = "receipt" | "gift" | "claim";
 
-export type RegisterLinks = { etransferEmail: string | null; instagram: string; review: string | null; payLinks: boolean; /** The card processing fee is switched on for Square links. */ cardFee: boolean };
+export type RegisterLinks = { etransferEmail: string | null; instagram: string; review: string | null; payLinks: boolean; /** The card processing fee settings when it's switched on (the customer is asked whether to cover it). */ cardFee: CardFeeSettings | null };
 
 const store = {
   get: (k: string) => {
@@ -99,8 +100,8 @@ export function Register({ products, printOptions, links, markets }: { products:
   const [quote, setQuote] = useState<PosQuote | null>(null);
   /** Which cart the quote is for, so a payment link is only made from an up-to-date total. */
   const [quotedFor, setQuotedFor] = useState("");
-  /** The cashier can waive the card fee for this sale. */
-  const [waiveFee, setWaiveFee] = useState(false);
+  /** Scan to pay with the card fee on: the customer's answer to covering it (null = not asked yet). */
+  const [coverFee, setCoverFee] = useState<boolean | null>(null);
   /** No internet: the register prices lamps and custom items itself and keeps sales here until it's back. */
   const [offline, setOffline] = useState(false);
   const [queue, setQueueState] = useState<QueuedSale[]>([]);
@@ -184,9 +185,9 @@ export function Register({ products, printOptions, links, markets }: { products:
       custom: custom.map(({ name, unitCents, quantity }) => ({ name, unitCents, quantity })),
       codes,
       email: customer.email.trim(),
-      cardFee: pay === "LINK" && links.cardFee && !waiveFee,
+      cardFee: pay === "LINK" && !!links.cardFee && coverFee === true,
     }),
-    [brand, files, lines, custom, codes, customer.email, pay, links.cardFee, waiveFee],
+    [brand, files, lines, custom, codes, customer.email, pay, links.cardFee, coverFee],
   );
   const empty = !files.length && !lines.length && !custom.length;
 
@@ -267,6 +268,11 @@ export function Register({ products, printOptions, links, markets }: { products:
       say(`${taken.firstName}'s order is in. Take payment by cash or e-Transfer.`);
       return;
     }
+    if (r.kind === "fee-yes" || r.kind === "fee-no") {
+      setCoverFee(r.kind === "fee-yes");
+      say(r.kind === "fee-yes" ? "Customer chose to cover the card fee" : "Customer said no to the card fee");
+      return;
+    }
     if (r.kind === "dismiss" && taken && !taken.needBy && taken.popupId === r.popupId) {
       setOrder(null);
       say(`${taken.firstName} cancelled the order form`);
@@ -322,6 +328,10 @@ export function Register({ products, printOptions, links, markets }: { products:
       const body = await res.json();
       if (!res.ok) return body.error ?? "That didn't work.";
       handleReply({ popupId: a.popupId, kind: "account", email: a.email, name: a.name, created: body.created, at: Date.now() });
+    } else if (a.kind === "fee-yes" || a.kind === "fee-no") {
+      // Stay turned around: the pay code shows next.
+      handleReply({ popupId: a.popupId, kind: a.kind, at: Date.now() });
+      return null;
     } else {
       handleReply({ popupId: a.popupId, kind: a.kind, email: a.order?.email ?? a.email, name: a.name, order: a.order, at: Date.now() });
     }
@@ -546,6 +556,14 @@ export function Register({ products, printOptions, links, markets }: { products:
   const linkMaking = useRef(false);
   useEffect(() => {
     if (pay !== "LINK" || link || linkMaking.current || !shownQuote?.ok || quotedFor !== JSON.stringify(cart)) return;
+    // Card fee on: ask the customer first (on the display, or this iPad turned around). The link waits for the answer.
+    if (links.cardFee && coverFee == null) {
+      if (feeAskedFor.current !== attemptId) {
+        feeAskedFor.current = attemptId;
+        show({ id: popupId(), kind: "fee-ask", feeCents: cardFeeFor(shownQuote.totalCents, links.cardFee), why: cardFeeWhy(links.cardFee) });
+      }
+      return;
+    }
     linkMaking.current = true;
     const amountCents = shownQuote.totalCents;
     (async () => {
@@ -562,13 +580,16 @@ export function Register({ products, printOptions, links, markets }: { products:
         linkMaking.current = false;
       }
     })();
-  }, [pay, link, shownQuote, quotedFor, cart, attemptId, brand]);
+  }, [pay, link, shownQuote, quotedFor, cart, attemptId, brand, coverFee, links.cardFee]); // eslint-disable-line react-hooks/exhaustive-deps
+  const feeAskedFor = useRef<string | null>(null);
 
-  function toggleFee() {
+  /** The customer's answer (from the display, or told to the cashier): a fresh link is made with or without the fee. */
+  function answerFee(cover: boolean | null) {
     if (link) cancelLink(link);
     setLink(null);
-    if (popup?.kind === "card-link") setPopup(null);
-    setWaiveFee((w) => !w);
+    if (popup?.kind === "card-link" || popup?.kind === "fee-ask") setPopup(null);
+    if (cover == null) feeAskedFor.current = null;
+    setCoverFee(cover);
   }
 
   function cancelLink(l: PayLink) {
@@ -580,7 +601,8 @@ export function Register({ products, printOptions, links, markets }: { products:
     if (popup?.kind === "card-link" || popup?.kind === "etransfer") setPopup(null);
     setLink(null);
     setPay(null);
-    setWaiveFee(false);
+    setCoverFee(null);
+    feeAskedFor.current = null;
     setError(null);
   }
 
@@ -921,13 +943,32 @@ export function Register({ products, printOptions, links, markets }: { products:
                 <p className="text-muted">Set ETRANSFER_EMAIL on the server to show where to send it.</p>
               ))}
             {pay === "LINK" && links.cardFee && !(popup?.kind === "card-link" && popup.paid) && (
-              <label className="flex items-center justify-between gap-3 rounded-2xl bg-surface p-3 text-sm">
-                <span>
-                  Card processing fee
-                  <span className="block text-xs text-muted">{waiveFee ? "Waived for this sale." : `${money(shownQuote?.lines.find((l) => l.key === "card-fee")?.cents ?? 0)} added. The customer sees why.`}</span>
-                </span>
-                <input type="checkbox" checked={!waiveFee} onChange={toggleFee} className="h-5 w-5 accent-[var(--accent)]" />
-              </label>
+              <div className="rounded-2xl bg-surface p-3 text-sm">
+                <p className="font-medium">Card processing fee</p>
+                <p className="text-xs text-muted">
+                  {coverFee == null
+                    ? "Asking the customer if they'd like to cover it. Or tap their answer:"
+                    : coverFee
+                      ? `They chose to cover it: ${money(shownQuote?.lines.find((l) => l.key === "card-fee")?.cents ?? 0)} added.`
+                      : "They said no thanks. No fee added."}
+                </p>
+                <div className="mt-2 flex gap-2">
+                  {coverFee == null ? (
+                    <>
+                      <button type="button" onClick={() => answerFee(true)} className="rounded-full border border-line px-3 py-1 text-xs font-semibold hover:border-accent-line">
+                        Yes, cover it
+                      </button>
+                      <button type="button" onClick={() => answerFee(false)} className="rounded-full border border-line px-3 py-1 text-xs font-semibold hover:border-accent-line">
+                        No thanks
+                      </button>
+                    </>
+                  ) : (
+                    <button type="button" onClick={() => answerFee(null)} className="text-xs text-muted underline underline-offset-4 hover:text-fg">
+                      Ask again
+                    </button>
+                  )}
+                </div>
+              </div>
             )}
             {pay === "LINK" && <LinkPanel link={link} paid={popup?.kind === "card-link" && !!popup.paid} hasDisplay={!!registerId} onShow={() => setFlip(true)} />}
             {error && (
@@ -1553,7 +1594,7 @@ function offlineQuote(cart: PosCartInput, products: ShopProductDto[]): PosQuote 
     const v = p.variants.find((x) => x.id === l.variantId);
     const unit = v?.priceCents ?? p.priceCents;
     const qty = l.quantity ?? 1;
-    lines.push({ key: `product-${i}`, kind: "product", name: p.name, detail: [v?.name, l.customText && `"${l.customText}"`].filter(Boolean).join(" · ") || undefined, quantity: qty, cents: unit * qty, image: p.images[0] });
+    lines.push({ key: `product-${i}`, kind: "product", name: p.name, detail: [v?.name, l.customText && `"${l.customText}"`].filter(Boolean).join(" · ") || undefined, quantity: qty, cents: unit * qty, image: photosFor(p, l.variantId ?? null).images[0] });
   }
   for (const [i, c] of (cart.custom ?? []).entries()) lines.push({ key: `custom-${i}`, kind: "custom", name: c.name, quantity: c.quantity ?? 1, cents: c.unitCents * (c.quantity ?? 1) });
   return { ...base, ok: true, lines, totalCents: lines.reduce((n, l) => n + (l.cents ?? 0), 0) };

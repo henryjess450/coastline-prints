@@ -12,12 +12,13 @@ import type { PosBrand } from "./types";
 
 export const payLinksAvailable = () => !!squarePublicConfig();
 
-export async function createPayLink(attemptId: string, amountCents: number, brand: PosBrand) {
+export async function createPayLink(attemptId: string, amountCents: number, brand: PosBrand, opts: { /** Where Square sends them after paying. */ redirectUrl?: string; name?: string; note?: string } = {}) {
   const { paymentLink } = await getSquare().checkout.paymentLinks.create({
     // Same sale and amount: the same link, however many times it's asked for.
     idempotencyKey: `pos-${attemptId}-${amountCents}`,
-    quickPay: { name: `${shopConfig(brand).name.replace(" shop", "")} purchase`, priceMoney: { amount: BigInt(amountCents), currency: "CAD" }, locationId: squareLocationId() },
-    paymentNote: "In-person sale at the register",
+    quickPay: { name: opts.name ?? `${shopConfig(brand).name.replace(" shop", "")} purchase`, priceMoney: { amount: BigInt(amountCents), currency: "CAD" }, locationId: squareLocationId() },
+    paymentNote: opts.note ?? "In-person sale at the register",
+    ...(opts.redirectUrl ? { checkoutOptions: { redirectUrl: opts.redirectUrl } } : {}),
   });
   if (!paymentLink?.id || !paymentLink.url || !paymentLink.orderId) throw new Error("Square returned no payment link");
   return { linkId: paymentLink.id, url: paymentLink.url, orderId: paymentLink.orderId };

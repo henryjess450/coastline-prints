@@ -1,3 +1,5 @@
+import { getCardFee } from "@/lib/pos/card-fee.server";
+import { cardFeeFor } from "@/lib/pos/card-fee";
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { sourceFields } from "@/lib/attribution";
@@ -44,7 +46,10 @@ export async function POST(req: Request) {
   if (previous?.status === "PAID") return success(previous);
   if (previous?.status === "FAILED") return apiError(409, "This payment attempt already failed. Please try again.");
 
-  if (d.expectedTotalCents !== d.amountCents) return apiError(409, "The amount changed. Please check it and try again.");
+  // They chose to cover the card processing fee (when it's switched on). A retry keeps the first answer.
+  const feeSettings = !previous && d.coverFee ? await getCardFee() : null;
+  const feeCents = previous ? previous.feeCents : feeSettings?.on ? cardFeeFor(d.amountCents, feeSettings) : 0;
+  if (d.expectedTotalCents !== d.amountCents + feeCents) return apiError(409, "The amount changed. Please check it and try again.");
   if (!previous && !isValidSendOn(d.sendOn)) return apiError(400, "Please choose a delivery date between tomorrow and a year from now.");
   // Any promotion bonus is fixed when the purchase is first saved; a retry keeps it.
   const bonusCents = previous ? previous.bonusCents : bonusFor(d.amountCents, await getGiftBonus(), todayIn(pickup.timeZone));
@@ -58,6 +63,7 @@ export async function POST(req: Request) {
       data: {
         idempotencyKey: d.attemptId,
         amountCents: d.amountCents,
+        feeCents,
         bonusCents,
         design: d.design,
         source: src.source,
@@ -77,7 +83,7 @@ export async function POST(req: Request) {
     const { payment } = await getSquare().payments.create({
       sourceId: d.sourceId,
       idempotencyKey: d.attemptId,
-      amountMoney: { amount: BigInt(purchase.amountCents), currency: "CAD" },
+      amountMoney: { amount: BigInt(purchase.amountCents + purchase.feeCents), currency: "CAD" },
       locationId: squareLocationId(),
       autocomplete: true,
       referenceId: giftRef(purchase.id),
