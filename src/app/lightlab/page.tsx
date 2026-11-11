@@ -13,13 +13,14 @@ import { shopToday, upcomingMarkets } from "@/lib/shop/markets.server";
 import { FindUsAt } from "@/components/lightlab/FindUsAt";
 import { WildWall } from "@/components/lightlab/WildWall";
 import { wildPhotos } from "@/lib/shop/wild.server";
+import { currentStand } from "@/lib/shop/stand.server";
 import { shopShips } from "@/lib/shop/shipping-switch.server";
 
 export const metadata: Metadata = { title: { absolute: `${lightlab.name} · Novelty lamps` } };
 export const dynamic = "force-dynamic"; // prices and stock change in /lightlab/admin
 
 export default async function LightLabShop({ searchParams }: { searchParams: Promise<{ collection?: string | string[] }> }) {
-  const [all, markets, q, ships, wild] = await Promise.all([listProducts(), upcomingMarkets(6), searchParams, shopShips("lightlab"), wildPhotos()]);
+  const [all, markets, q, ships, wild, stand] = await Promise.all([listProducts(), upcomingMarkets(6), searchParams, shopShips("lightlab"), wildPhotos(), currentStand()]);
   // Add-ons are offered in the cart, not counted as pieces here.
   const products = all.filter((p) => !p.addon);
   const lamps = new Map(products.map((p) => [p.id, { name: p.name, href: `/lightlab/${p.slug}` }]));
@@ -44,7 +45,7 @@ export default async function LightLabShop({ searchParams }: { searchParams: Pro
           {products.length > 0 && <p className="text-sm text-muted">{products.length} {products.length === 1 ? "piece" : "pieces"}</p>}
         </div>
         {products.length ? (
-          <ProductGrid products={featured} initialCategory={categoryFromParam(products, q.collection)} />
+          <ProductGrid products={featured} initialCategory={categoryFromParam(products, q.collection)} stand={stand} />
         ) : (
           <div className="rounded-3xl border border-line bg-surface px-6 py-16 text-center">
             <p className="font-display text-xl font-semibold">New pieces are on the way.</p>

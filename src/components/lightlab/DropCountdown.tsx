@@ -11,9 +11,10 @@ export function DropCountdown({ at, onDropped }: { at: string; onDropped: () => 
   // Starts empty so the server and browser render the same, then ticks.
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    setNow(Date.now());
-    return () => clearInterval(t);
+    const tick = () => setNow(Date.now());
+    const first = setTimeout(tick, 0);
+    const t = setInterval(tick, 1000);
+    return () => (clearTimeout(first), clearInterval(t));
   }, []);
   useEffect(() => {
     if (now != null && now >= end) onDropped();

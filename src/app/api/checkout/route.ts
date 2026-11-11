@@ -75,14 +75,9 @@ export async function POST(req: Request) {
     }
   }
 
-  // Picking up at a market day: LightLab products only, and the market has to be tomorrow or later.
-  const market = !previous && fulfillment.method === "market" ? await marketForPickup(fulfillment.marketId) : null;
-  if (!previous && fulfillment.method === "market") {
-    if (!customer.pickupAcknowledged) return apiError(400, "Please confirm you'll pick up your order.");
-    const notLightLab = shop ? await db.shopProduct.count({ where: { id: { in: products.map((p) => p.productId) }, shop: { not: "lightlab" } } }) : 1;
-    if (notLightLab) return apiError(400, "Market pickup is for LightLab orders.");
-    if (!market) return apiError(400, "That market day isn't available for pickup any more. Please choose another.", { code: "PICKUP_UNAVAILABLE" });
-  }
+  // Orders aren't brought to markets any more (lamps at the stand are reserved with a hold instead).
+  const market: Awaited<ReturnType<typeof marketForPickup>> = null;
+  if (!previous && fulfillment.method === "market") return apiError(400, "Pickup at a market isn't offered any more. Please choose local pickup or shipping.", { code: "PICKUP_UNAVAILABLE" });
 
   let checkoutId = previous?.id;
   let totalCents = previous?.totalCents;

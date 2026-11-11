@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { printImage } from "@/lib/receipt/print";
 import { renderPackingSlipPng } from "@/lib/receipt/packing-slip";
 import { packingList, saveKit } from "@/lib/shop/packing.server";
+import { setPacked } from "@/lib/shop/stand.server";
 
 export type MarketState = { ok?: boolean; error?: string; message?: string };
 
@@ -80,4 +81,22 @@ export async function printPackingListAction(marketId: string): Promise<MarketSt
     logError("lightlab:packing-print", err);
     return { error: err instanceof Error ? err.message : "Couldn't print it." };
   }
+}
+
+/** Packing list: a lamp went in the van (count) or came back out (0). It shows on the shop as at the stand. */
+export async function setPackedAction(marketId: string, key: string, count: number): Promise<MarketState> {
+  await requireAdmin();
+  if (!/^[a-z0-9]{1,40}:[a-z0-9]{0,40}$/i.test(key) || !Number.isFinite(count)) return { error: "That line isn't valid." };
+  await setPacked(marketId, key, Math.max(0, count));
+  revalidatePath("/lightlab");
+  return { ok: true };
+}
+
+/** At the stand: a hold was picked up, or let go so the lamp's back up for grabs. */
+export async function setHoldStatusAction(id: string, status: "COLLECTED" | "RELEASED" | "HELD"): Promise<MarketState> {
+  await requireAdmin();
+  if (!["COLLECTED", "RELEASED", "HELD"].includes(status)) return { error: "Unknown status." };
+  await db.standHold.update({ where: { id }, data: { status } });
+  revalidatePath("/lightlab");
+  return { ok: true };
 }

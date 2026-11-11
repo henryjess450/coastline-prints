@@ -9,6 +9,7 @@ import { dropShort } from "@/lib/shop/drop-time";
 import { editionLeft, inSeason, inStock, notDropped, photosFor, SEASON_FILTER, slugify, type ShopProductDto, type ShopVariant } from "@/lib/shop/types";
 import { useSeason } from "@/components/season/SeasonContext";
 import { FadeImg } from "./FadeImg";
+import { atStand, type StandDto } from "@/lib/shop/stand";
 import { SeasonSparkle } from "./SeasonSparkle";
 
 /** Everything left to buy across a product's options. Null = made to order. */
@@ -25,7 +26,7 @@ function stockLeft(p: ShopProductDto) {
 
 const fromPrice = (p: ShopProductDto) => Math.min(p.priceCents, ...p.variants.map((v) => v.priceCents ?? p.priceCents));
 
-export function ProductGrid({ products: all, initialCategory = null }: { products: ShopProductDto[]; initialCategory?: string | null }) {
+export function ProductGrid({ products: all, initialCategory = null, stand = null }: { products: ShopProductDto[]; initialCategory?: string | null; /** LightLab: lamps packed for today's (or tomorrow's) market. */ stand?: StandDto | null }) {
   // Add-ons are offered in the cart, not on the shop.
   const products = all.filter((p) => !p.addon);
   const season = useSeason();
@@ -68,7 +69,7 @@ export function ProductGrid({ products: all, initialCategory = null }: { product
           <ul className="grid grid-cols-2 gap-x-4 gap-y-8 sm:gap-x-6 lg:grid-cols-3">
             {seasonal.slice(0, 3).map((p) => (
               <li key={p.id}>
-                <ProductCard product={p} seasonId={season.id} />
+                <ProductCard product={p} seasonId={season.id} stand={stand} />
               </li>
             ))}
           </ul>
@@ -92,7 +93,7 @@ export function ProductGrid({ products: all, initialCategory = null }: { product
           {shown.map((p, i) => (
             // Each row rises in as it scrolls into view, left to right.
             <motion.li key={p.id} layout initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "0px 0px -40px 0px" }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1], delay: (i % 3) * 0.08 }}>
-              <ProductCard product={p} seasonId={season.id} />
+              <ProductCard product={p} seasonId={season.id} stand={stand} />
             </motion.li>
           ))}
         </AnimatePresence>
@@ -115,7 +116,7 @@ export function ProductCards({ products }: { products: ShopProductDto[] }) {
   );
 }
 
-function ProductCard({ product: p, seasonId }: { product: ShopProductDto; seasonId: string }) {
+function ProductCard({ product: p, seasonId, stand = null }: { product: ShopProductDto; seasonId: string; stand?: StandDto | null }) {
   const festive = inSeason(p, seasonId);
   const left = stockLeft(p);
   const soldOut = left === 0;
@@ -140,6 +141,7 @@ function ProductCard({ product: p, seasonId }: { product: ShopProductDto; season
           {hoverSrc && <motion.img key={hoverSrc} src={hoverSrc} alt="" aria-hidden initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }} className="absolute inset-0 h-full w-full object-cover" />}
         </AnimatePresence>
         {festive && !soldOut && <SeasonSparkle seasonId={seasonId} />}
+        {atStand(stand, p.id) && <StandBadge stand={stand!} />}
         <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
           {notDropped(p) && p.dropAt ? (
             <Badge solid>Drops {dropShort(p.dropAt)}</Badge>
@@ -178,6 +180,18 @@ function ProductCard({ product: p, seasonId }: { product: ShopProductDto; season
         </div>
       )}
     </Link>
+  );
+}
+
+/** "At Moss Street today": this lamp is packed for the market stand. */
+function StandBadge({ stand }: { stand: StandDto }) {
+  return (
+    <span className="absolute bottom-3 left-3 inline-flex max-w-[calc(100%-1.5rem)] items-center gap-1.5 rounded-full bg-bg/90 px-2.5 py-1 text-xs font-semibold text-fg backdrop-blur">
+      <span className="h-2 w-2 shrink-0 rounded-full bg-[#297f9d]" aria-hidden />
+      <span className="truncate">
+        At {stand.name} {stand.when}
+      </span>
+    </span>
   );
 }
 

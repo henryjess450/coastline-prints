@@ -2,6 +2,7 @@ import "server-only";
 import { pickup } from "@config/pickup";
 import { db } from "@/lib/db";
 import type { ShopVariant } from "./types";
+import { parsePacked } from "./stand.server";
 
 /*
  * The packing list for a market day: online orders to bring for pickup,
@@ -64,6 +65,8 @@ export type PackingList = {
   lastTotalCents: number;
   pickups: PackPickup[];
   lines: PackLine[];
+  /** Lamps ticked as packed, by line key: these show on the shop as "At <market>". */
+  packed: Record<string, number>;
   kit: string[];
 };
 
@@ -125,6 +128,7 @@ export async function packingList(marketId: string): Promise<PackingList | null>
     lastTotalCents: lastSales.reduce((n, o) => n + o.totalCents, 0),
     pickups: orders.map((o) => ({ orderNumber: o.orderNumber, orderId: o.id, name: o.customerName, items: o.items.map((i) => `${i.quantity} × ${i.fileName}${i.colorName ? ` (${i.colorName})` : ""}`), ready: o.status === "READY_FOR_PICKUP" })),
     lines,
+    packed: parsePacked(market.packed),
     kit: await getKit(),
   };
 }

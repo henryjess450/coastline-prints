@@ -8,6 +8,9 @@ import { money } from "@/lib/format";
 import { cartFor } from "@/lib/shop/cart";
 import { CUSTOM_TEXT_MAX, editionLeft, inStock, notDropped, photosFor, slugify, unitPrice, variantForPhoto, variantOf, type ShopProductDto } from "@/lib/shop/types";
 import { DropCountdown } from "./DropCountdown";
+import { atStand, standLeft, standPool, type StandDto } from "@/lib/shop/stand";
+import { StandHoldForm } from "./StandHoldForm";
+import { clock } from "@/lib/shop/markets";
 import { buzz, play } from "@/lib/feel";
 import { flyToCart } from "@/lib/feel/fly";
 import { Gallery } from "./Gallery";
@@ -15,7 +18,7 @@ import { QuantityStepper } from "./QuantityStepper";
 import { RestockForm } from "./RestockForm";
 
 /** Photos, options, personalisation, quantity and "Add to cart" for one product (either shop). */
-export function ProductBuy({ product: p, ships = true, initialVariant = null }: { product: ShopProductDto; /** False while the shop is pickup only. */ ships?: boolean; /** From a ?colour= link. */ initialVariant?: string | null }) {
+export function ProductBuy({ product: p, ships = true, initialVariant = null, stand = null }: { product: ShopProductDto; /** False while the shop is pickup only. */ ships?: boolean; /** From a ?colour= link. */ initialVariant?: string | null; /** LightLab: lamps packed for today's (or tomorrow's) market. */ stand?: StandDto | null }) {
   const shop = shopConfig(p.shop);
   const ll = shop.id === "lightlab";
   const useCart = cartFor(shop.id);
@@ -166,6 +169,8 @@ export function ProductBuy({ product: p, ships = true, initialVariant = null }: 
           </p>
         )}
 
+        {ll && atStand(stand, p.id) && !upcoming && <AtStand stand={stand!} productId={p.id} variantId={variantId} label={variant ? `${p.name} (${variant.name})` : p.name} left={standLeft(stand, p.id, variantId)} optionName={variant && standPool(stand!, p.id, variant.id) !== `${p.id}:` ? variant.name : null} notHere={variant && !(standPool(stand!, p.id, variant.id) in stand!.left) ? variant.name : null} />}
+
         <div className="mt-4 flex flex-wrap items-center gap-3">
           {upcoming ? (
             <RestockForm productId={p.id} variantId={null} label={p.name} drop />
@@ -211,6 +216,24 @@ export function ProductBuy({ product: p, ships = true, initialVariant = null }: 
           <li>Pay by Interac e-Transfer or card. {ll ? "Coastline gift cards work too." : "Gift cards work too."}</li>
         </ul>
       </div>
+    </div>
+  );
+}
+
+/** "At the stand at Moss Street today": how many are there, and hold one for free to pay at the stand. */
+function AtStand({ stand, productId, variantId, label, left, optionName, notHere }: { stand: StandDto; productId: string; variantId: string | null; label: string; left: number; optionName: string | null; /** The chosen option wasn't packed (others were). */ notHere: string | null }) {
+  const when = stand.when === "today" ? `today until ${clock(stand.endTime)}` : `tomorrow, ${clock(stand.startTime)} to ${clock(stand.endTime)}`;
+  return (
+    <div className="mt-6 rounded-2xl border border-line bg-surface p-4">
+      <p className="flex items-center gap-2 text-sm font-semibold">
+        <span className="h-2.5 w-2.5 rounded-full bg-[#297f9d]" aria-hidden />
+        At the LightLab stand at {stand.name} {when}
+      </p>
+      <p className="mt-1 text-sm text-muted">
+        {stand.place}.{" "}
+        {left > 0 ? `${left} ${optionName ? `in ${optionName} ` : ""}${left === 1 ? "is" : "are"} there.` : notHere ? `${notHere} isn't at the stand, but other options are.` : "The ones at the stand are all held right now."}
+      </p>
+      {left > 0 && (stand.reservable ? <StandHoldForm key={`${productId}:${variantId ?? ""}`} stand={stand} productId={productId} variantId={variantId} label={label} max={Math.min(5, left)} /> : <p className="mt-3 text-sm">Come by before {clock(stand.endTime)}!</p>)}
     </div>
   );
 }

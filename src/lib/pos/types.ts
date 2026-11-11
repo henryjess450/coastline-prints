@@ -237,7 +237,6 @@ export const SLIDE_KINDS = [
   { id: "lamps", name: "Your picked lamps", hint: "One slide per lamp you pick below" },
   { id: "markets", name: "Find us next", hint: "Upcoming market dates, hours and places" },
   { id: "shop", name: "Order online", hint: "QR to the shop, ships across Canada" },
-  { id: "pickup", name: "Pick up at a market", hint: "Order online, collect it at the stand" },
   { id: "gifts", name: "Gift cards", hint: "QR to gift cards" },
   { id: "orders", name: "We take orders", hint: "Order at the stand, ready in about a week" },
   { id: "made", name: "Made in Victoria", hint: "Designed and 3D printed here" },
@@ -250,7 +249,11 @@ export type SlideKind = (typeof SLIDE_KINDS)[number]["id"];
 
 export const displaySettingsSchema = z.object({
   /** In order; the ones listed run. */
-  slides: z.array(z.enum(SLIDE_KINDS.map((k) => k.id) as [SlideKind, ...SlideKind[]])).default(["welcome", "markets", "shop", "orders", "pickup", "gifts", "made", "comeback", "coastline", "follow"]),
+  // Slides that no longer exist (like "pickup", gone 2026-11-11) drop out instead of resetting the whole list.
+  slides: z.preprocess(
+    (v) => (Array.isArray(v) ? v.filter((x) => SLIDE_KINDS.some((k) => k.id === x)) : v),
+    z.array(z.enum(SLIDE_KINDS.map((k) => k.id) as [SlideKind, ...SlideKind[]])).default(["welcome", "markets", "shop", "orders", "gifts", "made", "comeback", "coastline", "follow"]),
+  ),
   /** Lamps with a slide of their own (product ids). */
   products: z.array(z.string().max(40)).max(30).default([]),
   seconds: z.number().int().min(4).max(30).default(8),

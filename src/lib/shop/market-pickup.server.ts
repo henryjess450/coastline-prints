@@ -10,11 +10,14 @@ import { shopToday } from "./markets.server";
  * where to pick up asks here, so a market pickup never shows the home address.
  */
 
-/** Market days an online order can still be picked up at: from tomorrow on. */
+/**
+ * Market days an online order can be picked up at: none. The owner stopped
+ * bringing orders to markets (2026-11-11); lamps already at the stand are
+ * reserved with a free hold instead (stand.server.ts). Orders placed before
+ * still show their market below.
+ */
 export async function pickupMarkets(): Promise<MarketDto[]> {
-  const today = shopToday();
-  const rows = await db.market.findMany({ where: { date: { gt: today } }, orderBy: [{ date: "asc" }, { startTime: "asc" }], take: 12 });
-  return rows.map((m) => ({ id: m.id, name: m.name, place: m.place, address: m.address, date: m.date, startTime: m.startTime, endTime: m.endTime, note: m.note, url: m.url }));
+  return [];
 }
 
 /** A market an order may be picked up at (it exists and is tomorrow or later), or null. */

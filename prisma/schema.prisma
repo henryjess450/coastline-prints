@@ -581,6 +581,9 @@ model Market {
   note      String   @default("")
   /// The market's own page (optional).
   url       String   @default("")
+  /// JSON { "<productId>:<variantId or empty>": count } of lamps packed for the stand
+  /// (ticked on the packing list). Shown on the shop as "At <market> today" and reservable.
+  packed    String   @default("{}")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -755,4 +758,31 @@ model LampCommission {
   updatedAt     DateTime  @updatedAt
 
   @@index([status, createdAt])
+}
+
+/// A free hold on a lamp at the LightLab stand: the customer picks a half-hour
+/// window and pays at the stand. Once the window ends it's back up for grabs.
+model StandHold {
+  id         String   @id @default(cuid())
+  /// Unguessable token for the customer's page (see it, cancel it).
+  token      String   @unique
+  marketId   String
+  productId  String
+  /// The option held, or "" for the product itself.
+  variantId  String   @default("")
+  /// Names as they were when held (shown even if the product changes).
+  label      String
+  quantity   Int      @default(1)
+  name       String
+  email      String
+  phone      String   @default("")
+  /// The window they said they'd come, "HH:MM" on the market's day.
+  slotStart  String
+  slotEnd    String
+  /// HELD | COLLECTED (picked up) | RELEASED (by the owner) | CANCELLED (by them)
+  status     String   @default("HELD")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([marketId, status])
 }
