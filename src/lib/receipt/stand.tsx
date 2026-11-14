@@ -14,16 +14,18 @@ import { comebackCouponFor } from "@/lib/codes/comeback";
 import { formatCardNumber } from "@/lib/codes/apply";
 import { artUri, scissors, lampRow, marketBand, seasonBottom, seasonTop, type Art } from "./art";
 import { loadReceiptData, orderBarcode, RECEIPT_WIDTH } from "./render";
+import { renderOrderSlipPng } from "./order-slip";
 import { findMarket, getPrintSettings, receiptSeason, seasonMessage } from "./settings";
 import type { Market } from "./themes";
 
 /**
- * Slips for the customer at the LightLab stand, themed for the market the
- * stand is at and the season:
+ * Slips for the customer at the LightLab stand:
  *   receipt  what they bought and paid
  *   gift     the same without prices, to tuck in with a present
- *   claim    an order ticket for something made later (Start order):
- *            the day it's ready and a QR code to check on it
+ *   claim    an order ticket for something made later (Start order): a
+ *            short slip with their details, the day it's ready and a QR
+ *            code to check on it (order-slip.tsx)
+ * Receipts and gift receipts are themed for the market and the season.
  */
 export const STAND_SLIPS = ["receipt", "gift", "claim"] as const;
 export type StandSlip = (typeof STAND_SLIPS)[number];
@@ -33,6 +35,8 @@ export type StandSlipData = {
   orderNumber: string;
   placedAt: string;
   firstName: string;
+  /** Order tickets: who it's for, so the slip is theirs to keep. Blank parts are left off. */
+  customer?: { name: string; phone: string; email: string };
   items: { name: string; option: string; quantity: number; lineCents: number }[];
   discounts: { label: string; amountCents: number }[];
   totalCents: number;
@@ -60,6 +64,7 @@ export async function loadStandSlipData(orderId: string): Promise<{ data: StandS
       orderNumber: o.orderNumber,
       placedAt: new Intl.DateTimeFormat("en-US", { timeZone: pickup.timeZone, month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(o.createdAt),
       firstName: o.customerName === "Walk-in customer" ? "" : o.customerName.split(/\s+/)[0],
+      customer: { name: o.customerName === "Walk-in customer" ? "" : o.customerName, phone: o.customerPhone, email: o.customerEmail },
       items: o.items.map((i) => ({ name: i.fileName, option: i.colorName, quantity: i.quantity, lineCents: i.lineCents })),
       discounts: r.discounts,
       totalCents: o.totalCents,
@@ -95,6 +100,7 @@ export function sampleSlipData(slip: StandSlip): StandSlipData {
     orderNumber: "LL-1042",
     placedAt: new Intl.DateTimeFormat("en-US", { timeZone: pickup.timeZone, month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date()),
     firstName: "Sam",
+    customer: { name: "Sam Carter", phone: "250-555-0142", email: "sam.carter@example.com" },
     items: [
       { name: "Fun-gi mushroom lamp", option: "Red cap", quantity: 1, lineCents: 4500 },
       { name: "Cloudy night light", option: "", quantity: 2, lineCents: 5000 },
@@ -133,6 +139,7 @@ const Rule = ({ dashed = false }: { dashed?: boolean }) => <div style={{ display
 const serif = { fontFamily: "Instrument Serif", fontStyle: "italic" as const, fontWeight: 400 };
 
 export async function renderStandSlipPng(slip: StandSlip, d: StandSlipData, theme: StandTheme): Promise<Buffer> {
+  if (slip === "claim") return renderOrderSlipPng(d);
   const top = seasonTop(theme.season);
   // Kept short: the scene near the bottom only for a season with nothing along the top (Remembrance Day's poppy).
   const bottom = top ? null : seasonBottom(theme.season);
@@ -142,11 +149,11 @@ export async function renderStandSlipPng(slip: StandSlip, d: StandSlipData, them
   const qr = await QRCode.toString(d.link, { type: "svg", margin: 0, errorCorrectionLevel: "M", color: { dark: "#000000", light: "#ffffff" } });
   const barcode = slip === "gift" ? await orderBarcode(d.orderNumber) : null;
   const prices = slip !== "gift";
-  const title = slip === "gift" ? "Gift Receipt" : slip === "claim" ? "Order Ticket" : "Receipt";
+  const title = slip === "gift" ? "Gift Receipt" : "Receipt";
   const closing = [theme.seasonMessage, theme.market?.message || theme.footer].filter(Boolean);
 
   const couponBarcode = d.comeback ? await orderBarcode(d.comeback.code) : null;
-  const height = (d.comeback ? 470 : 0) + 1500 + d.items.length * 70 + d.discounts.length * 30 + (top?.h ?? 0) + (bottom?.h ?? 0) + (band?.h ?? 0) + (d.notes ? 90 : 0);
+  const height = (d.comeback ? 470 : 0) + 1500 + d.items.length * 70 + d.discounts.length * 30 + (top?.h ?? 0) + (bottom?.h ?? 0) + (band?.h ?? 0);
 
   const tree = (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%", height: "100%", background: "white", color: "black", fontFamily: "Gabarito", fontSize: 24, lineHeight: 1.2 }}>
@@ -168,15 +175,6 @@ export async function renderStandSlipPng(slip: StandSlip, d: StandSlipData, them
       <span style={{ fontSize: 22, marginTop: 4 }}>
         {d.orderNumber} · {d.placedAt}
       </span>
-
-      {slip === "claim" && (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", alignSelf: "stretch", background: "black", color: "white", borderRadius: 28, padding: "14px 12px 18px", marginTop: 14 }}>
-          {d.firstName && <span style={{ fontSize: 26 }}>Made for {d.firstName}</span>}
-          <span style={{ fontSize: 22, marginTop: 6 }}>READY BY</span>
-          <span style={{ fontSize: 40, fontWeight: 800, textAlign: "center" }}>{d.readyOn ?? "We'll be in touch"}</span>
-          <span style={{ fontSize: 20, marginTop: 6 }}>We&apos;ll email you when it&apos;s ready</span>
-        </div>
-      )}
 
       <Rule dashed />
       <div style={{ display: "flex", flexDirection: "column", alignSelf: "stretch", padding: "0 6px" }}>
@@ -208,12 +206,6 @@ export async function renderStandSlipPng(slip: StandSlip, d: StandSlipData, them
             {d.paidWith && <span style={{ fontSize: 20 }}>Paid with {d.paidWith}</span>}
           </div>
         )}
-        {d.notes && slip === "claim" && (
-          <div style={{ display: "flex", flexDirection: "column", marginTop: 8 }}>
-            <span style={{ fontSize: 18, fontWeight: 800, letterSpacing: 1 }}>NOTES</span>
-            <span style={{ fontSize: 22 }}>{d.notes}</span>
-          </div>
-        )}
       </div>
 
       {slip === "gift" && (
@@ -241,7 +233,7 @@ export async function renderStandSlipPng(slip: StandSlip, d: StandSlipData, them
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: 16 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={`data:image/svg+xml;base64,${Buffer.from(qr).toString("base64")}`} width={170} height={170} alt="" />
-          <span style={{ fontSize: 21, fontWeight: 800, marginTop: 6 }}>{slip === "claim" ? "Scan to check on your order" : "Scan for your receipt online"}</span>
+          <span style={{ fontSize: 21, fontWeight: 800, marginTop: 6 }}>Scan for your receipt online</span>
         </div>
       )}
 
