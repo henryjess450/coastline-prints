@@ -4,7 +4,7 @@ import type { ShopId } from "@config/shops";
 import { db } from "@/lib/db";
 import { getSeason } from "@/lib/season";
 import { heldStock, withHolds } from "./holds.server";
-import { shopImageUrl, type ShopProductDto, type ShopVariant } from "./types";
+import { shopImageUrl, type ShopProductDto, type ShopOptionSet, type ShopVariant } from "./types";
 
 function parse<T>(s: string, fallback: T): T {
   try {
@@ -30,6 +30,7 @@ export function toProductDto(p: ShopProduct): ShopProductDto {
     stock: p.stock,
     // Tags on photos that were since removed are dropped.
     variants: parse<ShopVariant[]>(p.variants, []).map((v) => ({ ...v, imageKeys: (v.imageKeys ?? []).filter((k) => keys.includes(k)) })),
+    optionSets: parse<ShopOptionSet[]>(p.optionSets, []),
     images: keys.map(shopImageUrl),
     imageKeys: keys,
     size: { x: p.sizeXMm, y: p.sizeYMm, z: p.sizeZMm },

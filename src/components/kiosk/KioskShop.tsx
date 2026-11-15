@@ -11,7 +11,8 @@ import { flyToCart } from "@/lib/feel/fly";
 import { cn } from "@/lib/cn";
 import { money } from "@/lib/format";
 import type { PosQuote } from "@/lib/pos/types";
-import { CUSTOM_TEXT_MAX, inStock, unitPrice, type ShopProductDto } from "@/lib/shop/types";
+import { CUSTOM_TEXT_MAX, choiceIds, inStock, unitPrice, type ShopProductDto } from "@/lib/shop/types";
+import { ChoiceSets } from "@/components/shop/ChoiceSets";
 import { addLine, type KioskLine } from "./kiosk-cart";
 import { Steps, type KioskMode } from "./KioskBits";
 
@@ -220,13 +221,13 @@ export function KioskShop({
             p={open}
             order={order}
             onClose={() => setOpen(null)}
-            onAdd={(variantId, qty, price, max, customText, from) => {
+            onAdd={(variantId, qty, price, max, customText, from, choices) => {
               const p = open;
               setOpen(null);
               feedback("pop", 15);
               // The photo flies into the bag, then it lands (and the bag lamp lights).
               flyToCart(from, p.images[0] ?? null, () => {
-                setLines((ls) => addLine(ls, p, variantId, qty, price, order ? null : max, customText));
+                setLines((ls) => addLine(ls, p, variantId, qty, price, order ? null : max, customText, choices));
                 feedback("sparkle");
               });
             }}
@@ -239,14 +240,15 @@ export function KioskShop({
 }
 
 /** One lamp, big: photos (swipe), options, a name for personalised ones, how many, and Add. */
-function ProductSheet({ p, order, onClose, onAdd, inBag }: { p: ShopProductDto; order: boolean; onClose: () => void; onAdd: (variantId: string | null, qty: number, unitCents: number, max: number | null, customText: string, from: Element | null) => void; inBag: (variantId: string | null) => number }) {
+function ProductSheet({ p, order, onClose, onAdd, inBag }: { p: ShopProductDto; order: boolean; onClose: () => void; onAdd: (variantId: string | null, qty: number, unitCents: number, max: number | null, customText: string, from: Element | null, choices: string[]) => void; inBag: (variantId: string | null) => number }) {
   const [variantId, setVariantId] = useState<string | null>(() => (order ? p.variants[0]?.id : p.variants.find((v) => inStock(p, v.id) !== 0)?.id ?? p.variants[0]?.id) ?? null);
+  const [choices, setChoices] = useState<string[]>(() => choiceIds(p));
   const [qty, setQty] = useState(1);
   const [text, setText] = useState("");
   const [needText, setNeedText] = useState(false);
   const photo = useRef<HTMLDivElement>(null);
   const variant = p.variants.find((v) => v.id === variantId) ?? null;
-  const price = unitPrice(p, variantId);
+  const price = unitPrice(p, variantId, choices);
   const stock = order ? null : inStock(p, variantId);
   const room = Math.min(20, stock ?? 20) - (order ? 0 : inBag(variantId));
   const quantity = Math.max(1, Math.min(qty, room));
@@ -288,6 +290,7 @@ function ProductSheet({ p, order, onClose, onAdd, inBag }: { p: ShopProductDto; 
               })}
             </div>
           )}
+          <ChoiceSets sets={p.optionSets} value={choices} onChange={setChoices} size="lg" className="mt-6" />
           {personal && (
             <div className="mt-6">
               <label htmlFor="kiosk-custom" className="mb-2 block text-lg font-medium">
@@ -306,7 +309,7 @@ function ProductSheet({ p, order, onClose, onAdd, inBag }: { p: ShopProductDto; 
               whileTap={{ scale: 0.96 }}
               onClick={() => {
                 if (personal && !text.trim()) return setNeedText(true);
-                onAdd(variantId, quantity, price, stock, personal ? text.trim() : "", photo.current);
+                onAdd(variantId, quantity, price, stock, personal ? text.trim() : "", photo.current, choices);
               }}
               className="h-16 flex-1 rounded-full bg-fg text-lg font-bold text-bg disabled:opacity-40"
             >

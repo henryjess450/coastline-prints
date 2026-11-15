@@ -37,7 +37,7 @@ type ShopCart = {
 
 /** One line per product, option and personalisation (two keychains with different names are two lines). */
 // Same keys as before personalisation existed, so carts already saved in browsers still match.
-const keyOf = (productId: string, variantId: string | null, customText?: string | null) => `${productId}:${variantId ?? ""}${customText ? `:${customText}` : ""}`;
+const keyOf = (productId: string, variantId: string | null, customText?: string | null, choices?: string[]) => `${productId}:${variantId ?? ""}${customText ? `:${customText}` : ""}${choices?.length ? `|${choices.join(",")}` : ""}`;
 
 /** Each shop has its own cart, saved in the browser under its own name. */
 function makeShopCart(shop: ShopId) {
@@ -51,7 +51,7 @@ function makeShopCart(shop: ShopId) {
         setOpen: (open) => set({ open }),
         add: (line) =>
           set((s) => {
-            const key = keyOf(line.productId, line.variantId, line.customText);
+            const key = keyOf(line.productId, line.variantId, line.customText, line.choices);
             const have = s.lines.find((l) => l.key === key);
             if (have) return { open: true, lines: s.lines.map((l) => (l.key === key ? { ...l, ...line, key, quantity: clampQty(l.quantity + line.quantity, line.max) } : l)) };
             if (s.lines.length >= maxLinesPerOrder) return { open: true };
@@ -69,11 +69,12 @@ function makeShopCart(shop: ShopId) {
         reset: () => set({ lines: [], open: false }),
         sync: (priced) =>
           set((s) => {
-            const by = new Map(priced.map((p) => [keyOf(p.productId, p.variantId, p.customText), p]));
+            // A line added without its choices (a one-tap suggestion) matches the server's line with the first choices filled in.
+            const by = new Map(priced.flatMap((p) => [[keyOf(p.productId, p.variantId, p.customText), p] as const, [keyOf(p.productId, p.variantId, p.customText, p.choices), p] as const]));
             let changed = false;
             const lines = s.lines.map((l) => {
               const p = by.get(l.key);
-              if (!p || (p.unitCents === l.unitCents && p.name === l.name)) return l;
+              if (!p || (p.unitCents === l.unitCents && p.name === l.name && p.variantName === l.variantName)) return l;
               changed = true;
               return { ...l, unitCents: p.unitCents, name: p.name, variantName: p.variantName };
             });
@@ -95,7 +96,7 @@ export const cartFor = (shop: ShopId = "lightlab") => carts[shop];
 /** The LightLab cart. */
 export const useShopCart = carts.lightlab;
 
-export const shopPayload = (lines: ShopCartLine[]): ShopLineInput[] => lines.map((l) => ({ productId: l.productId, variantId: l.variantId, quantity: l.quantity, customText: l.customText ?? null }));
+export const shopPayload = (lines: ShopCartLine[]): ShopLineInput[] => lines.map((l) => ({ productId: l.productId, variantId: l.variantId, quantity: l.quantity, customText: l.customText ?? null, ...(l.choices?.length ? { choices: l.choices } : {}) }));
 
 /** Waits for the saved cart to load from the browser (it isn't there during the server render). */
 export function useShopCartHydrated(shop: ShopId = "lightlab") {

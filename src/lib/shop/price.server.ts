@@ -8,7 +8,7 @@ import { quoteShipping, type ShippingQuote } from "@/lib/shipping/pack";
 import { toProductDto } from "./products.server";
 import { heldStock, withHolds } from "./holds.server";
 import { pickupOnlyReason, shopShips } from "./shipping-switch.server";
-import { editionLeft, inStock, needsVariant, notDropped, poolKey, unitPrice, variantOf, type PricedShopLine, type ShopLineInput } from "./types";
+import { editionLeft, choiceIds, inStock, needsVariant, notDropped, optionLabel, poolKey, unitPrice, variantOf, type PricedShopLine, type ShopLineInput } from "./types";
 
 /**
  * The authoritative price of a product cart (LightLab or the Coastline shop),
@@ -51,8 +51,10 @@ export async function priceShopCart(lines: ShopLineInput[], cfg?: AppConfig, opt
     const runTotal = (wanted.get(`${p.id}:#`) ?? 0) + line.quantity;
     wanted.set(`${p.id}:#`, runTotal);
     if (run != null && runTotal > run && !opts.ignoreStock) throw new CartError(run <= 0 ? `${p.name} is all gone: every number of the run is taken.` : `Only ${run} of ${p.name} left in the run. Please lower the quantity.`);
-    const unitCents = unitPrice(p, variant?.id ?? null);
-    shopLines.push({ ...line, customText, variantId: variant?.id ?? null, name: p.name, variantName: variant?.name ?? null, unitCents, lineCents: unitCents * line.quantity, size: p.size, grams: p.grams });
+    // Option sets (cord colour...): a set left out, or a choice since removed, gets the set's first choice.
+    const choices = choiceIds(p, line.choices);
+    const unitCents = unitPrice(p, variant?.id ?? null, choices);
+    shopLines.push({ ...line, customText, choices, variantId: variant?.id ?? null, name: p.name, variantName: optionLabel(p, variant?.id ?? null, choices), unitCents, lineCents: unitCents * line.quantity, size: p.size, grams: p.grams });
   }
 
   const subtotalCents = shopLines.reduce((s, l) => s + l.lineCents, 0);

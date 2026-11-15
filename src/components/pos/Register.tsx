@@ -12,11 +12,12 @@ import { formatPickup } from "@/lib/pickup";
 import { orderMinDate, POS_BRANDS, type CustomLine, type PosBrand, type PosCartInput, type PosLineView, type PosOrderItem, type PosPayment, type PosPopup, type PosQuote, type PosReply, type PosSaleInput, type PosScreen } from "@/lib/pos/types";
 import { pickup } from "@config/pickup";
 import { cardFeeFor, cardFeeWhy, type CardFeeSettings } from "@/lib/pos/card-fee";
-import { needsVariant, photosFor, unitPrice, type ShopProductDto } from "@/lib/shop/types";
+import { choiceIds, needsVariant, optionLabel, photosFor, unitPrice, type ShopProductDto } from "@/lib/shop/types";
+import { ChoiceSets } from "@/components/shop/ChoiceSets";
 import { AnimatedMoney, DrawnCheck, Modal, Qr, Thumb, useForceDark } from "./bits";
 import { CustomerScreen, type ReplyFn } from "./CustomerScreen";
 
-type ProductLine = { key: string; productId: string; variantId: string | null; quantity: number; customText: string };
+type ProductLine = { key: string; productId: string; variantId: string | null; quantity: number; customText: string; /** Picked choice ids of the product's option sets (cord colour...). */ choices: string[] };
 type PayKind = PosPayment | "LINK";
 type Done = { orderId: string; orderNumber: string; changeCents: number | null; emailed: boolean; screen: PosScreen; /** Saved on this iPad to send when back online. */ offline?: boolean };
 
@@ -181,7 +182,7 @@ export function Register({ products, printOptions, links, markets }: { products:
     () => ({
       brand,
       items: toCartItems(files),
-      products: lines.map((l) => ({ productId: l.productId, variantId: l.variantId, quantity: l.quantity, customText: l.customText || null })),
+      products: lines.map((l) => ({ productId: l.productId, variantId: l.variantId, quantity: l.quantity, customText: l.customText || null, ...(l.choices.length ? { choices: l.choices } : {}) })),
       custom: custom.map(({ name, unitCents, quantity }) => ({ name, unitCents, quantity })),
       codes,
       email: customer.email.trim(),
@@ -260,7 +261,7 @@ export function Register({ products, printOptions, links, markets }: { products:
       setLines(
         taken.items.map((item) => {
           const pick = o.lines.find((l) => l.key === item.key);
-          return { key: item.key, productId: item.productId, variantId: pick?.variantId ?? null, quantity: item.quantity, customText: pick?.customText ?? "" };
+          return { key: item.key, productId: item.productId, variantId: pick?.variantId ?? null, quantity: item.quantity, customText: pick?.customText ?? "", choices: pick?.choices ?? [] };
         }),
       );
       setCustomer({ name: taken.firstName, email: o.email, phone: o.phone, notes: o.notes });
@@ -363,6 +364,7 @@ export function Register({ products, printOptions, links, markets }: { products:
       image: p.images[0],
       quantity,
       colours: p.variants.filter((v) => v.stock !== 0).map((v) => ({ id: v.id, name: v.name, hex: v.hex })),
+      optionSets: p.optionSets.length ? p.optionSets : undefined,
       personalize: p.personalize,
     }));
     const id = popupId();
@@ -370,12 +372,14 @@ export function Register({ products, printOptions, links, markets }: { products:
     show({ id, kind: "order", firstName, items, minDate: orderMinDate() });
   }
 
-  function addProduct(p: ShopProductDto, variantId: string | null = null, customText = "", quantity = 1) {
+  function addProduct(p: ShopProductDto, variantId: string | null = null, customText = "", quantity = 1, picked?: string[]) {
     setDone(null);
-    if ((needsVariant(p) && !variantId) || (p.personalize && !customText)) return setPanel({ product: p });
+    // Anything to choose (a colour, a name, a cord colour...) opens the options first.
+    if ((needsVariant(p) && !variantId) || (p.personalize && !customText) || (p.optionSets.length && !picked)) return setPanel({ product: p });
+    const choices = choiceIds(p, picked);
     setLines((ls) => {
-      const same = ls.find((l) => l.productId === p.id && l.variantId === variantId && l.customText === customText);
-      return same ? ls.map((l) => (l === same ? { ...l, quantity: l.quantity + quantity } : l)) : [...ls, { key: crypto.randomUUID(), productId: p.id, variantId, quantity, customText }];
+      const same = ls.find((l) => l.productId === p.id && l.variantId === variantId && l.customText === customText && l.choices.join() === choices.join());
+      return same ? ls.map((l) => (l === same ? { ...l, quantity: l.quantity + quantity } : l)) : [...ls, { key: crypto.randomUUID(), productId: p.id, variantId, quantity, customText, choices }];
     });
   }
 
@@ -913,8 +917,8 @@ export function Register({ products, printOptions, links, markets }: { products:
         {typeof panel === "object" && panel && (
           <ProductOptions
             product={panel.product}
-            onAdd={(variantId, text, qty) => {
-              addProduct(panel.product, variantId, text, qty);
+            onAdd={(variantId, text, qty, choices) => {
+              addProduct(panel.product, variantId, text, qty, choices);
               setPanel(null);
             }}
           />
@@ -1180,7 +1184,8 @@ function StartOrder({ products, current, hasDisplay, onStart, onCancel }: { prod
 }
 
 /** Pick an option (shade colour...) and fill in the personalisation. */
-function ProductOptions({ product: p, onAdd }: { product: ShopProductDto; onAdd: (variantId: string | null, text: string, qty: number) => void }) {
+function ProductOptions({ product: p, onAdd }: { product: ShopProductDto; onAdd: (variantId: string | null, text: string, qty: number, choices: string[]) => void }) {
+  const [choices, setChoices] = useState<string[]>(() => choiceIds(p));
   const [variant, setVariant] = useState<string | null>(needsVariant(p) ? (p.variants.find((v) => v.stock !== 0)?.id ?? null) : null);
   const [text, setText] = useState("");
   const [qty, setQty] = useState(1);
@@ -1205,6 +1210,7 @@ function ProductOptions({ product: p, onAdd }: { product: ShopProductDto; onAdd:
           ))}
         </div>
       )}
+      <ChoiceSets sets={p.optionSets} value={choices} onChange={setChoices} />
       {p.personalize && (
         <Field label={p.personalize}>
           <input autoFocus className={input} value={text} maxLength={24} onChange={(e) => setText(e.target.value)} />
@@ -1220,8 +1226,8 @@ function ProductOptions({ product: p, onAdd }: { product: ShopProductDto; onAdd:
             +
           </button>
         </div>
-        <Button size="lg" className="flex-1" disabled={!ok} onClick={() => onAdd(variant, text.trim(), qty)}>
-          Add {money(unitPrice(p, variant) * qty)}
+        <Button size="lg" className="flex-1" disabled={!ok} onClick={() => onAdd(variant, text.trim(), qty, choices)}>
+          Add {money(unitPrice(p, variant, choices) * qty)}
         </Button>
       </div>
     </div>
@@ -1591,10 +1597,9 @@ function offlineQuote(cart: PosCartInput, products: ShopProductDto[]): PosQuote 
   for (const [i, l] of (cart.products ?? []).entries()) {
     const p = products.find((x) => x.id === l.productId);
     if (!p) return { ...base, ok: false, error: "No internet, and a product in the cart isn't on this register. Reload once you're back online.", lines: [], totalCents: 0 };
-    const v = p.variants.find((x) => x.id === l.variantId);
-    const unit = v?.priceCents ?? p.priceCents;
+    const unit = unitPrice(p, l.variantId ?? null, choiceIds(p, l.choices));
     const qty = l.quantity ?? 1;
-    lines.push({ key: `product-${i}`, kind: "product", name: p.name, detail: [v?.name, l.customText && `"${l.customText}"`].filter(Boolean).join(" · ") || undefined, quantity: qty, cents: unit * qty, image: photosFor(p, l.variantId ?? null).images[0] });
+    lines.push({ key: `product-${i}`, kind: "product", name: p.name, detail: [optionLabel(p, l.variantId ?? null, l.choices), l.customText && `"${l.customText}"`].filter(Boolean).join(" · ") || undefined, quantity: qty, cents: unit * qty, image: photosFor(p, l.variantId ?? null).images[0] });
   }
   for (const [i, c] of (cart.custom ?? []).entries()) lines.push({ key: `custom-${i}`, kind: "custom", name: c.name, quantity: c.quantity ?? 1, cents: c.unitCents * (c.quantity ?? 1) });
   return { ...base, ok: true, lines, totalCents: lines.reduce((n, l) => n + (l.cents ?? 0), 0) };

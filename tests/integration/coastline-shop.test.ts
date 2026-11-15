@@ -109,4 +109,19 @@ describe("Coastline shop", () => {
     expect(res.status).toBe(422);
     expect(square.payments.create).not.toHaveBeenCalled();
   });
+
+  it("prices the choices of a product's option sets and names them on the line", async () => {
+    const optionSets = [
+      { id: "cord", name: "Cord colour", choices: [{ id: "white", name: "White", extraCents: 0, hex: null }, { id: "gold", name: "Gold braid", extraCents: 500, hex: null }] },
+      { id: "plug", name: "Plug", choices: [{ id: "wall", name: "Wall plug", extraCents: 0, hex: null }, { id: "usb", name: "USB", extraCents: 200, hex: null }] },
+    ];
+    const lamp = await db.shopProduct.create({ data: { slug: `lamp-${randomUUID().slice(0, 8)}`, name: "Lamp", priceCents: 4500, optionSets: JSON.stringify(optionSets) } });
+    const quote = async (choices?: string[]) => (await shopQuote(jsonRequest("http://test/api/shop/quote", { products: [{ productId: lamp.id, variantId: null, quantity: 2, choices }] }))).json();
+    const picked = await quote(["gold", "usb"]);
+    expect(picked.lines[0]).toMatchObject({ unitCents: 5200, lineCents: 10400, variantName: "Cord colour: Gold braid · Plug: USB", choices: ["gold", "usb"] });
+    expect(picked.quote.totalCents).toBe(10400);
+    // Nothing picked (a one-tap add): the first choice of each set.
+    const plain = await quote();
+    expect(plain.lines[0]).toMatchObject({ unitCents: 4500, variantName: "Cord colour: White · Plug: Wall plug", choices: ["white", "wall"] });
+  });
 });

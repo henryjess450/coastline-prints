@@ -14,6 +14,17 @@ export type ShopVariant = {
   imageKeys?: string[];
 };
 
+/**
+ * One more thing to choose on a product, beside its main options: a named
+ * list like "Cord colour" with its choices. One choice is always picked
+ * (the first to start with). No stock of its own; a choice can cost extra.
+ */
+export type ShopOptionSet = {
+  id: string;
+  name: string;
+  choices: { id: string; name: string; /** Added to the price. 0 = no extra. */ extraCents: number; /** A swatch colour shown next to the name. */ hex: string | null }[];
+};
+
 export type ShopProductDto = {
   id: string;
   /** "lightlab" or "coastline" (config/shops.ts). */
@@ -30,6 +41,8 @@ export type ShopProductDto = {
   /** Null = made to order. */
   stock: number | null;
   variants: ShopVariant[];
+  /** More lists to choose from (cord colour, plug...). */
+  optionSets: ShopOptionSet[];
   /** Image URLs, cover first. */
   images: string[];
   imageKeys: string[];
@@ -93,7 +106,7 @@ export function suggestFor(base: Pick<ShopProductDto, "id" | "category" | "pairi
 }
 
 /** One cart line as the browser sends it. Prices are never taken from the client. */
-export type ShopLineInput = { productId: string; variantId: string | null; quantity: number; /** Personalised products: the text, like a name. */ customText?: string | null };
+export type ShopLineInput = { productId: string; variantId: string | null; quantity: number; /** Personalised products: the text, like a name. */ customText?: string | null; /** Choice ids, one per option set of the product (cord colour...). A set left out gets its first choice. */ choices?: string[] };
 
 /** Longest personalisation text (a name on a keychain). */
 export const CUSTOM_TEXT_MAX = 24;
@@ -149,8 +162,24 @@ export function variantOf(p: Pick<ShopProductDto, "variants">, variantId: string
   return variantId ? (p.variants.find((v) => v.id === variantId) ?? null) : null;
 }
 
-export function unitPrice(p: Pick<ShopProductDto, "priceCents" | "variants">, variantId: string | null) {
-  return variantOf(p, variantId)?.priceCents ?? p.priceCents;
+/** With `choices` (and the product's option sets) the extras of the picked choices are added. */
+export function unitPrice(p: Pick<ShopProductDto, "priceCents" | "variants"> & Partial<Pick<ShopProductDto, "optionSets">>, variantId: string | null, choices?: string[]) {
+  const extras = choices && p.optionSets ? pickedChoices(p as Pick<ShopProductDto, "optionSets">, choices).reduce((s, x) => s + x.choice.extraCents, 0) : 0;
+  return (variantOf(p, variantId)?.priceCents ?? p.priceCents) + extras;
+}
+
+/** The choice picked in each option set, in order: the one named in `choices`, else the set's first. */
+export function pickedChoices(p: Pick<ShopProductDto, "optionSets">, choices: string[] | null | undefined) {
+  const want = new Set(choices ?? []);
+  return p.optionSets.filter((s) => s.choices.length).map((set) => ({ set, choice: set.choices.find((c) => want.has(c.id)) ?? set.choices[0] }));
+}
+
+/** The picked choices' ids, one per option set (what a cart line carries). */
+export const choiceIds = (p: Pick<ShopProductDto, "optionSets">, choices?: string[] | null) => pickedChoices(p, choices).map((x) => x.choice.id);
+
+/** What was chosen, for carts, tickets and emails: "Red cap · Cord colour: White". Null when there's nothing to choose. */
+export function optionLabel(p: Pick<ShopProductDto, "variants" | "optionSets">, variantId: string | null, choices?: string[] | null) {
+  return [variantOf(p, variantId)?.name, ...pickedChoices(p, choices).map((x) => `${x.set.name}: ${x.choice.name}`)].filter(Boolean).join(" · ") || null;
 }
 
 /** How many can be bought. Null = no limit (made to order). */

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 import { money } from "@/lib/format";
 import { cartFor } from "@/lib/shop/cart";
-import { CUSTOM_TEXT_MAX, editionLeft, inStock, notDropped, photosFor, slugify, unitPrice, variantForPhoto, variantOf, type ShopProductDto } from "@/lib/shop/types";
+import { CUSTOM_TEXT_MAX, choiceIds, editionLeft, optionLabel, inStock, notDropped, photosFor, slugify, unitPrice, variantForPhoto, variantOf, type ShopProductDto } from "@/lib/shop/types";
 import { DropCountdown } from "./DropCountdown";
 import { atStand, standLeft, standPool, type StandDto } from "@/lib/shop/stand";
 import { StandHoldForm } from "./StandHoldForm";
@@ -35,6 +35,8 @@ export function ProductBuy({ product: p, ships = true, initialVariant = null, st
     url.searchParams.set("colour", slugify(v.name));
     window.history.replaceState(window.history.state, "", url);
   }
+  // One choice per option set (cord colour...), the first to start with.
+  const [choices, setChoices] = useState<string[]>(() => choiceIds(p));
   const [qty, setQty] = useState(1);
   const add = useCart((s) => s.add);
   const photoRef = useRef<HTMLDivElement>(null);
@@ -46,13 +48,13 @@ export function ProductBuy({ product: p, ships = true, initialVariant = null, st
     return () => clearTimeout(t);
   }, [justAdded]);
   const text = customText.trim();
-  const inCart = useCart((s) => s.lines.find((l) => l.productId === p.id && l.variantId === variantId && (l.customText ?? "") === (p.personalize ? text : ""))?.quantity ?? 0);
+  const inCart = useCart((s) => s.lines.find((l) => l.productId === p.id && l.variantId === variantId && (l.customText ?? "") === (p.personalize ? text : "") && (l.choices ?? []).join() === choices.join())?.quantity ?? 0);
   const [added, setAdded] = useState(0);
 
   const variant = variantOf(p, variantId);
   const photos = photosFor(p, variantId);
   const cover = photos.images[0] ?? null;
-  const price = unitPrice(p, variantId);
+  const price = unitPrice(p, variantId, choices);
   const left = inStock(p, variantId);
   const canAdd = left == null ? shop.maxQuantityPerLine - inCart : Math.min(left, shop.maxQuantityPerLine) - inCart;
   const soldOut = left === 0;
@@ -68,7 +70,7 @@ export function ProductBuy({ product: p, ships = true, initialVariant = null, st
       document.getElementById("ll-custom-text")?.focus();
       return;
     }
-    const line = { productId: p.id, variantId, quantity, customText: p.personalize ? text : null, slug: p.slug, name: p.name, variantName: variant?.name ?? null, swatch: variant?.hex ?? null, image: cover, unitCents: price, max: left };
+    const line = { productId: p.id, variantId, quantity, customText: p.personalize ? text : null, ...(choices.length ? { choices } : {}), slug: p.slug, name: p.name, variantName: optionLabel(p, variantId, choices), swatch: variant?.hex ?? null, image: cover, unitCents: price, max: left };
     play("pop");
     buzz();
     setJustAdded(true);
@@ -134,6 +136,38 @@ export function ProductBuy({ product: p, ships = true, initialVariant = null, st
             </div>
           </fieldset>
         )}
+
+        {p.optionSets.map((set, i) => {
+          if (!set.choices.length) return null;
+          const picked = set.choices.find((c) => choices.includes(c.id)) ?? set.choices[0];
+          return (
+            <fieldset key={set.id} className="mt-6">
+              <legend className="mb-3 text-sm font-medium">
+                {set.name}
+                <span className="font-normal text-muted">: {picked.name}</span>
+              </legend>
+              <div className="flex flex-wrap gap-2">
+                {set.choices.map((c) => {
+                  const on = c.id === picked.id;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setChoices(choiceIds(p, [...choices.filter((id) => !set.choices.some((x) => x.id === id)), c.id]))}
+                      aria-pressed={on}
+                      className={cn("relative inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm transition-[border-color,transform] active:scale-95", on ? "border-accent-line" : "border-line hover:border-accent-line")}
+                    >
+                      {on && <motion.span layoutId={`ll-choice-${p.id}-${i}`} className="absolute -inset-px rounded-full border-2 border-accent-line bg-accent-soft" transition={{ type: "spring", stiffness: 460, damping: 34 }} />}
+                      {c.hex && <span className="relative h-4 w-4 rounded-full border border-line-strong" style={{ background: c.hex }} aria-hidden />}
+                      <span className="relative">{c.name}</span>
+                      {c.extraCents > 0 && <span className="relative font-mono text-xs text-muted">+{money(c.extraCents)}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+          );
+        })}
 
         {p.personalize && (
           <div className="mt-8 max-w-sm">

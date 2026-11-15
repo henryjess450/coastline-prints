@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { cartItemSchema } from "@/lib/pricing/cart-schema";
 import { shopLineSchema } from "@/lib/shop/schema";
-import { CUSTOM_TEXT_MAX } from "@/lib/shop/types";
+import { CUSTOM_TEXT_MAX, type ShopOptionSet } from "@/lib/shop/types";
 import { addDays, todayIn } from "@/lib/pickup";
 import { pickup } from "@config/pickup";
 import { uploads } from "@config/site";
@@ -170,6 +170,8 @@ export type PosOrderItem = {
   image?: string;
   quantity: number;
   colours: { id: string; name: string; hex: string | null }[];
+  /** More to choose (cord colour, plug...): one choice from each. */
+  optionSets?: ShopOptionSet[];
   /** The product's personalisation prompt, e.g. "Name on the lamp". */
   personalize: string | null;
 };
@@ -182,7 +184,7 @@ export const posOrderDetailsSchema = z.object({
   /** Anything else they want changed. */
   notes: z.string().trim().max(1000).default(""),
   lines: z
-    .array(z.object({ key: z.string().min(1).max(40), variantId: z.string().max(40).nullable().default(null), customText: z.string().trim().max(CUSTOM_TEXT_MAX).default("") }))
+    .array(z.object({ key: z.string().min(1).max(40), variantId: z.string().max(40).nullable().default(null), customText: z.string().trim().max(CUSTOM_TEXT_MAX).default(""), choices: z.array(z.string().min(1).max(40)).max(12).optional() }))
     .min(1)
     .max(40),
 });

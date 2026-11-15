@@ -30,6 +30,15 @@ const variantSchema = z.object({
   imageKeys: z.array(z.string().max(80)).max(30).default([]),
 });
 
+const optionSetSchema = z.object({
+  id: z.string().regex(/^[a-z0-9]{4,24}$/).optional(),
+  name: z.string().trim().min(1, "Every option set needs a name, like Cord colour.").max(40),
+  choices: z
+    .array(z.object({ id: z.string().regex(/^[a-z0-9]{4,24}$/).optional(), name: z.string().trim().min(1, "Every choice needs a name.").max(60), extraCents: cents.default(0), hex: hex.nullable().default(null) }))
+    .min(1, "Every option set needs at least one choice.")
+    .max(30),
+});
+
 const productSchema = z.object({
   id: z.string().max(40).nullable(),
   /** Which shop a new product goes in. An existing product stays in its shop. */
@@ -45,6 +54,7 @@ const productSchema = z.object({
   compareAtCents: cents.nullable(),
   stock: z.number().int().min(0).max(100_000).nullable(),
   variants: z.array(variantSchema).max(30),
+  optionSets: z.array(optionSetSchema).max(6).default([]),
   images: z.array(z.string().regex(/^shop\/[a-z0-9]{16,40}\.(jpg|png|webp)$/)).max(lightlab.maxImagesPerProduct),
   sizeXMm: z.number().min(1).max(2000),
   sizeYMm: z.number().min(1).max(2000),
@@ -121,6 +131,7 @@ export async function saveProductAction(input: ProductInput): Promise<ShopAction
       stock: d.stock,
       // Keep option ids stable so carts and past orders still match.
       variants: JSON.stringify(d.variants.map((v) => ({ ...v, id: v.id ?? randomBytes(5).toString("hex"), imageKeys: v.imageKeys.filter((k) => d.images.includes(k)) }))),
+      optionSets: JSON.stringify(d.optionSets.map((s) => ({ ...s, id: s.id ?? randomBytes(5).toString("hex"), choices: s.choices.map((c) => ({ ...c, id: c.id ?? randomBytes(5).toString("hex") })) }))),
       images: JSON.stringify(d.images),
       sizeXMm: d.sizeXMm,
       sizeYMm: d.sizeYMm,

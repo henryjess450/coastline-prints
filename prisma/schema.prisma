@@ -509,6 +509,8 @@ model ShopProduct {
   stock          Int?
   /// JSON ShopVariant[]: options like shade colour, each with its own price and stock if set.
   variants       String   @default("[]")
+  /// JSON ShopOptionSet[]: more things to choose, each its own list (cord colour, plug, bulb...). A choice can add to the price.
+  optionSets     String   @default("[]")
   /// JSON string[] of storage keys under shop/, first one is the cover.
   images         String   @default("[]")
   /// Price tag: the line drawing on the left (storage key under shop/), the

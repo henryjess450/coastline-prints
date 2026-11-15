@@ -1,4 +1,5 @@
 "use client";
+import { ChoiceSets } from "@/components/shop/ChoiceSets";
 import { COVER_FEE_QUESTION } from "@/components/checkout/CoverFee";
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import { useState } from "react";
@@ -399,10 +400,10 @@ function OrderForm({ popup, busy, error, onSubmit, onCancel }: { popup: Extract<
   const [email, setEmail] = useState("");
   const [needBy, setNeedBy] = useState("");
   const [notes, setNotes] = useState("");
-  const [picks, setPicks] = useState<Record<string, { variantId: string | null; customText: string }>>(() => Object.fromEntries(popup.items.map((i) => [i.key, { variantId: i.colours.length === 1 ? i.colours[0].id : null, customText: "" }])));
+  const [picks, setPicks] = useState<Record<string, { variantId: string | null; customText: string; choices: string[] }>>(() => Object.fromEntries(popup.items.map((i) => [i.key, { variantId: i.colours.length === 1 ? i.colours[0].id : null, customText: "", choices: (i.optionSets ?? []).flatMap((s) => (s.choices[0] ? [s.choices[0].id] : [])) }])));
   const [problem, setProblem] = useState<string | null>(null);
   const field = "h-16 w-full rounded-full border-2 border-line bg-bg px-6 text-xl outline-none transition-colors focus:border-accent-line";
-  const pick = (key: string, patch: Partial<{ variantId: string | null; customText: string }>) => setPicks((p) => ({ ...p, [key]: { ...p[key], ...patch } }));
+  const pick = (key: string, patch: Partial<{ variantId: string | null; customText: string; choices: string[] }>) => setPicks((p) => ({ ...p, [key]: { ...p[key], ...patch } }));
   const quick = [7, 14, 21].map((n) => {
     const [y, m, d] = popup.minDate.split("-").map(Number);
     const date = new Date(Date.UTC(y, m - 1, d + n - 7)).toISOString().slice(0, 10);
@@ -463,6 +464,7 @@ function OrderForm({ popup, busy, error, onSubmit, onCancel }: { popup: Extract<
                 })}
               </div>
             )}
+            <ChoiceSets sets={item.optionSets ?? []} value={picks[item.key]?.choices ?? []} onChange={(choices) => pick(item.key, { choices })} size="lg" className="mt-4" />
             {item.personalize && <input className={cn(field, "mt-3")} value={picks[item.key]?.customText ?? ""} onChange={(e) => pick(item.key, { customText: e.target.value })} placeholder={item.personalize} aria-label={item.personalize} maxLength={24} />}
           </motion.div>
         ))}

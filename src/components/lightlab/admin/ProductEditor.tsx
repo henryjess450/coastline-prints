@@ -16,6 +16,9 @@ import { dollars, parseDollars } from "./money";
 import { fromShopLocal, toShopLocal } from "@/lib/shop/drop-time";
 import { ProductFiles } from "./ProductFiles";
 
+type ChoiceDraft = { key: string; id?: string; name: string; extra: string; hex: string | null };
+/** One more list to choose from, like "Cord colour". */
+type SetDraft = { key: string; id?: string; name: string; choices: ChoiceDraft[] };
 type VariantDraft = { key: string; id?: string; name: string; price: string; stock: string; hex: string | null; /** Photos (storage keys) that show this option. */ imageKeys: string[] };
 
 const input = "h-11 w-full rounded-xl border border-line bg-elev px-3 text-sm outline-none transition-[border-color,box-shadow] focus:border-accent-line focus:shadow-[0_0_0_4px_var(--accent-soft)]";
@@ -39,6 +42,9 @@ export function ProductEditor({ product, categories, others = [], files = [], sh
   const [stock, setStock] = useState(product?.stock != null ? String(product.stock) : "1");
   const [variants, setVariants] = useState<VariantDraft[]>(
     () => product?.variants.map((v) => ({ key: v.id, id: v.id, name: v.name, price: dollars(v.priceCents), stock: v.stock == null ? "" : String(v.stock), hex: v.hex, imageKeys: v.imageKeys ?? [] })) ?? [],
+  );
+  const [optionSets, setOptionSets] = useState<SetDraft[]>(
+    () => product?.optionSets.map((o) => ({ key: o.id, id: o.id, name: o.name, choices: o.choices.map((c) => ({ key: c.id, id: c.id, name: c.name, extra: c.extraCents ? dollars(c.extraCents) : "", hex: c.hex })) })) ?? [],
   );
   const [images, setImages] = useState<string[]>(product?.imageKeys ?? []);
   const [size, setSize] = useState({ x: String(product?.size.x ?? 150), y: String(product?.size.y ?? 150), z: String(product?.size.z ?? 200) });
@@ -96,6 +102,18 @@ export function ProductEditor({ product, categories, others = [], files = [], sh
       if (vsN != null && (!Number.isInteger(vsN) || vsN < 0)) return fail(`${v.name || "An option"}: stock is a whole number, or empty.`), null;
       vs.push({ id: v.id, name: v.name, priceCents: vp, stock: vsN, hex: v.hex, imageKeys: v.imageKeys.filter((k) => images.includes(k)) });
     }
+    const sets: ProductInput["optionSets"] = [];
+    for (const o of optionSets) {
+      if (!o.name.trim()) return fail("Give every option set a name, like Cord colour."), null;
+      const choices = [];
+      for (const c of o.choices) {
+        const extra = parseDollars(c.extra);
+        if (Number.isNaN(extra)) return fail(`${o.name}, ${c.name || "a choice"}: the extra should look like 5.00, or be empty.`), null;
+        choices.push({ id: c.id, name: c.name, extraCents: extra ?? 0, hex: c.hex });
+      }
+      if (!choices.length) return fail(`${o.name}: add at least one choice, or remove the set.`), null;
+      sets.push({ id: o.id, name: o.name, choices });
+    }
     const run = editionSize.trim() === "" ? null : Number(editionSize);
     if (run != null && (!Number.isInteger(run) || run < 1)) return fail("The limited run is a whole number, like 25, or empty."), null;
     if (run != null && product && run < product.editionSold) return fail(`${product.editionSold} of the run are already sold, so it can't be smaller than that.`), null;
@@ -115,6 +133,7 @@ export function ProductEditor({ product, categories, others = [], files = [], sh
       compareAtCents,
       stock: stockN,
       variants: vs,
+      optionSets: sets,
       images,
       sizeXMm: dims[0],
       sizeYMm: dims[1],
@@ -216,6 +235,10 @@ export function ProductEditor({ product, categories, others = [], files = [], sh
 
         <Panel title="Options" note="Shade colours, sizes and so on. Each can have its own price and stock; leave them empty to use the product's.">
           <Variants value={variants} onChange={touch(setVariants)} basePrice={priceCents != null && !Number.isNaN(priceCents) ? priceCents : null} />
+        </Panel>
+
+        <Panel title="More option sets" note="More things to choose, each its own list: cord colour, plug type, bulb... The shopper picks one from every set (the first choice to start with). A choice can add to the price; these have no stock of their own.">
+          <OptionSets value={optionSets} onChange={touch(setOptionSets)} />
         </Panel>
 
         <Panel title="Shipping" note="The size of the boxed lamp and its weight, so shipping is priced right. Pickup is always free.">
@@ -524,6 +547,48 @@ function Variants({ value, onChange, basePrice }: { value: VariantDraft[]; onCha
           Empty price uses {money(basePrice)}. Empty stock shares the product&apos;s stock count.
         </p>
       )}
+    </div>
+  );
+}
+
+function OptionSets({ value, onChange }: { value: SetDraft[]; onChange: (v: SetDraft[]) => void }) {
+  const setSet = (key: string, patch: Partial<SetDraft>) => onChange(value.map((o) => (o.key === key ? { ...o, ...patch } : o)));
+  const small = "h-10 w-full rounded-lg border border-line bg-elev px-2.5 text-sm outline-none focus:border-accent-line";
+  return (
+    <div>
+      <div className="space-y-4">
+        {value.map((o) => {
+          const setChoice = (key: string, patch: Partial<ChoiceDraft>) => setSet(o.key, { choices: o.choices.map((c) => (c.key === key ? { ...c, ...patch } : c)) });
+          return (
+            <div key={o.key} className="rounded-xl border border-line p-3">
+              <div className="flex items-center gap-2">
+                <input value={o.name} onChange={(e) => setSet(o.key, { name: e.target.value })} placeholder="Cord colour" maxLength={40} className={cn(small, "font-medium")} aria-label="Option set name" />
+                <button type="button" onClick={() => onChange(value.filter((x) => x.key !== o.key))} className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted hover:bg-surface-strong hover:text-danger" aria-label={`Remove ${o.name || "option set"}`}>
+                  ✕
+                </button>
+              </div>
+              <Reorder.Group axis="y" values={o.choices} onReorder={(choices) => setSet(o.key, { choices })} className="mt-2 space-y-2">
+                {o.choices.map((c) => (
+                  <Reorder.Item key={c.key} value={c} className="grid grid-cols-[2.25rem_minmax(0,1fr)_6rem_2rem] items-center gap-2">
+                    <SwatchPicker value={c.hex} onChange={(hex) => setChoice(c.key, { hex })} />
+                    <input value={c.name} onChange={(e) => setChoice(c.key, { name: e.target.value })} placeholder="White" maxLength={60} className={small} aria-label="Choice name" />
+                    <input value={c.extra} onChange={(e) => setChoice(c.key, { extra: e.target.value })} placeholder="+ $0" inputMode="decimal" className={cn(small, "font-mono")} aria-label="Extra cost (empty = none)" />
+                    <button type="button" onClick={() => setSet(o.key, { choices: o.choices.filter((x) => x.key !== c.key) })} className="grid h-8 w-8 place-items-center rounded-full text-muted hover:bg-surface-strong hover:text-danger" aria-label={`Remove ${c.name || "choice"}`}>
+                      ✕
+                    </button>
+                  </Reorder.Item>
+                ))}
+              </Reorder.Group>
+              <button type="button" onClick={() => setSet(o.key, { choices: [...o.choices, { key: newKey(), name: "", extra: "", hex: null }] })} className={buttonClass("secondary", "sm", "mt-2")}>
+                + Add choice
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <button type="button" onClick={() => onChange([...value, { key: newKey(), name: "", choices: [{ key: newKey(), name: "", extra: "", hex: null }] }])} className={buttonClass("secondary", "sm", value.length ? "mt-3" : "")}>
+        + Add option set
+      </button>
     </div>
   );
 }
