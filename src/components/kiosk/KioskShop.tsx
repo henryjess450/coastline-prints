@@ -60,6 +60,17 @@ export function KioskShop({
 }) {
   const order = mode === "order";
   const [open, setOpen] = useState<ShopProductDto | null>(null);
+  // A bag line being changed (its colour, options or name) in the sheet.
+  const [editing, setEditing] = useState<KioskLine | null>(null);
+  const hasOptions = (p: ShopProductDto) => p.variants.length > 1 || p.optionSets.length > 0 || (order && !!p.personalize);
+  const editLine = (l: KioskLine) => {
+    const p = products.find((x) => x.id === l.productId);
+    if (!p || !hasOptions(p)) return;
+    feedback("click");
+    setEditing(l);
+    setOpen(p);
+  };
+  const closeSheet = () => (setOpen(null), setEditing(null));
   const [cat, setCat] = useState<string | null>(null);
   const cats = [...new Set(products.map((p) => p.category).filter(Boolean))];
   const shown = cat ? products.filter((p) => p.category === cat) : products;
@@ -190,14 +201,22 @@ export function KioskShop({
           <AnimatePresence initial={false}>
             {lines.map((l) => (
               <motion.li key={l.key} layout initial={{ opacity: 0, x: 40, scale: 0.9 }} animate={{ opacity: 1, x: 0, scale: 1 }} exit={{ opacity: 0, x: 80, height: 0, marginTop: 0 }} transition={{ type: "spring", stiffness: 380, damping: 28 }} className="flex gap-3 rounded-2xl bg-bg p-3">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                {l.image ? <img src={l.image} alt="" className="h-16 w-16 shrink-0 rounded-xl object-cover" /> : <span className="h-16 w-16 shrink-0 rounded-xl bg-elev" />}
+                <button type="button" onClick={() => editLine(l)} className="shrink-0" aria-label={`Change ${l.name}`}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {l.image ? <img src={l.image} alt="" className="h-16 w-16 rounded-xl object-cover" /> : <span className="block h-16 w-16 rounded-xl bg-elev" />}
+                </button>
                 <div className="min-w-0 flex-1">
-                  <div className="flex justify-between gap-2">
-                    <p className="truncate font-semibold">{l.name}</p>
-                    <p className="font-mono">{money(l.unitCents * l.quantity)}</p>
-                  </div>
-                  {(l.variantName || l.customText) && <p className="truncate text-sm text-muted">{[l.variantName, l.customText && `“${l.customText}”`].filter(Boolean).join(" · ")}</p>}
+                  <button type="button" onClick={() => editLine(l)} className="block w-full text-left">
+                    <span className="flex justify-between gap-2">
+                      <span className="truncate font-semibold">{l.name}</span>
+                      <span className="font-mono">{money(l.unitCents * l.quantity)}</span>
+                    </span>
+                    {(l.variantName || l.customText) && <span className="block truncate text-sm text-muted">{[l.variantName, l.customText && `“${l.customText}”`].filter(Boolean).join(" · ")}</span>}
+                    {(() => {
+                      const p = products.find((x) => x.id === l.productId);
+                      return p && hasOptions(p) ? <span className="mt-0.5 block text-sm font-semibold text-accent-text">Change options</span> : null;
+                    })()}
+                  </button>
                   <div className="mt-2 flex items-center justify-between">
                     <QuantityStepper value={l.quantity} max={Math.min(20, order ? 20 : (l.max ?? 20))} onChange={(q) => (setLines((ls) => ls.map((x) => (x.key === l.key ? { ...x, quantity: q } : x))), feedback("click"))} size="sm" />
                     <button type="button" onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))} className="px-2 py-1 text-sm text-muted">
@@ -252,13 +271,20 @@ export function KioskShop({
       <AnimatePresence>
         {open && (
           <ProductSheet
-            key={open.id}
+            key={`${open.id}:${editing?.key ?? "new"}`}
             p={open}
+            editing={editing}
             order={order}
-            onClose={() => setOpen(null)}
+            onClose={closeSheet}
             onAdd={(variantId, qty, price, max, customText, from, choices) => {
               const p = open;
-              setOpen(null);
+              const was = editing;
+              closeSheet();
+              // Changing a line: swap it for the new pick (joining an identical line if there is one).
+              if (was) {
+                feedback("pop", 10);
+                return setLines((ls) => addLine(ls.filter((x) => x.key !== was.key), p, variantId, qty, price, order ? null : max, customText, choices));
+              }
               feedback("pop", 15);
               // The photo flies into the bag, then it lands (and the bag lamp lights).
               flyToCart(from, p.images[0] ?? null, () => {
@@ -266,7 +292,7 @@ export function KioskShop({
                 feedback("sparkle");
               });
             }}
-            inBag={(variantId) => inBag(open, variantId)}
+            inBag={(variantId) => inBag(open, variantId) - (editing && editing.variantId === variantId ? editing.quantity : 0)}
           />
         )}
       </AnimatePresence>
@@ -275,11 +301,11 @@ export function KioskShop({
 }
 
 /** One lamp, big: photos (swipe), options, a name for personalised ones, how many, and Add. */
-function ProductSheet({ p, order, onClose, onAdd, inBag }: { p: ShopProductDto; order: boolean; onClose: () => void; onAdd: (variantId: string | null, qty: number, unitCents: number, max: number | null, customText: string, from: Element | null, choices: string[]) => void; inBag: (variantId: string | null) => number }) {
-  const [variantId, setVariantId] = useState<string | null>(() => (order ? p.variants[0]?.id : p.variants.find((v) => inStock(p, v.id) !== 0)?.id ?? p.variants[0]?.id) ?? null);
-  const [choices, setChoices] = useState<string[]>(() => choiceIds(p));
-  const [qty, setQty] = useState(1);
-  const [text, setText] = useState("");
+function ProductSheet({ p, order, editing, onClose, onAdd, inBag }: { p: ShopProductDto; order: boolean; /** Changing this bag line instead of adding a new one. */ editing: KioskLine | null; onClose: () => void; onAdd: (variantId: string | null, qty: number, unitCents: number, max: number | null, customText: string, from: Element | null, choices: string[]) => void; inBag: (variantId: string | null) => number }) {
+  const [variantId, setVariantId] = useState<string | null>(() => (editing ? editing.variantId : (order ? p.variants[0]?.id : p.variants.find((v) => inStock(p, v.id) !== 0)?.id ?? p.variants[0]?.id) ?? null));
+  const [choices, setChoices] = useState<string[]>(() => choiceIds(p, editing?.choices));
+  const [qty, setQty] = useState(editing?.quantity ?? 1);
+  const [text, setText] = useState(editing?.customText ?? "");
   const [needText, setNeedText] = useState(false);
   const photo = useRef<HTMLDivElement>(null);
   const variant = p.variants.find((v) => v.id === variantId) ?? null;
@@ -316,7 +342,7 @@ function ProductSheet({ p, order, onClose, onAdd, inBag }: { p: ShopProductDto; 
                 const out = !order && inStock(p, v.id) === 0;
                 const on = v.id === variantId;
                 return (
-                  <motion.button key={v.id} type="button" disabled={out} whileTap={{ scale: 0.92 }} onClick={() => (setVariantId(v.id), setQty(1))} className={cn("relative inline-flex items-center gap-2 rounded-full border px-5 py-3 text-lg", on ? "border-accent-line" : "border-line", out && "text-faint line-through")}>
+                  <motion.button key={v.id} type="button" disabled={out} whileTap={{ scale: 0.92 }} onClick={() => (setVariantId(v.id), !editing && setQty(1))} className={cn("relative inline-flex items-center gap-2 rounded-full border px-5 py-3 text-lg", on ? "border-accent-line" : "border-line", out && "text-faint line-through")}>
                     {on && <motion.span layoutId={`kiosk-v-${p.id}`} className="absolute -inset-px rounded-full border-2 border-accent-line bg-accent-soft" transition={{ type: "spring", stiffness: 460, damping: 30 }} />}
                     {v.hex && <motion.span className="relative h-5 w-5 rounded-full border border-line-strong" style={{ background: v.hex }} animate={on ? { scale: [1, 1.35, 1] } : { scale: 1 }} transition={{ duration: 0.4 }} />}
                     <span className="relative">{v.name}</span>
@@ -348,7 +374,7 @@ function ProductSheet({ p, order, onClose, onAdd, inBag }: { p: ShopProductDto; 
               }}
               className="h-16 flex-1 rounded-full bg-fg text-lg font-bold text-bg disabled:opacity-40"
             >
-              {room <= 0 ? "All in your bag" : `${order ? "Add to order" : "Add to bag"} · ${money(price * quantity)}`}
+              {room <= 0 ? "All in your bag" : `${editing ? "Save changes" : order ? "Add to order" : "Add to bag"} · ${money(price * quantity)}`}
             </motion.button>
           </div>
         </div>
