@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError, logError } from "@/lib/api";
-import { cancelKioskSale, checkKioskSale, kioskCartSchema, kioskCustomerSchema, pairedKiosk, startKioskSale } from "@/lib/kiosk/server";
+import { cancelKioskSale, checkKioskSale, kioskCartSchema, kioskCustomerSchema, pairedKiosk, payKioskSaleByCard, startKioskSale } from "@/lib/kiosk/server";
 import { PosSaleError } from "@/lib/pos/sale.server";
 
 export const runtime = "nodejs";
@@ -25,6 +25,22 @@ export async function POST(req: Request) {
     if (err instanceof PosSaleError) return apiError(409, err.message);
     logError("kiosk:start", err);
     return apiError(502, "Couldn't start the payment. Please try again, or pay at the stand.");
+  }
+}
+
+/** Paying by card on the tablet: the body carries the token from Square's card form. */
+export async function PUT(req: Request) {
+  const kiosk = await pairedKiosk();
+  if (!kiosk) return apiError(401, "This kiosk isn't paired.");
+  const id = saleId(req);
+  const body = z.object({ sourceId: z.string().min(1).max(500) }).safeParse(await req.json().catch(() => null));
+  if (!id || !body.success) return apiError(400, "Missing card details.");
+  try {
+    return NextResponse.json(await payKioskSaleByCard(kiosk.id, id, body.data.sourceId));
+  } catch (err) {
+    if (err instanceof PosSaleError) return apiError(402, err.message);
+    logError("kiosk:card-route", err);
+    return apiError(502, "We couldn't confirm your payment. Please try again; you won't be charged twice.");
   }
 }
 

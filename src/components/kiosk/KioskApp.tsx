@@ -1,6 +1,6 @@
 "use client";
 import { AnimatePresence, motion } from "framer-motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DrawnCheck, Qr, useForceDark } from "@/components/pos/bits";
 import { LightLabLogo } from "@/components/lightlab/LightLabLogo";
 import { OneLineLamps } from "@/components/lightlab/hero/OneLineLamps";
@@ -13,11 +13,12 @@ import type { PosQuote } from "@/lib/pos/types";
 import type { ShopProductDto } from "@/lib/shop/types";
 import { toCart, type KioskLine } from "./kiosk-cart";
 import { CoverFee, useCardFee } from "@/components/checkout/CoverFee";
+import { PaymentMethods, type PaymentMethodsHandle, type SquareConfig } from "@/components/checkout/PaymentMethods";
 import { cardFeeFor } from "@/lib/pos/card-fee";
 import { Greeting, Steps, type KioskMode } from "./KioskBits";
 import { KioskShop } from "./KioskShop";
 
-type Hello = { paired: boolean; pairCode: string | null; name: string; mode: KioskMode; minDate: string };
+type Hello = { paired: boolean; pairCode: string | null; name: string; mode: KioskMode; minDate: string; /** Square's card form, when card payments are set up. */ square: SquareConfig | null };
 type Stage = "welcome" | "shop" | "details" | "pay" | "done";
 type Done = { kind: "paid"; sale: KioskSaleView } | { kind: "problem"; sale: KioskSaleView };
 
@@ -74,9 +75,16 @@ export function KioskApp() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [stillThere, setStillThere] = useState<number | null>(null);
+  // Paying by card on the tablet.
+  const payRef = useRef<PaymentMethodsHandle>(null);
+  const [cardBusy, setCardBusy] = useState(false);
+  const [cardError, setCardError] = useState<string | null>(null);
   const [doneLeft, setDoneLeft] = useState(DONE_S);
   const lastTouch = useRef(0);
   const mode: KioskMode = hello?.mode ?? "shop";
+  // Hello comes back every minute as a new object: keep the same config so the card form isn't rebuilt (and wiped) mid-typing.
+  const squareJson = JSON.stringify(hello?.square ?? null);
+  const square = useMemo(() => JSON.parse(squareJson) as SquareConfig | null, [squareJson]);
   const order = mode === "order";
 
   // No sounds at the kiosk: just a light buzz on tablets that allow it.
@@ -140,6 +148,8 @@ export function KioskApp() {
       setDone(null);
       setError(null);
       setStillThere(null);
+      setCardBusy(false);
+      setCardError(null);
       setStage("welcome");
       loadProducts();
     },
@@ -174,6 +184,20 @@ export function KioskApp() {
     return () => clearInterval(t);
   }, [stage, lines.length, reset, done?.kind]);
 
+  /** Paid (either way): on to the thank-you screen. */
+  const finish = useCallback(
+    (s: KioskSaleView) => {
+      setSale(s);
+      if (s.status !== "DONE" && s.status !== "PROBLEM") return;
+      setDone({ kind: s.status === "DONE" ? "paid" : "problem", sale: s });
+      setDoneLeft(DONE_S);
+      setStage("done");
+      lastTouch.current = Date.now();
+      feedback("chime", 40);
+    },
+    [feedback],
+  );
+
   // The thank-you screen: 8, 7, 6... then back to "Tap to start".
   useEffect(() => {
     if (stage !== "done" || done?.kind !== "paid") return;
@@ -193,17 +217,7 @@ export function KioskApp() {
     const tick = async () => {
       const r = await api<KioskSaleView>(`/api/kiosk/sale?id=${sale.id}`);
       if (stop) return;
-      if (r.ok && r.data.status !== "PENDING") {
-        setSale(r.data);
-        if (r.data.status === "DONE" || r.data.status === "PROBLEM") {
-          setDone({ kind: r.data.status === "DONE" ? "paid" : "problem", sale: r.data });
-          setDoneLeft(DONE_S);
-          setStage("done");
-          lastTouch.current = Date.now();
-          feedback("chime", 40);
-        }
-        return;
-      }
+      if (r.ok && r.data.status !== "PENDING") return finish(r.data);
       setTimeout(tick, 2500);
     };
     const t = setTimeout(tick, 2500);
@@ -211,7 +225,7 @@ export function KioskApp() {
       stop = true;
       clearTimeout(t);
     };
-  }, [stage, sale, feedback]);
+  }, [stage, sale, finish]);
 
   const minDate = hello?.minDate ?? addDaysYmd(ymd(new Date()), 7);
   const detailsProblem = !details.name.trim()
@@ -234,7 +248,34 @@ export function KioskApp() {
     setBusy(false);
     if (!r.ok) return setError(r.error);
     setSale(r.data);
+    setCardError(null);
     setStage("pay");
+  }
+
+  async function payByCard() {
+    if (!sale || !payRef.current || cardBusy) return;
+    setCardBusy(true);
+    setCardError(null);
+    const [givenName, ...rest] = details.name.trim().split(/\s+/);
+    let token: string;
+    try {
+      token = await payRef.current.tokenizeCard({
+        amount: (sale.totalCents / 100).toFixed(2),
+        currencyCode: "CAD",
+        intent: "CHARGE",
+        billingContact: { givenName, familyName: rest.join(" ") || undefined, email: details.email.trim(), countryCode: "CA" },
+        customerInitiated: true,
+        sellerKeyedIn: false,
+      });
+    } catch (err) {
+      setCardBusy(false);
+      return setCardError(err instanceof Error ? err.message : "Please check your card details.");
+    }
+    const r = await api<KioskSaleView>(`/api/kiosk/sale?id=${sale.id}`, { method: "PUT", body: JSON.stringify({ sourceId: token }) });
+    setCardBusy(false);
+    lastTouch.current = Date.now();
+    if (!r.ok) return setCardError(r.error);
+    finish(r.data);
   }
 
   async function backFromPay() {
@@ -378,7 +419,7 @@ export function KioskApp() {
                   Back
                 </button>
                 <motion.button type="submit" disabled={busy} whileTap={{ scale: 0.97 }} className={cn("h-16 flex-1 rounded-full text-lg font-bold transition-colors disabled:opacity-60", detailsProblem ? "bg-elev text-muted" : "bg-fg text-bg")}>
-                  {busy ? "One moment…" : `Pay ${money(total)} on my phone`}
+                  {busy ? "One moment…" : `Next: pay ${money(total)}`}
                 </motion.button>
               </div>
               <p className="mt-3 text-center text-sm text-faint">{order ? "We'll email you when it's ready to pick up." : "We only use your email for your receipt."}</p>
@@ -387,32 +428,72 @@ export function KioskApp() {
         )}
 
         {stage === "pay" && sale && (
-          <motion.div key="pay" className="relative grid h-full place-items-center px-6 text-center" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-            <div className="absolute left-6 top-5">
-              <Steps mode={mode} at={2} />
-            </div>
-            <div>
-              <p className="font-display text-4xl font-bold">
-                {firstName ? `${firstName}, scan` : "Scan"} to pay {money(sale.totalCents)}
-              </p>
-              <p className="mt-2 text-xl text-muted">Point your phone&apos;s camera at the code. Card, Apple Pay or Google Pay.</p>
-              {feeLine?.cents ? (
-                <p className="mx-auto mt-3 max-w-md rounded-2xl bg-surface px-4 py-2 text-sm text-muted">
-                  Includes a {money(feeLine.cents)} card processing fee. {feeLine.detail}
-                </p>
-              ) : null}
-              <motion.div className="relative mx-auto mt-8 w-80 overflow-hidden rounded-[28px] border-2 border-[#297f9d] bg-white p-3" initial={{ rotate: -6, scale: 0.85 }} animate={{ rotate: 0, scale: 1 }} transition={{ type: "spring", stiffness: 260, damping: 15 }}>
-                <Qr value={sale.url} className="w-full" />
-                {/* A scanner line gliding down and back, eased at both ends so it never snaps. */}
-                <motion.span className="absolute inset-x-4 h-1 rounded-full bg-[#297f9d] opacity-80" initial={{ top: "6%" }} animate={{ top: "92%" }} transition={{ duration: 1.8, ease: "easeInOut", repeat: Infinity, repeatType: "mirror" }} aria-hidden />
-              </motion.div>
-              <p className="mt-6 flex items-center justify-center gap-2 text-lg text-muted">
-                <motion.span className="h-3 w-3 rounded-full bg-[#297f9d]" animate={{ opacity: [1, 0.25, 1] }} transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }} />
-                Waiting for your payment
-              </p>
-              <button type="button" onClick={backFromPay} className="mt-8 h-14 rounded-full border border-line px-8 text-lg font-semibold">
+          <motion.div key="pay" className="flex h-full flex-col" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+            <header className="flex items-center justify-between border-b border-line px-6 py-4">
+              <div className="flex items-center gap-4">
+                <LightLabLogo className="h-10" />
+                <Steps mode={mode} at={2} />
+              </div>
+              <button type="button" onClick={backFromPay} disabled={cardBusy} className="h-11 rounded-full border border-line px-6 font-semibold disabled:opacity-40">
                 Back
               </button>
+            </header>
+            <div className="px-6 pt-6 text-center">
+              <p className="font-display text-4xl font-bold">
+                {firstName ? `${firstName}, pay` : "Pay"} {money(sale.totalCents)}
+              </p>
+              <p className="mt-1 text-lg text-muted">Choose how you&apos;d like to pay</p>
+              {feeLine?.cents ? <p className="mx-auto mt-2 max-w-lg text-sm text-faint">Includes a {money(feeLine.cents)} card processing fee. {feeLine.detail}</p> : null}
+            </div>
+            <div className={cn("grid min-h-0 flex-1 px-6 pb-6 pt-6", square ? "grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]" : "grid-cols-1")}>
+              {square && (
+                <>
+                  {/* Pay here: Square's own card fields, so the card number never touches our server or the tablet. */}
+                  <form
+                    className="mx-auto flex w-full max-w-md flex-col pr-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void payByCard();
+                    }}
+                  >
+                    <p className="text-2xl font-bold">Pay here</p>
+                    <p className="mb-5 text-muted">Type your card on this screen</p>
+                    <PaymentMethods ref={payRef} config={square} totalCents={sale.totalCents} disabled={cardBusy} cardOnly large />
+                    <AnimatePresence>
+                      {cardError && (
+                        <motion.p key={cardError} role="alert" className="mt-3 rounded-2xl bg-danger/15 p-3 text-danger" initial={{ opacity: 0 }} animate={{ opacity: 1, x: [0, -8, 8, -4, 4, 0] }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}>
+                          {cardError}
+                        </motion.p>
+                      )}
+                    </AnimatePresence>
+                    <motion.button type="submit" disabled={cardBusy} whileTap={{ scale: 0.97 }} className="mt-auto h-16 w-full rounded-full bg-fg text-lg font-bold text-bg disabled:opacity-60">
+                      {cardBusy ? "Paying…" : `Pay ${money(sale.totalCents)}`}
+                    </motion.button>
+                  </form>
+
+                  {/* The line down the middle */}
+                  <div className="flex flex-col items-center px-8" aria-hidden>
+                    <span className="w-px flex-1 bg-line-strong" />
+                    <span className="py-3 text-lg font-semibold text-muted">or</span>
+                    <span className="w-px flex-1 bg-line-strong" />
+                  </div>
+                </>
+              )}
+
+              <div className="mx-auto flex w-full max-w-md flex-col items-center pl-2 text-center">
+                <p className="text-2xl font-bold">Pay on your phone</p>
+                <p className="text-muted">Card, Apple Pay or Google Pay</p>
+                <motion.div className="relative mt-5 w-64 overflow-hidden rounded-[28px] border-2 border-[#297f9d] bg-white p-3" initial={{ rotate: -6, scale: 0.85 }} animate={{ rotate: 0, scale: 1 }} transition={{ type: "spring", stiffness: 260, damping: 15 }}>
+                  <Qr value={sale.url} className="w-full" />
+                  {/* A scanner line gliding down and back, eased at both ends so it never snaps. */}
+                  <motion.span className="absolute inset-x-4 h-1 rounded-full bg-[#297f9d] opacity-80" initial={{ top: "6%" }} animate={{ top: "92%" }} transition={{ duration: 1.8, ease: "easeInOut", repeat: Infinity, repeatType: "mirror" }} aria-hidden />
+                </motion.div>
+                <p className="mt-4 text-muted">Point your phone&apos;s camera at the code</p>
+                <p className="mt-auto flex items-center justify-center gap-2 pt-4 text-muted">
+                  <motion.span className="h-3 w-3 rounded-full bg-[#297f9d]" animate={{ opacity: [1, 0.25, 1] }} transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }} />
+                  Waiting for your payment
+                </p>
+              </div>
             </div>
           </motion.div>
         )}

@@ -16,14 +16,18 @@ type Props = {
   totalCents: number;
   disabled: boolean;
   /** Called when a wallet (Google Pay / Apple Pay) produced a token. */
-  onWalletToken: (token: string) => void;
-  onWalletError: (message: string) => void;
+  onWalletToken?: (token: string) => void;
+  onWalletError?: (message: string) => void;
+  /** Just the card form, no wallets (the shared kiosk tablet: its Apple Pay would be the owner's). */
+  cardOnly?: boolean;
+  /** Bigger text in the card fields, for the kiosk. */
+  large?: boolean;
 };
 
 const amount = (cents: number) => (cents / 100).toFixed(2);
 
 /** Square card form plus Google Pay / Apple Pay when the device supports them. */
-export const PaymentMethods = forwardRef<PaymentMethodsHandle, Props>(function PaymentMethods({ config, totalCents, disabled, onWalletToken, onWalletError }, ref) {
+export const PaymentMethods = forwardRef<PaymentMethodsHandle, Props>(function PaymentMethods({ config, totalCents, disabled, onWalletToken, onWalletError, cardOnly = false, large = false }, ref) {
   const card = useRef<SquareWeb.PaymentMethod | null>(null);
   const request = useRef<SquareWeb.PaymentRequest | null>(null);
   const google = useRef<SquareWeb.PaymentMethod | null>(null);
@@ -43,7 +47,7 @@ export const PaymentMethods = forwardRef<PaymentMethodsHandle, Props>(function P
         const styles = getComputedStyle(document.documentElement);
         const c = await payments.card({
           style: {
-            input: { color: styles.getPropertyValue("--text").trim() || "#eef3f8", backgroundColor: "transparent", fontSize: "15px" },
+            input: { color: styles.getPropertyValue("--text").trim() || "#eef3f8", backgroundColor: "transparent", fontSize: large ? "20px" : "15px" },
             "input::placeholder": { color: styles.getPropertyValue("--faint").trim() || "#71859a" },
             ".input-container": { borderColor: styles.getPropertyValue("--border-strong").trim() || "#2d4a65", borderRadius: "12px" },
             ".input-container.is-focus": { borderColor: styles.getPropertyValue("--accent-line").trim() || "#3d7bb8" },
@@ -55,6 +59,7 @@ export const PaymentMethods = forwardRef<PaymentMethodsHandle, Props>(function P
         if (cancelled) return void c.destroy();
         await c.attach("#sq-card");
         card.current = c;
+        if (cardOnly) return void (!cancelled && setState("ready"));
 
         const req = payments.paymentRequest({ countryCode: "CA", currencyCode: "CAD", total: { amount: amount(totalRef.current), label: site.name } });
         request.current = req;
@@ -85,7 +90,7 @@ export const PaymentMethods = forwardRef<PaymentMethodsHandle, Props>(function P
       google.current?.destroy();
       card.current = google.current = apple.current = null;
     };
-  }, [config]);
+  }, [config, cardOnly, large]);
 
   // Keep wallet sheets in sync with the order total.
   useEffect(() => {
@@ -106,10 +111,10 @@ export const PaymentMethods = forwardRef<PaymentMethodsHandle, Props>(function P
     if (!method || disabled) return;
     try {
       const result = await method.tokenize();
-      if (result.status === "OK" && result.token) onWalletToken(result.token);
-      else if (result.status !== "Cancel") onWalletError(result.errors?.[0]?.message ?? "The wallet payment didn't go through.");
+      if (result.status === "OK" && result.token) onWalletToken?.(result.token);
+      else if (result.status !== "Cancel") onWalletError?.(result.errors?.[0]?.message ?? "The wallet payment didn't go through.");
     } catch {
-      onWalletError("The wallet payment didn't go through. Please try your card instead.");
+      onWalletError?.("The wallet payment didn't go through. Please try your card instead.");
     }
   }
 

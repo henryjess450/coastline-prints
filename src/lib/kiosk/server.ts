@@ -1,5 +1,6 @@
 import "server-only";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { SquareError } from "square";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -9,14 +10,17 @@ import { pricePos, publicQuote } from "@/lib/pos/price.server";
 import { PosSaleError, ringUpSale } from "@/lib/pos/sale.server";
 import { PAIR_ALPHABET, PAIR_LENGTH, normalizePairCode, orderMinDate, type PosCartInput } from "@/lib/pos/types";
 import { shopLineSchema } from "@/lib/shop/schema";
+import { getSquare, squareLocationId } from "@/lib/square/client";
+import { friendlyPaymentError, GENERIC_PAYMENT_ERROR } from "@/lib/square/errors";
 
 /*
  * The self-checkout kiosk at the LightLab stand. A tablet opens /kiosk, gets a
  * cookie and shows a pairing code; the owner types the code in LightLab admin
  * > Kiosk. From then on the tablet can price carts and start sales. The server
  * keeps each sale's cart and Square payment link, and rings the sale up (the
- * same way as the register) once Square says the shopper has paid on their
- * phone. The tablet never decides what's paid.
+ * same way as the register) once Square says the shopper has paid: on their
+ * phone by the QR link, or by typing their card into Square's card form on the
+ * tablet. The tablet never decides what's paid.
  */
 
 export const KIOSK_COOKIE = "cp_kiosk";
@@ -124,13 +128,21 @@ export async function checkKioskSale(kioskId: string, id: string): Promise<Kiosk
   if (sale.status !== "PENDING") return view(sale);
   const status = await payLinkStatus(sale.squareOrder);
   if (!status.paid) return view(sale);
+  return ringUpKioskSale(sale, status.paymentId);
+}
+
+type SaleRow = NonNullable<Awaited<ReturnType<typeof db.kioskSale.findUnique>>>;
+
+/** Paid (by the link or by card): save it once, like a register sale. */
+async function ringUpKioskSale(sale: SaleRow, paymentId: string): Promise<KioskSaleView> {
+  const id = sale.id;
   try {
     const { order } = await ringUpSale({
       attemptId: sale.id,
       cart: JSON.parse(sale.cart) as PosCartInput,
       expectedTotalCents: sale.totalCents,
       payment: "CARD",
-      squarePaymentId: status.paymentId,
+      squarePaymentId: paymentId,
       source: KIOSK_SOURCE,
       customer: { name: sale.customerName, email: sale.email, phone: sale.phone, notes: sale.notes },
       // Take-home sales are handed over; orders are made by the day they picked.
@@ -146,6 +158,56 @@ export async function checkKioskSale(kioskId: string, id: string): Promise<Kiosk
     const problem = err instanceof Error ? err.message : "Couldn't save the sale.";
     return view(await db.kioskSale.update({ where: { id }, data: { status: "PROBLEM", problem } }));
   }
+}
+
+/**
+ * Paying on the tablet: charge the card Square's form tokenized, then ring the
+ * sale up. The QR link is switched off once the card goes through so nobody
+ * can pay twice; a decline leaves the link working.
+ */
+export async function payKioskSaleByCard(kioskId: string, id: string, sourceId: string): Promise<KioskSaleView> {
+  const sale = await db.kioskSale.findUnique({ where: { id } });
+  if (!sale || sale.kioskId !== kioskId) throw new PosSaleError("This payment has expired. Please start again.");
+  if (sale.status !== "PENDING") return view(sale);
+  // Already paid on a phone? Then that's the payment.
+  const link = await payLinkStatus(sale.squareOrder);
+  if (link.paid) return ringUpKioskSale(sale, link.paymentId);
+
+  let paymentId: string;
+  try {
+    const { payment } = await getSquare().payments.create({
+      sourceId,
+      // The same card token can only ever charge once.
+      idempotencyKey: `kc-${createHash("sha256").update(sourceId).digest("hex").slice(0, 40)}`,
+      amountMoney: { amount: BigInt(sale.totalCents), currency: "CAD" },
+      locationId: squareLocationId(),
+      autocomplete: true,
+      referenceId: sale.id.slice(0, 40),
+      buyerEmailAddress: sale.email || undefined,
+      note: `${KIOSK_SOURCE} card sale`,
+    });
+    if (!payment?.id || payment.status !== "COMPLETED") throw new PosSaleError(GENERIC_PAYMENT_ERROR);
+    paymentId = payment.id;
+  } catch (err) {
+    if (err instanceof PosSaleError) throw err;
+    if (err instanceof SquareError) {
+      if (err.statusCode !== 402 && err.statusCode !== 400) logError("kiosk:card", err);
+      throw new PosSaleError(friendlyPaymentError(err.errors.map((e) => String(e.code))));
+    }
+    logError("kiosk:card", err);
+    throw new PosSaleError("We couldn't confirm your payment. Please try again; you won't be charged twice.");
+  }
+
+  // Close the QR. If they somehow paid there too in these few seconds, give the card back.
+  await cancelPayLink(sale.linkId).catch((e) => logError("kiosk:card-close-link", e));
+  const after = await payLinkStatus(sale.squareOrder).catch(() => ({ paid: false as const }));
+  if (after.paid) {
+    await getSquare()
+      .refunds.refundPayment({ idempotencyKey: `kr-${paymentId}`.slice(0, 45), paymentId, amountMoney: { amount: BigInt(sale.totalCents), currency: "CAD" }, reason: "Paid twice at the kiosk" })
+      .catch((e) => logError("kiosk:double-pay-refund", e));
+    return ringUpKioskSale(sale, after.paymentId);
+  }
+  return ringUpKioskSale(sale, paymentId);
 }
 
 /** The shopper went back or walked away: the link stops working. */
