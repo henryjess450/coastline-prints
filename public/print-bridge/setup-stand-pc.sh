@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Turns a spare PC (Debian 13, no desktop) into the LightLab stand's print box.
-# After this, nobody touches it: plug in power, the printer's ethernet cable
-# and the USB Wi-Fi adapter, and it
+# After this, nobody touches it: plug in power and the printer's ethernet cable,
+# and it
 #   - boots straight up (no login) and starts again after a power cut or crash
 #   - gives the Star printer an address on its ethernet port (192.168.77.x)
-#   - joins a saved Wi-Fi (your phone's hotspot, a venue's Wi-Fi), or a phone
+#   - joins the Wi-Fi networks listed on Admin > Receipts (your phone's hotspot,
+#     venues), keeping that list in step whenever it's online; or a phone
 #     plugged in by USB with tethering on
 #   - runs the print bridge, so receipts from the register print
 #   - if it can't get online, opens its own "LightLab Stand Setup" Wi-Fi with a
@@ -14,7 +15,7 @@
 # Run once, at home, with the PC's ethernet plugged into your router:
 #   wget -qO- https://coastlineprints.ca/print-bridge/setup-stand-pc.sh | sudo bash -s -- pb_YOURKEY
 #
-# Safe to run again (it keeps saved Wi-Fi). STAND-PC.md in the repo has the full guide.
+# Safe to run again. STAND-PC.md in the repo has the full guide.
 set -euo pipefail
 
 KEY="${1:-}"
@@ -42,15 +43,15 @@ step "Installing Node, NetworkManager and friends"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq nodejs network-manager iw wireless-regdb curl avahi-daemon usbmuxd unattended-upgrades >/dev/null
-apt-get install -y -qq firmware-misc-nonfree firmware-realtek firmware-atheros >/dev/null \
-  || echo "   (Couldn't install Wi-Fi firmware; most MediaTek adapters still work.)"
+apt-get install -y -qq firmware-iwlwifi firmware-misc-nonfree firmware-realtek firmware-atheros >/dev/null \
+  || echo "   (Couldn't install Wi-Fi firmware; Wi-Fi may not work until it does.)"
 NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]')
 if (( NODE_MAJOR < 18 )); then echo "Node $NODE_MAJOR is too old (need 18+). Use Debian 13."; exit 1; fi
 
 # ── The bridge and its helpers ──────────────────────────────────────────────
 step "Installing the print bridge"
 mkdir -p /opt/print-bridge
-for f in print-bridge.mjs stand-portal.mjs stand-watch.sh; do
+for f in print-bridge.mjs stand-portal.mjs stand-watch.sh stand-wifi-sync.mjs; do
   curl -fsSL "$SERVER/print-bridge/$f" -o "/opt/print-bridge/$f"
 done
 chmod 755 /opt/print-bridge/stand-watch.sh
@@ -65,7 +66,7 @@ set -u
 . /etc/print-bridge.env
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 changed=()
-for f in print-bridge.mjs stand-portal.mjs stand-watch.sh; do
+for f in print-bridge.mjs stand-portal.mjs stand-watch.sh stand-wifi-sync.mjs; do
   curl -fsSL -m 60 "$SERVER/print-bridge/$f" -o "$tmp/$f" || continue
   case $f in *.mjs) node --check "$tmp/$f" || continue ;; *.sh) bash -n "$tmp/$f" || continue ;; esac
   cmp -s "$tmp/$f" "/opt/print-bridge/$f" && continue
@@ -240,27 +241,24 @@ nmcli con add type wifi con-name stand-setup ssid "$SETUP_SSID" \
   wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$SETUP_PASSWORD" wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp \
   ipv4.method shared ipv4.addresses 10.42.0.1/24 ipv6.method disabled connection.autoconnect no >/dev/null
 
-echo "   Add the Wi-Fi the stand should use: your phone's hotspot (iPhone: turn on"
-echo "   Maximize Compatibility), and any venue Wi-Fi you know. Leave the name blank to finish."
-echo "   You can add more later from your phone on the \"$SETUP_SSID\" Wi-Fi."
-while true; do
-  read -r -p "   Wi-Fi name: " SSID </dev/tty || break
-  [[ -z "$SSID" ]] && break
-  read -r -s -p "   Password (blank if none): " PSK </dev/tty; echo
-  if [[ -n "$PSK" && ${#PSK} -lt 8 ]]; then echo "   Wi-Fi passwords are 8+ characters. Try again."; continue; fi
-  add_wifi "$SSID" "$PSK"
-  echo "   Saved $SSID."
-done
+step "Wi-Fi list from Admin > Receipts"
+if node /opt/print-bridge/stand-wifi-sync.mjs; then
+  n=$(grep -c . /run/stand/wifi-synced 2>/dev/null || true)
+  echo "   Saved ${n:-0} network(s): $(paste -sd, /run/stand/wifi-synced 2>/dev/null)"
+  [[ "${n:-0}" == 0 ]] && echo "   The list is empty. Add your hotspot on Admin > Receipts; the PC picks it up while it's still plugged into the router (within 10 min) or at the next run of this command."
+else
+  echo "   Couldn't fetch the list. Check the bridge key."
+fi
 
 step "Wi-Fi adapter"
 WIFI=$(nmcli -t -f DEVICE,TYPE device | awk -F: '$2=="wifi"{print $1; exit}')
 if [[ -z "$WIFI" ]]; then
-  echo "   No Wi-Fi adapter found yet. Plug in the USB Wi-Fi adapter; it's picked up by itself."
+  echo "   No Wi-Fi found. Check the BIOS hasn't turned the wireless off, or plug in a USB Wi-Fi adapter."
 elif iw list 2>/dev/null | sed -n '/Supported interface modes/,/Band\|valid interface/p' | grep -q '\* AP$'; then
   echo "   $WIFI can join Wi-Fi and run the setup hotspot. Good."
 else
   echo "   $WIFI can join Wi-Fi but can't run a hotspot, so the setup page won't appear."
-  echo "   A MediaTek MT7612U/MT7921AU adapter (e.g. Alfa AWUS036ACM) does both."
+  echo "   It still joins your listed Wi-Fi; it just can't offer the setup page."
 fi
 
 # The printer port: the PC's own ethernet (not a phone or adapter on USB).
@@ -300,8 +298,8 @@ echo
 echo "Done. Next:"
 echo "  1. Unplug this PC from your router (from now on its ethernet port belongs to the printer;"
 echo "     never plug it into a router again, it would hand out addresses there)."
-echo "  2. Restart it (sudo reboot), then plug the printer's cable and the USB Wi-Fi adapter in."
+echo "  2. Restart it (sudo reboot), then plug the printer's cable in."
 echo "     The printer port only switches over after the restart."
 echo "  3. Admin > Receipts should say the bridge is online within a couple of minutes."
-echo "If it can't find a saved Wi-Fi, join \"$SETUP_SSID\" (password $SETUP_PASSWORD) on your phone."
+echo "Change its Wi-Fi on Admin > Receipts. If none of them is in range, join \"$SETUP_SSID\" (password $SETUP_PASSWORD) on your phone."
 echo "Logs: journalctl -u print-bridge -u stand-watch -f"

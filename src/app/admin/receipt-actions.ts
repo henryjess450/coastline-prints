@@ -10,6 +10,7 @@ import { printDestination, printImage } from "@/lib/receipt/print";
 import { getPrintSettings, savePrintSettings } from "@/lib/receipt/settings";
 import { renderStandSlipPng, sampleSlipData, STAND_SLIP_NAMES, STAND_SLIPS, standTheme, type StandSlip } from "@/lib/receipt/stand";
 import type { PrintSettings } from "@/lib/receipt/themes";
+import { saveStandWifi, standWifiSchema, type StandWifi } from "@/lib/receipt/stand-wifi";
 
 /* Admin > Receipts: the print bridge, where tickets go, and the stand's receipt themes. */
 
@@ -35,6 +36,16 @@ export async function newBridgeKeyAction(): Promise<BridgeKeyState> {
   const key = await newBridgeKey();
   revalidatePath(PATH);
   return { ok: true, key };
+}
+
+/** The Wi-Fi list the stand PC downloads (STAND-PC.md). */
+export async function saveStandWifiAction(list: StandWifi[]): Promise<ActionState> {
+  await requireAdmin();
+  const parsed = standWifiSchema.safeParse(list);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the Wi-Fi list." };
+  await saveStandWifi(parsed.data);
+  revalidatePath(PATH);
+  return { ok: true, message: "Saved. The stand PC picks it up within 10 minutes of being online." };
 }
 
 /** Prints a sample slip (made-up order) with the chosen theme. */

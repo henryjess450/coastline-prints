@@ -7,6 +7,7 @@ import { bridgeKeyMadeAt, bridgePresence, PRINTER_PROBLEMS } from "@/lib/receipt
 import { printDestination } from "@/lib/receipt/print";
 import { getPrintSettings, receiptSeason } from "@/lib/receipt/settings";
 import { comebackStats } from "@/lib/codes/comeback";
+import { getStandWifi, standWifiFetchedAt } from "@/lib/receipt/stand-wifi";
 
 export const metadata = { title: "Receipts" };
 
@@ -34,6 +35,8 @@ export default async function ReceiptsPage() {
       site={appUrl()}
       missingMarkets={missing}
       comeback={await comebackStats()}
+      standWifi={await getStandWifi()}
+      standWifiFetchedAt={standWifiFetchedAt()}
     />
   );
 }

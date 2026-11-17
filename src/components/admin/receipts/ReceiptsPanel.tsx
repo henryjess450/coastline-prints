@@ -2,7 +2,7 @@
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { cancelPrintJobAction, newBridgeKeyAction, retryPrintJobAction, saveReceiptSettingsAction, testPrintAction } from "@/app/admin/receipt-actions";
+import { cancelPrintJobAction, newBridgeKeyAction, retryPrintJobAction, saveReceiptSettingsAction, saveStandWifiAction, testPrintAction } from "@/app/admin/receipt-actions";
 import { Card } from "@/components/ui/Card";
 import { buttonClass } from "@/components/ui/Button";
 import { Segmented } from "@/components/ui/Segmented";
@@ -13,6 +13,7 @@ import type { SeasonId } from "@config/seasons";
 
 type Bridge = { online: boolean; agoMin: number | null; printer: "ok" | "missing" | null; printerHost: string | null; problems: string[]; version: string | null; keyMadeAt: string | null };
 type Job = { id: string; label: string; status: string; error: string | null; /** Already formatted in shop time. */ createdAt: string };
+type StandWifi = { ssid: string; psk: string };
 type Slip = "receipt" | "gift" | "claim";
 
 const field = "h-11 w-full rounded-xl border-2 border-line bg-surface px-3 text-sm focus:border-accent-line focus:outline-none";
@@ -25,7 +26,7 @@ const SLIPS: { value: Slip; label: string }[] = [
 const STATUS: Record<string, string> = { QUEUED: "Waiting", SENT: "Printing", PRINTED: "Printed", FAILED: "Didn't print", CANCELLED: "Cancelled" };
 const seasonName = (id: string) => RECEIPT_SEASONS.find((s) => s.id === id)?.name ?? id;
 
-export function ReceiptsPanel({ settings: saved, seasonNow, bridge, destination, homePrinter, jobs, site, missingMarkets, comeback }: { settings: PrintSettings; seasonNow: SeasonId; bridge: Bridge; destination: "bridge" | "home"; homePrinter: string | null; jobs: Job[]; site: string; missingMarkets: string[]; comeback: ComebackStat[] }) {
+export function ReceiptsPanel({ settings: saved, seasonNow, bridge, destination, homePrinter, jobs, site, missingMarkets, comeback, standWifi, standWifiFetchedAt }: { settings: PrintSettings; seasonNow: SeasonId; bridge: Bridge; destination: "bridge" | "home"; homePrinter: string | null; jobs: Job[]; site: string; missingMarkets: string[]; comeback: ComebackStat[]; standWifi: StandWifi[]; standWifiFetchedAt: number | null }) {
   const router = useRouter();
   const [settings, setSettings] = useState(saved);
   const [saving, startSave] = useTransition();
@@ -85,6 +86,7 @@ export function ReceiptsPanel({ settings: saved, seasonNow, bridge, destination,
             </motion.button>
           </div>
           <PairCard keyMadeAt={bridge.keyMadeAt} site={site} />
+          <StandWifiCard saved={standWifi} fetchedAt={standWifiFetchedAt} />
           <JobsCard jobs={jobs} />
         </div>
         <PreviewCard settings={settings} saved={saved} />
@@ -387,7 +389,7 @@ function PairCard({ keyMadeAt, site }: { keyMadeAt: string | null; site: string 
       <p className="mt-1 text-sm text-muted">The printer has no Wi-Fi, so at the stand it plugs into a small computer by ethernet. That computer joins your phone&apos;s hotspot and prints whatever the register sends. The iPad doesn&apos;t need anything installed.</p>
       <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-sm text-muted">
         <li>
-          <span className="text-fg">Stand PC</span> (the spare mini PC with a USB Wi-Fi adapter), on Debian 13 with no desktop: make a key below and run the Stand PC command on it once (STAND-PC.md has the steps). After that it needs nobody: it joins your hotspot or a saved venue Wi-Fi, and if it can&apos;t, it opens a &ldquo;LightLab Stand Setup&rdquo; Wi-Fi where your phone can add one.
+          <span className="text-fg">Stand PC</span> (the spare mini PC), on Debian 13 with no desktop: make a key below and run the Stand PC command on it once (STAND-PC.md has the steps). After that it needs nobody: it joins the Wi-Fi listed below, and if none is in range, it opens a &ldquo;LightLab Stand Setup&rdquo; Wi-Fi where your phone can add one.
         </li>
         <li>
           <span className="text-fg">Or a Raspberry Pi</span> (a Pi 4, Pi 5 or Pi Zero 2 W with a USB ethernet adapter), on Raspberry Pi OS Lite: make a key below and run the Pi command on it once. It asks for your hotspot&apos;s name and password.
@@ -433,6 +435,72 @@ function PairCard({ keyMadeAt, site }: { keyMadeAt: string | null; site: string 
           {keyMadeAt ? "Make a new bridge key" : "Make a bridge key"}
         </motion.button>
       )}
+    </Card>
+  );
+}
+
+function StandWifiCard({ saved, fetchedAt }: { saved: StandWifi[]; fetchedAt: number | null }) {
+  const router = useRouter();
+  const [list, setList] = useState(saved);
+  const [show, setShow] = useState<number | null>(null);
+  const [pending, start] = useTransition();
+  const dirty = JSON.stringify(list) !== JSON.stringify(saved);
+  const set = (i: number, patch: Partial<StandWifi>) => setList(list.map((n, j) => (j === i ? { ...n, ...patch } : n)));
+  const move = (i: number, by: number) => {
+    const next = [...list];
+    [next[i], next[i + by]] = [next[i + by], next[i]];
+    setList(next);
+  };
+  const ago = fetchedAt == null ? null : Math.round((Date.now() - fetchedAt) / 60_000);
+  return (
+    <Card className="p-5 sm:p-6">
+      <h2 className="font-display text-lg font-semibold">Stand PC Wi-Fi</h2>
+      <p className="mt-1 text-sm text-muted">
+        The networks the stand PC joins: your phone&apos;s hotspot (iPhone: turn on Maximize Compatibility) and venues you know. It downloads this list whenever it&apos;s online, so add a new venue before you go. Top of the list is tried first.
+      </p>
+      <p className="mt-1 text-xs text-faint">{ago == null ? "The stand PC hasn't fetched the list since the site last restarted." : `The stand PC last fetched it ${ago < 1 ? "just now" : `${ago} min ago`}.`}</p>
+      <div className="mt-4 space-y-2">
+        {list.map((n, i) => (
+          <div key={i} className="grid grid-cols-[1fr_auto] gap-2 rounded-2xl border-2 border-line p-2 sm:grid-cols-[1fr_1fr_auto]">
+            <input className={field} placeholder="Wi-Fi name" value={n.ssid} maxLength={32} autoCapitalize="none" autoCorrect="off" onChange={(e) => set(i, { ssid: e.target.value })} aria-label="Wi-Fi name" />
+            <div className="col-start-1 flex gap-2 sm:col-start-2 sm:row-start-1">
+              <input className={field} placeholder="Password (blank if open)" type={show === i ? "text" : "password"} value={n.psk} maxLength={63} autoCapitalize="none" autoCorrect="off" onChange={(e) => set(i, { psk: e.target.value })} aria-label="Password" />
+              <button type="button" onClick={() => setShow(show === i ? null : i)} className={buttonClass("secondary", "sm")}>
+                {show === i ? "Hide" : "Show"}
+              </button>
+            </div>
+            <div className="col-start-2 row-span-2 row-start-1 flex flex-col items-end justify-center gap-1 sm:col-start-3 sm:row-span-1 sm:flex-row sm:items-center">
+              <button type="button" disabled={i === 0} onClick={() => move(i, -1)} className="px-2 text-muted disabled:opacity-30" aria-label="Move up">↑</button>
+              <button type="button" disabled={i === list.length - 1} onClick={() => move(i, 1)} className="px-2 text-muted disabled:opacity-30" aria-label="Move down">↓</button>
+              <button type="button" onClick={() => setList(list.filter((_, j) => j !== i))} className="px-2 text-sm text-muted hover:text-fg">Remove</button>
+            </div>
+          </div>
+        ))}
+        {!list.length && <p className="text-sm text-muted">No networks yet.</p>}
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" onClick={() => setList([...list, { ssid: "", psk: "" }])} className={buttonClass("secondary")}>
+          Add a network
+        </button>
+        <motion.button
+          type="button"
+          disabled={!dirty || pending}
+          whileTap={{ scale: 0.95 }}
+          onClick={() =>
+            start(async () => {
+              const r = await saveStandWifiAction(list.map((n) => ({ ssid: n.ssid.trim(), psk: n.psk })));
+              if (r.error) toast(r.error, "error");
+              else {
+                toast(r.message ?? "Saved.");
+                router.refresh();
+              }
+            })
+          }
+          className={buttonClass("primary")}
+        >
+          {pending ? "Saving…" : "Save Wi-Fi"}
+        </motion.button>
+      </div>
     </Card>
   );
 }

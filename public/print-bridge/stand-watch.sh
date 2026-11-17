@@ -2,7 +2,8 @@
 # Keeps the LightLab stand PC online (installed by setup-stand-pc.sh, run by systemd).
 #
 # Every 15 s:
-#   - online (saved Wi-Fi or a phone on USB): nothing to do. If the site stays
+#   - online (saved Wi-Fi or a phone on USB): every 10 min, copies the Wi-Fi
+#     list from Admin > Receipts (stand-wifi-sync.mjs). If the site stays
 #     unreachable for 10 min, reconnects the Wi-Fi.
 #   - offline for 90 s: looks for a saved Wi-Fi in range and joins it; if there
 #     is none, opens the setup hotspot so a phone can add one.
@@ -36,6 +37,7 @@ offline=0
 ap_since=0
 bad=0
 last_check=0
+last_sync=0
 no_dev_said=0
 ap_failed=0
 
@@ -68,6 +70,9 @@ while sleep 15; do
     if (( now - last_check >= 60 )); then
       last_check=$now
       if curl -fsSI -m 10 -o /dev/null "$SERVER/print-bridge/print-bridge.mjs"; then bad=0; else bad=$((bad + 1)); fi
+      if (( bad == 0 && now - last_sync >= 600 )); then
+        node /opt/print-bridge/stand-wifi-sync.mjs && last_sync=$now
+      fi
       status "state=online" "via=$name" "site=$([[ $bad == 0 ]] && echo ok || echo unreachable)" "checked=$now"
       # 10 min connected but can't reach the site: reconnect the Wi-Fi (a stuck link, or a venue
       # Wi-Fi that wants a sign-in page, which this can't do).
@@ -82,7 +87,7 @@ while sleep 15; do
 
   # ── Offline ──
   if [[ -z "$dev" ]]; then
-    (( no_dev_said )) || echo "No Wi-Fi adapter. Plug in the USB Wi-Fi adapter (or a phone with USB tethering on)."
+    (( no_dev_said )) || echo "No Wi-Fi found (or plug in a phone with USB tethering on)."
     no_dev_said=1
     status "state=offline" "reason=no-wifi-adapter"
     continue
