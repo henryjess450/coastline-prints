@@ -11,6 +11,7 @@ import { PosSaleError, ringUpSale } from "@/lib/pos/sale.server";
 import { PAIR_ALPHABET, PAIR_LENGTH, normalizePairCode, orderMinDate, type PosCartInput } from "@/lib/pos/types";
 import { shopLineSchema } from "@/lib/shop/schema";
 import { getSquare, squareLocationId } from "@/lib/square/client";
+import { sendNotificationsSoon } from "@/lib/notify/kick";
 import { friendlyPaymentError, GENERIC_PAYMENT_ERROR } from "@/lib/square/errors";
 
 /*
@@ -97,7 +98,8 @@ export async function quoteKioskCart(cart: z.input<typeof kioskCartSchema>, orde
 
 export type KioskSaleView = { id: string; status: "PENDING" | "DONE" | "CANCELLED" | "PROBLEM"; url: string; totalCents: number; orderNumber: string | null; emailed: boolean };
 
-const view = (s: { id: string; status: string; linkUrl: string; totalCents: number; orderNumber: string | null; email: string }): KioskSaleView => ({ id: s.id, status: s.status as KioskSaleView["status"], url: s.linkUrl, totalCents: s.totalCents, orderNumber: s.orderNumber, emailed: !!s.email && s.status === "DONE" });
+// Only orders email on their own now; a take-home receipt is asked for afterwards.
+const view = (s: { id: string; status: string; linkUrl: string; totalCents: number; orderNumber: string | null; email: string; needBy: string | null }): KioskSaleView => ({ id: s.id, status: s.status as KioskSaleView["status"], url: s.linkUrl, totalCents: s.totalCents, orderNumber: s.orderNumber, emailed: !!s.email && !!s.needBy && s.status === "DONE" });
 
 /** Price the cart on the server and make the Square link to scan. Any older open sale on this kiosk is cancelled. */
 export async function startKioskSale(kioskId: string, rawCart: z.input<typeof kioskCartSchema>, rawCustomer: z.input<typeof kioskCustomerSchema>) {
@@ -149,7 +151,8 @@ async function ringUpKioskSale(sale: SaleRow, paymentId: string): Promise<KioskS
       handedOver: !sale.needBy,
       order: sale.needBy ? { needBy: sale.needBy } : null,
       kiosk: true,
-      emailCustomer: !!sale.email,
+      // Take-home sales: no receipt unless they ask for one on the thank-you popup (orders always get their email).
+      emailCustomer: false,
     });
     return view(await db.kioskSale.update({ where: { id }, data: { status: "DONE", orderNumber: order.orderNumber } }));
   } catch (err) {
@@ -224,6 +227,29 @@ export async function cancelKioskSale(kioskId: string, id: string) {
 async function cancelOpenSales(kioskId: string) {
   const open = await db.kioskSale.findMany({ where: { kioskId, status: "PENDING" }, select: { id: true } });
   for (const s of open) await cancelKioskSale(kioskId, s.id);
+}
+
+export const kioskReceiptSchema = z.object({ receipt: z.enum(["none", "print", "email"]).default("none"), gift: z.boolean().default(false) });
+
+/**
+ * The thank-you popup: a printed or emailed receipt and/or a gift receipt,
+ * printed at the stand. Asking twice never prints twice.
+ */
+export async function sendKioskReceipts(kioskId: string, id: string, raw: z.input<typeof kioskReceiptSchema>) {
+  const want = kioskReceiptSchema.parse(raw);
+  const sale = await db.kioskSale.findUnique({ where: { id } });
+  if (!sale || sale.kioskId !== kioskId || sale.status !== "DONE" || !sale.orderNumber) return { ok: false as const };
+  const order = await db.order.findUnique({ where: { orderNumber: sale.orderNumber }, select: { id: true } });
+  if (!order) return { ok: false as const };
+  const orderId = order.id;
+  const jobs: { kind: string; template: string; payload: string; dedupeKey: string }[] = [];
+  const slip = (kind: "receipt" | "gift") => jobs.push({ kind: "print", template: "stand-slip", payload: JSON.stringify({ orderId, slip: kind, marketId: null }), dedupeKey: `${orderId}:stand-slip:${kind}` });
+  if (want.receipt === "print") slip("receipt");
+  if (want.receipt === "email" && sale.email && !sale.needBy) jobs.push({ kind: "email", template: "customer-receipt", payload: JSON.stringify({ orderId }), dedupeKey: `${orderId}:customer-receipt` });
+  if (want.gift) slip("gift");
+  for (const j of jobs) await db.outboxJob.upsert({ where: { dedupeKey: j.dedupeKey }, create: j, update: {} });
+  if (jobs.length) sendNotificationsSoon("kiosk-receipt");
+  return { ok: true as const };
 }
 
 /** Kiosk sales that were paid but couldn't be saved, for the admin. */

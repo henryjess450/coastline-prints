@@ -29,6 +29,9 @@ const STILL_THERE_S = 20;
 const PAY_IDLE_MS = 5 * 60_000;
 /** The thank-you screen counts down this many seconds, then goes back to the start. */
 const DONE_S = 8;
+/** The receipt popup waits this long, then takes it as "no thanks". */
+const RECEIPT_ASK_S = 20;
+type ReceiptPick = "none" | "print" | "email";
 
 async function api<T>(url: string, init?: RequestInit): Promise<{ ok: true; data: T } | { ok: false; error: string; status: number }> {
   try {
@@ -80,6 +83,11 @@ export function KioskApp() {
   const [cardBusy, setCardBusy] = useState(false);
   const [cardError, setCardError] = useState<string | null>(null);
   const [doneLeft, setDoneLeft] = useState(DONE_S);
+  // After paying: "Want your receipt?" then "A gift receipt?" (both assumed no).
+  const [ask, setAsk] = useState<"receipt" | "gift" | null>(null);
+  const [receipt, setReceipt] = useState<ReceiptPick>("none");
+  const [gift, setGift] = useState(false);
+  const [askLeft, setAskLeft] = useState(RECEIPT_ASK_S);
   const lastTouch = useRef(0);
   const mode: KioskMode = hello?.mode ?? "shop";
   // Hello comes back every minute as a new object: keep the same config so the card form isn't rebuilt (and wiped) mid-typing.
@@ -150,6 +158,9 @@ export function KioskApp() {
       setStillThere(null);
       setCardBusy(false);
       setCardError(null);
+      setAsk(null);
+      setReceipt("none");
+      setGift(false);
       setStage("welcome");
       loadProducts();
     },
@@ -191,6 +202,10 @@ export function KioskApp() {
       if (s.status !== "DONE" && s.status !== "PROBLEM") return;
       setDone({ kind: s.status === "DONE" ? "paid" : "problem", sale: s });
       setDoneLeft(DONE_S);
+      setReceipt("none");
+      setGift(false);
+      setAskLeft(RECEIPT_ASK_S);
+      setAsk(s.status === "DONE" ? "receipt" : null);
       setStage("done");
       lastTouch.current = Date.now();
       feedback("chime", 40);
@@ -200,7 +215,7 @@ export function KioskApp() {
 
   // The thank-you screen: 8, 7, 6... then back to "Tap to start".
   useEffect(() => {
-    if (stage !== "done" || done?.kind !== "paid") return;
+    if (stage !== "done" || done?.kind !== "paid" || ask) return;
     const end = Date.now() + DONE_S * 1000;
     const t = setInterval(() => {
       const left = Math.ceil((end - Date.now()) / 1000);
@@ -208,7 +223,20 @@ export function KioskApp() {
       setDoneLeft(left);
     }, 250);
     return () => clearInterval(t);
-  }, [stage, reset, done?.kind]);
+  }, [stage, reset, done?.kind, ask]);
+
+  // The popup's own clock: no answer means no receipt.
+  useEffect(() => {
+    if (!ask) return;
+    const end = Date.now() + RECEIPT_ASK_S * 1000;
+    const t = setInterval(() => {
+      const left = Math.ceil((end - Date.now()) / 1000);
+      if (left > 0) return setAskLeft(left);
+      setAsk(null);
+      setAskLeft(RECEIPT_ASK_S);
+    }, 250);
+    return () => clearInterval(t);
+  }, [ask]);
 
   // Waiting for the shopper to pay on their phone.
   useEffect(() => {
@@ -250,6 +278,22 @@ export function KioskApp() {
     setSale(r.data);
     setCardError(null);
     setStage("pay");
+  }
+
+  /** Each yes is sent as soon as it's tapped (so walking away after the first question still gets it). */
+  function answer(step: "receipt" | "gift", value: ReceiptPick | boolean) {
+    feedback("click", 10);
+    setAskLeft(RECEIPT_ASK_S);
+    const send = (body: { receipt: ReceiptPick; gift: boolean }) => done && void api(`/api/kiosk/sale?id=${done.sale.id}`, { method: "PATCH", body: JSON.stringify(body) });
+    if (step === "receipt") {
+      setReceipt(value as ReceiptPick);
+      if (value !== "none") send({ receipt: value as ReceiptPick, gift: false });
+      return setAsk("gift");
+    }
+    setGift(value as boolean);
+    if (value) send({ receipt: "none", gift: true });
+    setAsk(null);
+    setDoneLeft(DONE_S);
   }
 
   async function payByCard() {
@@ -517,9 +561,11 @@ export function KioskApp() {
                 <p className="mt-3 text-xl text-muted">
                   {order
                     ? `It'll be ready by ${details.needBy ? prettyDay(details.needBy) : "the day you picked"}. We'll email ${details.email.trim()} when it is.`
-                    : done.sale.emailed
+                    : receipt === "email"
                       ? `Your receipt is on its way to ${details.email.trim()}.`
-                      : `Receipt ${done.sale.orderNumber}.`}
+                      : receipt === "print" || gift
+                        ? `Your ${[receipt === "print" && "receipt", gift && "gift receipt"].filter(Boolean).join(" and ")} ${receipt === "print" && gift ? "are" : "is"} printing at the stand.`
+                        : "Enjoy!"}
                 </p>
                 <p className="mt-2 text-muted">Order {done.sale.orderNumber}</p>
                 <p className="mt-10 text-muted">
@@ -528,6 +574,50 @@ export function KioskApp() {
               </div>
             )}
           </motion.button>
+        )}
+      </AnimatePresence>
+
+      {/* After paying: receipt, then gift receipt. Not answering = no. */}
+      <AnimatePresence>
+        {stage === "done" && ask && (
+          <motion.div className="fixed inset-0 z-[400] grid place-items-center bg-black/70 px-6 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div key={ask} className="w-full max-w-lg rounded-[28px] border border-line bg-elev p-8 text-center" initial={{ scale: 0.9, y: 20, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} transition={{ type: "spring", stiffness: 380, damping: 24 }}>
+              <p className="text-5xl" aria-hidden>
+                {ask === "receipt" ? "🧾" : "🎁"}
+              </p>
+              <p className="mt-3 font-display text-3xl font-bold">{ask === "receipt" ? "Would you like a receipt?" : "Is it a gift?"}</p>
+              <p className="mt-2 text-lg text-muted">{ask === "receipt" ? "Printed here at the stand, or sent to your email." : "We can print a gift receipt without the prices."}</p>
+              <div className="mt-6 grid gap-3">
+                {ask === "receipt" ? (
+                  <>
+                    <button type="button" onClick={() => answer("receipt", "none")} className="h-16 rounded-full bg-fg text-lg font-bold text-bg">
+                      No thanks
+                    </button>
+                    <div className={cn("grid gap-3", !order && details.email.trim() ? "grid-cols-2" : "grid-cols-1")}>
+                      <button type="button" onClick={() => answer("receipt", "print")} className="h-14 rounded-full border border-line text-lg font-semibold">
+                        Print it
+                      </button>
+                      {!order && details.email.trim() && (
+                        <button type="button" onClick={() => answer("receipt", "email")} className="h-14 rounded-full border border-line text-lg font-semibold">
+                          Email it
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" onClick={() => answer("gift", false)} className="h-16 rounded-full bg-fg text-lg font-bold text-bg">
+                      No thanks
+                    </button>
+                    <button type="button" onClick={() => answer("gift", true)} className="h-14 rounded-full border border-line text-lg font-semibold">
+                      Yes, print a gift receipt
+                    </button>
+                  </>
+                )}
+              </div>
+              <p className="mt-4 text-sm text-faint">No answer in {askLeft}s means no thanks</p>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 

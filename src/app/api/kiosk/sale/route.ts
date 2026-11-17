@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError, logError } from "@/lib/api";
-import { cancelKioskSale, checkKioskSale, kioskCartSchema, kioskCustomerSchema, pairedKiosk, payKioskSaleByCard, startKioskSale } from "@/lib/kiosk/server";
+import { cancelKioskSale, checkKioskSale, kioskCartSchema, kioskCustomerSchema, pairedKiosk, payKioskSaleByCard, sendKioskReceipts, startKioskSale } from "@/lib/kiosk/server";
 import { PosSaleError } from "@/lib/pos/sale.server";
 
 export const runtime = "nodejs";
@@ -41,6 +41,21 @@ export async function PUT(req: Request) {
     if (err instanceof PosSaleError) return apiError(402, err.message);
     logError("kiosk:card-route", err);
     return apiError(502, "We couldn't confirm your payment. Please try again; you won't be charged twice.");
+  }
+}
+
+/** The thank-you popup's answers: a receipt (printed or emailed) and/or a gift receipt. */
+export async function PATCH(req: Request) {
+  const kiosk = await pairedKiosk();
+  if (!kiosk) return apiError(401, "This kiosk isn't paired.");
+  const id = saleId(req);
+  if (!id) return apiError(400, "Missing sale.");
+  try {
+    const r = await sendKioskReceipts(kiosk.id, id, (await req.json().catch(() => ({}))) ?? {});
+    return r.ok ? NextResponse.json({ ok: true }) : apiError(404, "No such sale.");
+  } catch (err) {
+    logError("kiosk:receipts", err);
+    return apiError(502, "Couldn't send the receipt. Please ask us at the stand.");
   }
 }
 

@@ -30,7 +30,7 @@ vi.mock("@/lib/pos/paylink.server", () => ({
 }));
 
 const { db } = await import("@/lib/db");
-const { startKioskSale, checkKioskSale, cancelKioskSale } = await import("@/lib/kiosk/server");
+const { startKioskSale, checkKioskSale, cancelKioskSale, sendKioskReceipts } = await import("@/lib/kiosk/server");
 const { orderMinDate } = await import("@/lib/pos/types");
 const { addDays } = await import("@/lib/pickup");
 const { loadOrderEmailData } = await import("@/lib/email/data");
@@ -62,7 +62,8 @@ describe("shop mode: pay on your phone", () => {
     square.payments.get.mockResolvedValue({ payment: { id: "PAY-KIOSK-1", status: "COMPLETED", amountMoney: { amount: BigInt(11800), currency: "CAD" }, locationId: "TEST_LOCATION", cardDetails: { card: { cardBrand: "VISA", last4: "4242" } } } });
     const done = await checkKioskSale(k.id, sale.id);
     expect(done?.status).toBe("DONE");
-    expect(done?.emailed).toBe(true);
+    // No receipt until they ask for one on the thank-you popup.
+    expect(done?.emailed).toBe(false);
 
     const order = await db.order.findUnique({ where: { orderNumber: done!.orderNumber! }, include: { items: true } });
     expect(order?.source).toBe("LightLab kiosk");
@@ -78,6 +79,19 @@ describe("shop mode: pay on your phone", () => {
     // Checking again never rings it up twice.
     await checkKioskSale(k.id, sale.id);
     expect(await db.order.count({ where: { squarePaymentId: "PAY-KIOSK-1" } })).toBe(1);
+
+    // The popup: nothing queued until they say yes; asking twice never doubles up.
+    const jobs = () => db.outboxJob.findMany({ where: { payload: { contains: order!.id }, template: { in: ["customer-receipt", "stand-slip"] } }, orderBy: { template: "asc" } });
+    expect(await jobs()).toHaveLength(0);
+    expect((await sendKioskReceipts(k.id, sale.id, { receipt: "email", gift: false })).ok).toBe(true);
+    await sendKioskReceipts(k.id, sale.id, { receipt: "email", gift: false });
+    await sendKioskReceipts(k.id, sale.id, { receipt: "none", gift: true });
+    const queued = await jobs();
+    expect(queued.map((j) => j.template)).toEqual(["customer-receipt", "stand-slip"]);
+    expect(JSON.parse(queued[1].payload).slip).toBe("gift");
+    // Another kiosk can't ask for this sale's receipts.
+    const other = await kiosk("shop");
+    expect((await sendKioskReceipts(other.id, sale.id, { receipt: "print", gift: false })).ok).toBe(false);
   });
 
   it("cancels the link when they go back, and only its own kiosk can see a sale", async () => {
