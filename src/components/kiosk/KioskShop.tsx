@@ -65,6 +65,34 @@ export function KioskShop({
   const shown = cat ? products.filter((p) => p.category === cat) : products;
   const count = lines.reduce((n, l) => n + l.quantity, 0);
   const problem = quote && !quote.ok ? quote.error : null;
+  const inBag = (p: ShopProductDto, variantId: string | null) => lines.filter((l) => l.productId === p.id && l.variantId === variantId).reduce((n, l) => n + l.quantity, 0);
+  // A brief "that's all we have" on a tile that can't take another.
+  const [full, setFull] = useState<string | null>(null);
+
+  /** One tap, one lamp: the first option that's still got room, default choices, quantity 1. */
+  function quickAdd(p: ShopProductDto, from: Element) {
+    // A lamp that needs a name typed on it still opens, so there's somewhere to type it.
+    if (order && p.personalize) return (setOpen(p), feedback("click"));
+    const room = (variantId: string | null) => {
+      const stock = order ? null : inStock(p, variantId);
+      return Math.min(20, stock ?? 20) - (order ? 0 : inBag(p, variantId));
+    };
+    const ids = p.variants.length ? p.variants.map((v) => v.id) : [null];
+    const variantId = ids.find((id) => room(id) > 0);
+    if (variantId === undefined) {
+      setFull(p.id);
+      setTimeout(() => setFull((f) => (f === p.id ? null : f)), 1600);
+      return;
+    }
+    const choices = choiceIds(p);
+    const price = unitPrice(p, variantId, choices);
+    const max = order ? null : inStock(p, variantId);
+    feedback("pop", 15);
+    flyToCart(from, p.images[0] ?? null, () => {
+      setLines((ls) => addLine(ls, p, variantId, 1, price, max, "", choices));
+      feedback("sparkle");
+    });
+  }
   // An empty bag for a few seconds: the first lamp gently waves to say "tap me".
   const [hint, setHint] = useState(false);
   useEffect(() => {
@@ -101,7 +129,7 @@ export function KioskShop({
             ))}
           </div>
         )}
-        <motion.ul layout className="grid flex-1 auto-rows-max grid-cols-2 gap-5 overflow-y-auto p-6 xl:grid-cols-3">
+        <motion.ul layout className="grid flex-1 auto-rows-max grid-cols-3 gap-4 overflow-y-auto p-5 lg:grid-cols-4 xl:grid-cols-5">
           <AnimatePresence mode="popLayout">
             {shown.map((p, i) => {
               const n = left(p);
@@ -112,25 +140,32 @@ export function KioskShop({
                   <motion.button
                     type="button"
                     disabled={out}
-                    onClick={() => (setOpen(p), feedback("click"))}
+                    onClick={(e) => quickAdd(p, e.currentTarget.querySelector("[data-tile-photo]") ?? e.currentTarget)}
                     whileTap={{ scale: 0.95, rotate: i % 2 ? 1 : -1 }}
                     animate={hint && i === 0 ? { rotate: [0, -2.5, 2.5, -1.5, 0] } : { rotate: 0 }}
                     transition={hint && i === 0 ? { duration: 1.1, repeat: Infinity, repeatDelay: 2.4 } : { duration: 0.2 }}
                     className="group block w-full text-left disabled:opacity-50"
                   >
-                    <div className="relative aspect-square overflow-hidden rounded-3xl border border-line bg-surface">
+                    <div data-tile-photo className="relative aspect-square overflow-hidden rounded-2xl border border-line bg-surface">
                       {p.images[0] && <FadeImg src={p.images[0]} alt={p.name} className="h-full w-full object-cover" />}
-                      {!order && (out || (n != null && n <= 3)) && <span className="ll-flicker absolute left-3 top-3 rounded-full bg-bg/85 px-3 py-1 text-sm font-semibold backdrop-blur">{out ? "Sold out" : `Only ${n} left`}</span>}
-                      {order && p.personalize && <span className="absolute left-3 top-3 rounded-full bg-bg/85 px-3 py-1 text-sm font-semibold backdrop-blur">Add a name</span>}
+                      {!order && (out || (n != null && n <= 3)) && <span className="ll-flicker absolute left-2 top-2 rounded-full bg-bg/85 px-2.5 py-0.5 text-xs font-semibold backdrop-blur">{out ? "Sold out" : `Only ${n} left`}</span>}
+                      {order && p.personalize && <span className="absolute left-2 top-2 rounded-full bg-bg/85 px-2.5 py-0.5 text-xs font-semibold backdrop-blur">Add a name</span>}
+                      <AnimatePresence>
+                        {full === p.id && (
+                          <motion.span className="absolute inset-0 grid place-items-center bg-black/60 px-2 text-center text-sm font-semibold text-white" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                            That&apos;s all we have
+                          </motion.span>
+                        )}
+                      </AnimatePresence>
                       {hint && i === 0 && (
-                        <motion.span className="absolute bottom-3 right-3 rounded-full bg-fg px-4 py-2 text-sm font-bold text-bg" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+                        <motion.span className="absolute bottom-2 right-2 rounded-full bg-fg px-3 py-1.5 text-xs font-bold text-bg" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
                           Tap me!
                         </motion.span>
                       )}
                     </div>
-                    <div className="mt-3 flex items-start justify-between gap-3">
-                      <p className="font-display text-xl font-semibold leading-tight">{p.name}</p>
-                      <p className="shrink-0 font-mono text-lg">{money(from)}</p>
+                    <div className="mt-2 flex items-start justify-between gap-2">
+                      <p className="font-display text-base font-semibold leading-tight">{p.name}</p>
+                      <p className="shrink-0 font-mono text-sm">{money(from)}</p>
                     </div>
                   </motion.button>
                 </motion.li>
@@ -179,7 +214,7 @@ export function KioskShop({
                 <TinyLamp on={false} size={64} />
               </span>
               <p className="mt-3">Tap a lamp to add it.</p>
-              <p className="text-sm text-faint">The lamp up top lights when you do.</p>
+              <p className="text-sm text-faint">Tap it again for another.</p>
             </li>
           )}
         </ul>
@@ -231,7 +266,7 @@ export function KioskShop({
                 feedback("sparkle");
               });
             }}
-            inBag={(variantId) => lines.filter((l) => l.productId === open.id && l.variantId === variantId).reduce((n, l) => n + l.quantity, 0)}
+            inBag={(variantId) => inBag(open, variantId)}
           />
         )}
       </AnimatePresence>

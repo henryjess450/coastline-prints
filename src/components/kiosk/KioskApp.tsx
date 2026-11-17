@@ -26,8 +26,8 @@ const IDLE_MS = 90_000;
 const STILL_THERE_S = 20;
 /** The QR waits this long before giving up. */
 const PAY_IDLE_MS = 5 * 60_000;
-/** The thank-you screen goes back to the start after this. */
-const DONE_MS = 25_000;
+/** The thank-you screen counts down this many seconds, then goes back to the start. */
+const DONE_S = 8;
 
 async function api<T>(url: string, init?: RequestInit): Promise<{ ok: true; data: T } | { ok: false; error: string; status: number }> {
   try {
@@ -74,6 +74,7 @@ export function KioskApp() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [stillThere, setStillThere] = useState<number | null>(null);
+  const [doneLeft, setDoneLeft] = useState(DONE_S);
   const lastTouch = useRef(0);
   const mode: KioskMode = hello?.mode ?? "shop";
   const order = mode === "order";
@@ -163,14 +164,27 @@ export function KioskApp() {
     if (stage === "welcome") return;
     const t = setInterval(() => {
       const idle = Date.now() - lastTouch.current;
-      if (stage === "done") return idle > DONE_MS && reset(false);
+      // A problem sale stays up for staff to see (tap to finish), but not forever.
+      if (stage === "done") return done?.kind === "problem" && idle > 120_000 && reset(false);
       if (stage === "pay") return idle > PAY_IDLE_MS && reset();
       if (!lines.length && stage === "shop") return idle > 45_000 && reset();
       if (idle > IDLE_MS + STILL_THERE_S * 1000) return reset();
       if (idle > IDLE_MS) setStillThere(Math.max(0, Math.ceil((IDLE_MS + STILL_THERE_S * 1000 - idle) / 1000)));
     }, 1000);
     return () => clearInterval(t);
-  }, [stage, lines.length, reset]);
+  }, [stage, lines.length, reset, done?.kind]);
+
+  // The thank-you screen: 8, 7, 6... then back to "Tap to start".
+  useEffect(() => {
+    if (stage !== "done" || done?.kind !== "paid") return;
+    const end = Date.now() + DONE_S * 1000;
+    const t = setInterval(() => {
+      const left = Math.ceil((end - Date.now()) / 1000);
+      if (left <= 0) return reset(false);
+      setDoneLeft(left);
+    }, 250);
+    return () => clearInterval(t);
+  }, [stage, reset, done?.kind]);
 
   // Waiting for the shopper to pay on their phone.
   useEffect(() => {
@@ -183,6 +197,7 @@ export function KioskApp() {
         setSale(r.data);
         if (r.data.status === "DONE" || r.data.status === "PROBLEM") {
           setDone({ kind: r.data.status === "DONE" ? "paid" : "problem", sale: r.data });
+          setDoneLeft(DONE_S);
           setStage("done");
           lastTouch.current = Date.now();
           feedback("chime", 40);
@@ -409,6 +424,7 @@ export function KioskApp() {
                 <DrawnCheck className="mx-auto h-28 w-28 text-success" />
                 <p className="mt-6 font-display text-3xl font-bold">You&apos;re paid. Please show this screen at the stand.</p>
                 <p className="mt-3 text-xl text-muted">{money(done.sale.totalCents)} received. We just need to finish your sale by hand. Sorry for the wait!</p>
+                <p className="mt-10 text-muted">Tap here once we&apos;ve sorted it</p>
               </div>
             ) : (
               <div className="relative">
@@ -425,7 +441,9 @@ export function KioskApp() {
                       : `Receipt ${done.sale.orderNumber}.`}
                 </p>
                 <p className="mt-2 text-muted">Order {done.sale.orderNumber}</p>
-                <p className="mt-10 text-muted">Tap anywhere to finish</p>
+                <p className="mt-10 text-muted">
+                  Back to the start in <span className="font-mono font-bold text-fg tabular-nums">{doneLeft}</span>… or tap anywhere
+                </p>
               </div>
             )}
           </motion.button>
