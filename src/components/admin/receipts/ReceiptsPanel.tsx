@@ -378,6 +378,7 @@ function PairCard({ keyMadeAt, site }: { keyMadeAt: string | null; site: string 
   const [pending, start] = useTransition();
   const [copied, setCopied] = useState<string | null>(null);
   const copy = (text: string, what: string) => void navigator.clipboard.writeText(text).then(() => setCopied(what));
+  const pc = key ? `wget -qO- ${site}/print-bridge/setup-stand-pc.sh | sudo bash -s -- ${key}` : null;
   const pi = key ? `curl -fsSL ${site}/print-bridge/setup-pi.sh | sudo bash -s -- ${key}` : null;
   const mac = key ? `curl -fsSLO ${site}/print-bridge/print-bridge.mjs && BRIDGE_KEY=${key} node print-bridge.mjs` : null;
   return (
@@ -386,9 +387,12 @@ function PairCard({ keyMadeAt, site }: { keyMadeAt: string | null; site: string 
       <p className="mt-1 text-sm text-muted">The printer has no Wi-Fi, so at the stand it plugs into a small computer by ethernet. That computer joins your phone&apos;s hotspot and prints whatever the register sends. The iPad doesn&apos;t need anything installed.</p>
       <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-sm text-muted">
         <li>
-          <span className="text-fg">Raspberry Pi</span> (a Pi 4, Pi 5 or Pi Zero 2 W with a USB ethernet adapter), on Raspberry Pi OS Lite: make a key below and run the Pi command on it once. It asks for your hotspot&apos;s name and password.
+          <span className="text-fg">Stand PC</span> (the spare mini PC with a USB Wi-Fi adapter), on Debian 13 with no desktop: make a key below and run the Stand PC command on it once (STAND-PC.md has the steps). After that it needs nobody: it joins your hotspot or a saved venue Wi-Fi, and if it can&apos;t, it opens a &ldquo;LightLab Stand Setup&rdquo; Wi-Fi where your phone can add one.
         </li>
-        <li>Plug the printer&apos;s ethernet cable into the Pi, power both, and turn on your hotspot. The Pi gives the printer its address itself.</li>
+        <li>
+          <span className="text-fg">Or a Raspberry Pi</span> (a Pi 4, Pi 5 or Pi Zero 2 W with a USB ethernet adapter), on Raspberry Pi OS Lite: make a key below and run the Pi command on it once. It asks for your hotspot&apos;s name and password.
+        </li>
+        <li>Plug the printer&apos;s ethernet cable into the PC or Pi, power both, and turn on your hotspot. It gives the printer its address itself.</li>
         <li>
           <span className="text-fg">Or a Mac</span> with Node installed: plug the printer into the home network (or the Mac), and run the Mac command.
         </li>
@@ -398,6 +402,7 @@ function PairCard({ keyMadeAt, site }: { keyMadeAt: string | null; site: string 
         <div className="mt-4 space-y-3 rounded-2xl border-2 border-accent-line bg-accent-soft p-3">
           <p className={cn(label, "text-accent-text")}>Bridge key (shown once)</p>
           {[
+            ["Stand PC", pc!],
             ["Pi", pi!],
             ["Mac", mac!],
           ].map(([what, cmd]) => (
