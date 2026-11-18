@@ -33,21 +33,59 @@ async function renderGreys(t: TagLook): Promise<Buffer> {
   const art = await drawing(t.image);
   const artBox = { w: 96 * u, h: 56 * u };
   const fit = art ? Math.min(artBox.w / art.w, artBox.h / art.h) : 1;
+  if (!art) return renderGreysTextOnly(t);
   const nameSize = Math.min(17 * u, (97 * u) / Math.max(4, t.name.length * 0.55));
   const priceSize = Math.min(24 * u, (97 * u) / Math.max(3, t.price.length * 0.6));
 
   const tree = (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%", height: "100%", background: "black", color: "white", fontFamily: "Gabarito", padding: `${2 * u}px ${1.5 * u}px ${1 * u}px` }}>
       <div style={{ display: "flex", flex: 1, width: "100%", alignItems: "center", justifyContent: "center" }}>
-        {art ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={art.src} width={Math.round(art.w * fit)} height={Math.round(art.h * fit)} alt="" />
-        ) : null}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={art.src} width={Math.round(art.w * fit)} height={Math.round(art.h * fit)} alt="" />
       </div>
       <span style={{ fontSize: nameSize, fontWeight: 800, letterSpacing: -0.03 * nameSize, lineHeight: 1.05, textAlign: "center" }}>{t.name}</span>
       <span style={{ fontSize: priceSize, fontWeight: 800, letterSpacing: -0.03 * priceSize, lineHeight: 1 }}>{t.price}</span>
     </div>
   );
+  return toGreys(tree);
+}
+
+/**
+ * No drawing yet: the name and price alone, centred and as big as they fit,
+ * so they read from across the stand. The name may wrap onto a few lines.
+ */
+async function renderGreysTextOnly(t: TagLook): Promise<Buffer> {
+  const u = (OLED_SIZE * SCALE) / 100;
+  const W = 96 * u;
+  const longestWord = Math.max(...t.name.split(/\s+/).map((w) => w.length), 3);
+  let nameSize = Math.min(30 * u, W / (longestWord * 0.6));
+  const priceSize = Math.min(40 * u, W / Math.max(3, t.price.length * 0.6));
+  // Shrink the name until its lines and the price fit the height.
+  const lines = (size: number) => {
+    // Wrap word by word, as the browser will (about 0.6em a letter).
+    let n = 1;
+    let used = 0;
+    for (const word of t.name.split(/\s+/)) {
+      const w = word.length * 0.6 * size;
+      if (used && used + 0.3 * size + w > W) {
+        n++;
+        used = w;
+      } else used += (used ? 0.3 * size : 0) + w;
+    }
+    return n;
+  };
+  while (nameSize > 8 * u && lines(nameSize) * nameSize * 1.05 + priceSize * 1.1 + 12 * u > 96 * u) nameSize -= u;
+
+  return toGreys(
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", width: "100%", height: "100%", background: "black", color: "white", fontFamily: "Gabarito", padding: `${2 * u}px` }}>
+      <span style={{ fontSize: nameSize, fontWeight: 800, letterSpacing: -0.03 * nameSize, lineHeight: 1.05, textAlign: "center" }}>{t.name}</span>
+      <span style={{ fontSize: priceSize, fontWeight: 800, letterSpacing: -0.03 * priceSize, lineHeight: 1.1, marginTop: 4 * u }}>{t.price}</span>
+    </div>,
+  );
+}
+
+async function toGreys(tree: React.ReactElement): Promise<Buffer> {
+  const S = OLED_SIZE * SCALE;
   const png = Buffer.from(await new ImageResponse(tree, { width: S, height: S, fonts: standFonts() }).arrayBuffer());
   return sharp(png).flatten({ background: "#000000" }).resize(OLED_SIZE, OLED_SIZE, { kernel: "lanczos3" }).greyscale().raw().toBuffer();
 }
