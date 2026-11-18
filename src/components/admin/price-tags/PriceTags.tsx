@@ -1,15 +1,17 @@
 "use client";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { saveTagAction, saveTagSizeAction } from "@/app/admin/price-tag-actions";
 import { Card } from "@/components/ui/Card";
 import { buttonClass } from "@/components/ui/Button";
 import { toast } from "@/components/ui/Toast";
 import { cn } from "@/lib/cn";
+import { describeScreen, ScreenLink, screenSupported } from "./screen-link";
 
 type Product = { id: string; shop: "lightlab" | "coastline"; name: string; image: string | null; colors: string[]; priceColor: string | null };
 type Size = { widthIn: number; heightIn: number };
+type Screen = { link: ScreenLink; wired: boolean; showing: string | null };
 
 /** Price tags: pick a drawing and colours for each product, see the tag, and print the ones you need from a PDF. */
 export function PriceTags({ shop, size, products }: { shop: "lightlab" | "coastline"; size: Size; products: Product[] }) {
@@ -18,6 +20,7 @@ export function PriceTags({ shop, size, products }: { shop: "lightlab" | "coastl
   const picked = Object.entries(copies).filter(([id, n]) => n > 0 && list.some((p) => p.id === id));
   const total = picked.reduce((s, [, n]) => s + n, 0);
   const pdfHref = `/api/admin/price-tags/pdf?items=${picked.map(([id, n]) => `${id}:${n}`).join(",")}`;
+  const [screen, setScreen] = useState<Screen | null>(null);
 
   return (
     <div className="space-y-6">
@@ -37,6 +40,7 @@ export function PriceTags({ shop, size, products }: { shop: "lightlab" | "coastl
 
       <div className="sticky top-2 z-10 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface/95 p-3 backdrop-blur">
         <SizeForm size={size} />
+        <ScreenButton screen={screen} setScreen={setScreen} />
         <span className="ml-auto text-sm text-muted">{total ? `${total} tag${total === 1 ? "" : "s"} picked` : "Pick how many of each below"}</span>
         <button type="button" disabled={!total} onClick={() => setCopies({})} className={buttonClass("secondary", "sm")}>
           Clear
@@ -54,7 +58,7 @@ export function PriceTags({ shop, size, products }: { shop: "lightlab" | "coastl
       ) : (
         <div className="grid gap-5 xl:grid-cols-2">
           {list.map((p) => (
-            <TagEditor key={p.id} product={p} size={size} copies={copies[p.id] ?? 0} setCopies={(n) => setCopies((c) => ({ ...c, [p.id]: n }))} />
+            <TagEditor key={p.id} product={p} size={size} screen={screen} setScreen={setScreen} copies={copies[p.id] ?? 0} setCopies={(n) => setCopies((c) => ({ ...c, [p.id]: n }))} />
           ))}
         </div>
       )}
@@ -94,7 +98,56 @@ function SizeForm({ size }: { size: Size }) {
   );
 }
 
-function TagEditor({ product, size, copies, setCopies }: { product: Product; size: Size; copies: number; setCopies: (n: number) => void }) {
+const noSubscribe = () => () => {};
+
+/** Connects to the screen price tag over USB (the ESP32 with the little OLED, see firmware/pricetag). */
+function ScreenButton({ screen, setScreen }: { screen: Screen | null; setScreen: (s: Screen | null) => void }) {
+  const [busy, setBusy] = useState(false);
+  const supported = useSyncExternalStore(noSubscribe, screenSupported, () => false);
+  if (!supported) return null;
+
+  async function connect() {
+    setBusy(true);
+    try {
+      const r = await ScreenLink.connect(true);
+      if (!r) return;
+      r.link.onClose = () => {
+        setScreen(null);
+        toast("Screen unplugged.");
+      };
+      const d = describeScreen(r.status);
+      setScreen({ link: r.link, ...d });
+      if (!d.wired) toast("Board found, but no screen on it. Check the wires: SDA to D21, SCL to D22 (D4 and D5 on a XIAO).", "error");
+    } catch (err) {
+      if ((err as Error).name !== "NotFoundError") toast((err as Error).message, "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return screen ? (
+    <span className="flex items-center gap-2 text-sm">
+      <span className={cn("h-2 w-2 rounded-full", screen.wired ? "bg-emerald-500" : "bg-amber-500")} />
+      <span className="text-muted">{screen.wired ? (screen.showing ? `Screen: ${screen.showing}` : "Screen connected") : "Board connected, no screen"}</span>
+      <button
+        type="button"
+        onClick={async () => {
+          await screen.link.close(true);
+          setScreen(null);
+        }}
+        className="text-xs text-muted underline hover:text-fg"
+      >
+        Disconnect
+      </button>
+    </span>
+  ) : (
+    <button type="button" disabled={busy} onClick={connect} className={buttonClass("secondary", "sm")}>
+      {busy ? "Connecting…" : "Connect screen"}
+    </button>
+  );
+}
+
+function TagEditor({ product, size, screen, setScreen, copies, setCopies }: { product: Product; size: Size; screen: Screen | null; setScreen: (s: Screen | null) => void; copies: number; setCopies: (n: number) => void }) {
   const [image, setImage] = useState(product.image);
   const [colors, setColors] = useState(product.colors.length ? product.colors : ["#111111"]);
   const [priceColor, setPriceColor] = useState<string | null>(product.priceColor);
@@ -115,6 +168,23 @@ function TagEditor({ product, size, copies, setCopies }: { product: Product; siz
     const t = setTimeout(() => setShown(src), 350);
     return () => clearTimeout(t);
   }, [src]);
+
+  const [sending, setSending] = useState(false);
+  async function showOnScreen() {
+    if (!screen) return;
+    setSending(true);
+    try {
+      const res = await fetch(`/api/admin/price-tags/screen?product=${product.id}&format=raw`);
+      if (!res.ok) throw new Error("Couldn't draw the screen tag.");
+      await screen.link.sendTag(product.name, new Uint8Array(await res.arrayBuffer()));
+      setScreen({ ...screen, showing: product.name });
+      toast(screen.wired ? `${product.name} is on the screen.` : "Saved on the board, but no screen is wired to it.", screen.wired ? "success" : "error");
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setSending(false);
+    }
+  }
 
   async function upload(file: File) {
     setUploading(true);
@@ -207,6 +277,17 @@ function TagEditor({ product, size, copies, setCopies }: { product: Product; siz
           {saving ? "Saving…" : dirty ? "Save tag" : "Saved"}
         </motion.button>
       </div>
+
+      {screen && (
+        <div className="mt-4 flex items-center gap-4 border-t border-line pt-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={`/api/admin/price-tags/screen?product=${product.id}&v=${product.image ?? ""}`} alt={`${product.name} on the screen`} className="h-24 w-24 rounded-md bg-black [image-rendering:pixelated]" />
+          <div className="flex-1 text-sm text-muted">{dirty ? "Save the tag first; the screen shows the saved version." : screen.showing === product.name ? "On the screen now." : "How it looks on the little screen."}</div>
+          <button type="button" disabled={sending || dirty} onClick={showOnScreen} className={buttonClass(screen.showing === product.name ? "secondary" : "primary", "sm")}>
+            {sending ? "Sending…" : screen.showing === product.name ? "Send again" : "Show on screen"}
+          </button>
+        </div>
+      )}
     </Card>
   );
 }
