@@ -11,6 +11,7 @@ import { PosSaleError, ringUpSale } from "@/lib/pos/sale.server";
 import { PAIR_ALPHABET, PAIR_LENGTH, normalizePairCode, orderMinDate, type PosCartInput } from "@/lib/pos/types";
 import { shopLineSchema } from "@/lib/shop/schema";
 import { getSquare, squareLocationId } from "@/lib/square/client";
+import { emailFromRef } from "@/lib/rewards/stand";
 import { sendNotificationsSoon } from "@/lib/notify/kick";
 import { friendlyPaymentError, GENERIC_PAYMENT_ERROR } from "@/lib/square/errors";
 
@@ -81,7 +82,9 @@ export const kioskCartSchema = z.object({
 });
 export const kioskCustomerSchema = z.object({
   name: z.string().trim().min(1, "Add your name.").max(100),
-  email: z.string().trim().toLowerCase().email("That email doesn't look right.").max(200),
+  email: z.union([z.literal(""), z.string().trim().toLowerCase().email("That email doesn't look right.").max(200)]),
+  /** Found with "Shopped with us before?": stands in for the email, which the tablet never sees in full. */
+  rewardsRef: z.string().max(500).optional(),
   /** Order-mode kiosks: how to reach them, anything else, and the day they need it. */
   phone: z.string().trim().max(30).default(""),
   notes: z.string().trim().max(1000).default(""),
@@ -105,6 +108,8 @@ const view = (s: { id: string; status: string; linkUrl: string; totalCents: numb
 export async function startKioskSale(kioskId: string, rawCart: z.input<typeof kioskCartSchema>, rawCustomer: z.input<typeof kioskCustomerSchema>) {
   const cart = kioskCartSchema.parse(rawCart);
   const customer = kioskCustomerSchema.parse(rawCustomer);
+  if (!customer.email) customer.email = emailFromRef(customer.rewardsRef) ?? "";
+  if (!customer.email) throw new PosSaleError("Add your email (for your receipt).");
   const order = (await db.kiosk.findUnique({ where: { id: kioskId }, select: { mode: true } }))?.mode === "order";
   if (order) {
     if (customer.phone.replace(/\D/g, "").length < 7) throw new PosSaleError("Add your phone number.");

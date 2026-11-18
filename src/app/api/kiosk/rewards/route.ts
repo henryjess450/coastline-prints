@@ -3,15 +3,16 @@ import { z } from "zod";
 import { apiError, logError } from "@/lib/api";
 import { pairedKiosk } from "@/lib/kiosk/server";
 import { RedeemError } from "@/lib/rewards/server";
-import { findRewardsCustomer, redeemForSale, undoStandRedeem } from "@/lib/rewards/stand";
+import { findRewardsCustomer, maskEmail, redeemForSale, rewardsRef, undoStandRedeem } from "@/lib/rewards/stand";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /*
- * Rewards on the self-checkout: type a phone number or email, see your points,
- * spend them on money off this sale. The tablet only ever gets a first name
- * and the points, never someone's full name, email or phone.
+ * "Shopped with us before?" on the self-checkout: type a phone number or email
+ * to fill in your name, see your points and spend them on money off this sale.
+ * The tablet gets the email only partly hidden, plus a signed ref the sale uses
+ * for the real one, so typing someone's number doesn't show their email.
  */
 
 const lookup = z.object({ q: z.string().trim().min(3).max(200) });
@@ -27,7 +28,7 @@ function tooMany(kioskId: string) {
   return recent.length > 8;
 }
 
-const publicView = (p: NonNullable<Awaited<ReturnType<typeof findRewardsCustomer>>>) => ({ firstName: p.name.trim().split(/\s+/)[0] ?? "", points: p.points, prizes: p.prizes });
+const publicView = (p: NonNullable<Awaited<ReturnType<typeof findRewardsCustomer>>>) => ({ firstName: p.name.trim().split(/\s+/)[0] ?? "", name: p.name.trim(), maskedEmail: maskEmail(p.email), ref: rewardsRef(p.email), points: p.points, prizes: p.prizes });
 
 /** Find me: phone or email → first name, points and what they can get. */
 export async function POST(req: Request) {

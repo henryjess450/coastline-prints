@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createPaidOrder } from "../helpers/fixtures";
 
 const { db } = await import("@/lib/db");
-const { findRewardsCustomer, redeemForSale, undoStandRedeem } = await import("@/lib/rewards/stand");
+const { findRewardsCustomer, redeemForSale, undoStandRedeem, rewardsRef, emailFromRef, maskEmail } = await import("@/lib/rewards/stand");
 const { RedeemError } = await import("@/lib/rewards/server");
 const { updateCustomer, deleteCustomer, CustomerEditError } = await import("@/lib/admin/customers");
 const { lookupCodes } = await import("@/lib/codes/server");
@@ -34,6 +34,20 @@ describe("finding someone at the stand", () => {
     expect(await findRewardsCustomer(phone())).toBeNull();
     expect(await findRewardsCustomer("nobody-here@example.com")).toBeNull();
     expect(await findRewardsCustomer("12")).toBeNull();
+  });
+});
+
+describe("the kiosk's hidden email", () => {
+  it("only shows part of the email, and the signed ref gives the real one back until it expires", () => {
+    expect(maskEmail("sam.rivera@example.com")).toBe("s•••@example.com");
+    const ref = rewardsRef("sam@example.com", 1_000);
+    expect(emailFromRef(ref, 2_000)).toBe("sam@example.com");
+    expect(emailFromRef(ref, 1_000 + 31 * 60_000)).toBeNull();
+    const [body, sig] = ref.split(".");
+    const forged = `${Buffer.from("eve@example.com|99999999999999").toString("base64url")}.${sig}`;
+    expect(emailFromRef(forged, 2_000)).toBeNull();
+    expect(emailFromRef(`${body}.x`, 2_000)).toBeNull();
+    expect(emailFromRef("", 2_000)).toBeNull();
   });
 });
 

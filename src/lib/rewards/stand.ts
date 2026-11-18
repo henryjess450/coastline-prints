@@ -1,4 +1,5 @@
 import "server-only";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { PRIZE_DAYS, prizes } from "@config/rewards";
 import { generateCode } from "@/lib/codes/server";
 import { db } from "@/lib/db";
@@ -58,6 +59,36 @@ export async function findRewardsCustomer(query: string): Promise<StandProfile |
     prizes: standPrizes.map((p) => ({ id: p.id, title: p.title, points: p.points, value: money(p.valueCents ?? 0), affordable: points >= p.points })),
   };
 }
+
+/*
+ * A found customer's email stays on the server: the kiosk gets a short-lived
+ * signed ref to send back with the sale, and only sees the email partly hidden.
+ * The key is per process, so a restart just means typing the email.
+ */
+const refKey = randomBytes(32);
+const REF_MS = 30 * 60_000;
+const sign = (body: string) => createHmac("sha256", refKey).update(body).digest("base64url");
+
+export function rewardsRef(email: string, now = Date.now()) {
+  const body = Buffer.from(`${email}|${now + REF_MS}`).toString("base64url");
+  return `${body}.${sign(body)}`;
+}
+
+export function emailFromRef(ref: string | null | undefined, now = Date.now()): string | null {
+  const [body, sig] = (ref ?? "").split(".");
+  if (!body || !sig) return null;
+  const want = Buffer.from(sign(body));
+  const got = Buffer.from(sig);
+  if (want.length !== got.length || !timingSafeEqual(want, got)) return null;
+  const [email, exp] = Buffer.from(body, "base64url").toString().split("|");
+  return email && Number(exp) > now ? email : null;
+}
+
+/** "sam.rivera@example.com" → "s•••@example.com". */
+export const maskEmail = (email: string) => {
+  const [user, domain] = email.split("@");
+  return `${user?.[0] ?? ""}•••@${domain ?? ""}`;
+};
 
 /** One redemption per email at a time, so two quick taps can't spend the same points twice. */
 const busy = new Set<string>();

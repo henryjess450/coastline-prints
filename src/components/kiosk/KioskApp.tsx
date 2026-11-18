@@ -17,7 +17,7 @@ import { PaymentMethods, type PaymentMethodsHandle, type SquareConfig } from "@/
 import { cardFeeFor } from "@/lib/pos/card-fee";
 import { Greeting, Steps, type KioskMode } from "./KioskBits";
 import { KioskShop } from "./KioskShop";
-import { KioskRewards, type Redeemed } from "./KioskRewards";
+import { KioskRewards, type FoundCustomer, type Redeemed } from "./KioskRewards";
 
 type Hello = { paired: boolean; pairCode: string | null; name: string; mode: KioskMode; minDate: string; /** Square's card form, when card payments are set up. */ square: SquareConfig | null };
 type Stage = "welcome" | "shop" | "details" | "pay" | "done";
@@ -74,6 +74,8 @@ export function KioskApp() {
   const cardFee = useCardFee();
   const [coverFee, setCoverFee] = useState<boolean | null>(null);
   const [details, setDetails] = useState({ name: "", email: "", phone: "", needBy: "", notes: "" });
+  // Found with "Shopped with us before?": their email, partly hidden, and the ref the server swaps for the real one.
+  const [known, setKnown] = useState<{ maskedEmail: string; ref: string } | null>(null);
   const [sale, setSale] = useState<KioskSaleView | null>(null);
   const [done, setDone] = useState<Done | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -157,6 +159,7 @@ export function KioskApp() {
       setCodes([]);
       setQuote(null);
       setDetails({ name: "", email: "", phone: "", needBy: "", notes: "" });
+      setKnown(null);
       setCoverFee(null);
       setSale(null);
       setDone(null);
@@ -264,7 +267,7 @@ export function KioskApp() {
   const minDate = hello?.minDate ?? addDaysYmd(ymd(new Date()), 7);
   const detailsProblem = !details.name.trim()
     ? "Add your name."
-    : !emailOk(details.email)
+    : !emailOk(details.email) && !known
       ? "Add your email (for your receipt)."
       : order && details.phone.replace(/\D/g, "").length < 7
         ? "Add your phone number."
@@ -277,7 +280,9 @@ export function KioskApp() {
     if (cardFee?.on && coverFee == null) return setError("Please answer: cover the card fee, yes or no?");
     setBusy(true);
     setError(null);
-    const customer = order ? { name: details.name, email: details.email, phone: details.phone, notes: details.notes, needBy: details.needBy } : { name: details.name, email: details.email };
+    const email = known ? "" : details.email;
+    const rewardsRef = known?.ref;
+    const customer = order ? { name: details.name, email, rewardsRef, phone: details.phone, notes: details.notes, needBy: details.needBy } : { name: details.name, email, rewardsRef };
     const r = await api<KioskSaleView>("/api/kiosk/sale", { method: "POST", body: JSON.stringify({ cart: toCart(lines, codes, !!coverFee), customer }) });
     setBusy(false);
     if (!r.ok) return setError(r.error);
@@ -313,7 +318,7 @@ export function KioskApp() {
         amount: (sale.totalCents / 100).toFixed(2),
         currencyCode: "CAD",
         intent: "CHARGE",
-        billingContact: { givenName, familyName: rest.join(" ") || undefined, email: details.email.trim(), countryCode: "CA" },
+        billingContact: { givenName, familyName: rest.join(" ") || undefined, email: known ? undefined : details.email.trim(), countryCode: "CA" },
         customerInitiated: true,
         sellerKeyedIn: false,
       });
@@ -351,6 +356,7 @@ export function KioskApp() {
   const liveQuote = lines.length ? quote : null;
   const total = liveQuote?.totalCents ?? lines.reduce((n, l) => n + l.unitCents * l.quantity, 0);
   const firstName = details.name.trim().split(/\s+/)[0] ?? "";
+  const shownEmail = details.email.trim() || known?.maskedEmail || "";
   const feeLine = liveQuote?.lines.find((l) => l.key === "card-fee");
   const field = "h-16 w-full rounded-2xl border-2 border-line bg-surface px-5 text-xl outline-none transition-colors focus:border-accent-line";
 
@@ -420,7 +426,10 @@ export function KioskApp() {
                   if (redeemed) setCodes(codes.filter((c) => c !== redeemed.code));
                   setRedeemed(null);
                 }}
-                onFound={(firstName, email) => setDetails((d) => ({ ...d, name: d.name || firstName, email: d.email || email || "" }))}
+                onFound={(c: FoundCustomer) => {
+                  setDetails((d) => ({ ...d, name: c.name || d.name, email: c.typedEmail ?? "" }));
+                  setKnown(c.typedEmail ? null : { maskedEmail: c.maskedEmail, ref: c.ref });
+                }}
               />
               <div className="mt-8" />
               <Greeting name={details.name} />
@@ -428,9 +437,19 @@ export function KioskApp() {
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
                 <input value={details.name} onChange={(e) => setDetails((d) => ({ ...d, name: e.target.value }))} placeholder="Your name" autoComplete="off" className={field} aria-label="Your name" />
                 <div className="relative">
-                  <input value={details.email} onChange={(e) => setDetails((d) => ({ ...d, email: e.target.value }))} placeholder="Email" type="email" inputMode="email" autoComplete="off" autoCapitalize="off" className={cn(field, "pr-14")} aria-label="Email" />
+                  {known ? (
+                    // Found by phone: their email stays mostly hidden on this public screen.
+                    <div className={cn(field, "flex items-center justify-between gap-3")} aria-label="Email">
+                      <span className="truncate">{known.maskedEmail}</span>
+                      <button type="button" onClick={() => setKnown(null)} className="shrink-0 text-base text-accent-text underline underline-offset-4">
+                        Not you?
+                      </button>
+                    </div>
+                  ) : (
+                    <input value={details.email} onChange={(e) => setDetails((d) => ({ ...d, email: e.target.value }))} placeholder="Email" type="email" inputMode="email" autoComplete="off" autoCapitalize="off" className={cn(field, "pr-14")} aria-label="Email" />
+                  )}
                   <AnimatePresence>
-                    {emailOk(details.email) && (
+                    {emailOk(details.email) && !known && (
                       <motion.span className="absolute right-4 top-1/2 -mt-4 h-8 w-8 text-success" initial={{ scale: 0, rotate: -40 }} animate={{ scale: 1, rotate: 0 }} exit={{ scale: 0 }} transition={{ type: "spring", stiffness: 500, damping: 18 }}>
                         <DrawnCheck className="h-8 w-8" />
                       </motion.span>
@@ -580,9 +599,9 @@ export function KioskApp() {
                 <p className="mt-3 font-display text-3xl font-bold">{order ? "Your order is in!" : "You're all paid. Enjoy your lamp!"}</p>
                 <p className="mt-3 text-xl text-muted">
                   {order
-                    ? `It'll be ready by ${details.needBy ? prettyDay(details.needBy) : "the day you picked"}. We'll email ${details.email.trim()} when it is.`
+                    ? `It'll be ready by ${details.needBy ? prettyDay(details.needBy) : "the day you picked"}. We'll email ${shownEmail} when it is.`
                     : receipt === "email"
-                      ? `Your receipt is on its way to ${details.email.trim()}.`
+                      ? `Your receipt is on its way to ${shownEmail}.`
                       : receipt === "print" || gift
                         ? `Your ${[receipt === "print" && "receipt", gift && "gift receipt"].filter(Boolean).join(" and ")} ${receipt === "print" && gift ? "are" : "is"} printing at the stand.`
                         : "Enjoy!"}
@@ -613,11 +632,11 @@ export function KioskApp() {
                     <button type="button" onClick={() => answer("receipt", "none")} className="h-16 rounded-full bg-fg text-lg font-bold text-bg">
                       No thanks
                     </button>
-                    <div className={cn("grid gap-3", !order && details.email.trim() ? "grid-cols-2" : "grid-cols-1")}>
+                    <div className={cn("grid gap-3", !order && shownEmail ? "grid-cols-2" : "grid-cols-1")}>
                       <button type="button" onClick={() => answer("receipt", "print")} className="h-14 rounded-full border border-line text-lg font-semibold">
                         Print it
                       </button>
-                      {!order && details.email.trim() && (
+                      {!order && shownEmail && (
                         <button type="button" onClick={() => answer("receipt", "email")} className="h-14 rounded-full border border-line text-lg font-semibold">
                           Email it
                         </button>

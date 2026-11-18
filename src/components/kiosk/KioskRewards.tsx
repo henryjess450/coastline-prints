@@ -4,7 +4,9 @@ import { useState } from "react";
 import { cn } from "@/lib/cn";
 
 type Prize = { id: string; title: string; points: number; value: string; affordable: boolean };
-type Found = { firstName: string; points: number; prizes: Prize[] };
+type Found = { firstName: string; name: string; maskedEmail: string; ref: string; points: number; prizes: Prize[] };
+/** Who was found: their details go into the form (the email only as a hidden-ish ref). */
+export type FoundCustomer = { name: string; maskedEmail: string; ref: string; typedEmail: string | null };
 export type Redeemed = { code: string; label: string };
 
 async function call<T>(method: string, body?: object, query = ""): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
@@ -21,7 +23,7 @@ async function call<T>(method: string, body?: object, query = ""): Promise<{ ok:
  * "Got points?" on the kiosk: a phone number or email brings up their first
  * name and points, and a tap spends them on money off this sale. One prize per sale.
  */
-export function KioskRewards({ redeemed, onRedeem, onUndo, onFound }: { redeemed: Redeemed | null; onRedeem: (r: Redeemed) => void; onUndo: () => void; onFound: (firstName: string, byEmail: string | null) => void }) {
+export function KioskRewards({ redeemed, onRedeem, onUndo, onFound }: { redeemed: Redeemed | null; onRedeem: (r: Redeemed) => void; onUndo: () => void; onFound: (c: FoundCustomer) => void }) {
   const [q, setQ] = useState("");
   const [found, setFound] = useState<Found | null>(null);
   const [busy, setBusy] = useState(false);
@@ -35,7 +37,7 @@ export function KioskRewards({ redeemed, onRedeem, onUndo, onFound }: { redeemed
     setBusy(false);
     if (!r.ok) return setError(r.error);
     setFound(r.data);
-    onFound(r.data.firstName, q.includes("@") ? q.trim() : null);
+    onFound({ name: r.data.name, maskedEmail: r.data.maskedEmail, ref: r.data.ref, typedEmail: q.includes("@") ? q.trim().toLowerCase() : null });
   }
 
   async function redeem(p: Prize) {
@@ -63,21 +65,24 @@ export function KioskRewards({ redeemed, onRedeem, onUndo, onFound }: { redeemed
   return (
     <div className="rounded-3xl border-2 border-line bg-surface p-5">
       {!found ? (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void find();
-          }}
-        >
-          <p className="text-lg font-semibold">Got rewards points?</p>
-          <p className="text-muted">Type your phone number or email to use them.</p>
+        // Not a <form>: this sits inside the details form, and Enter here should find them, not submit the sale.
+        <div>
+          <p className="text-lg font-semibold">Shopped with us before?</p>
+          <p className="text-muted">Type your phone number or email. We&apos;ll fill in your details and show your rewards points.</p>
           <div className="mt-3 flex gap-3">
-            <input value={q} onChange={(e) => (setQ(e.target.value), setError(null))} placeholder="Phone number or email" autoComplete="off" autoCapitalize="off" aria-label="Phone number or email" className="h-14 min-w-0 flex-1 rounded-2xl border-2 border-line bg-bg px-4 text-xl outline-none focus:border-accent-line" />
-            <button type="submit" disabled={busy || q.trim().length < 3} className="h-14 rounded-full bg-fg px-6 text-lg font-bold text-bg disabled:opacity-40">
+            <input
+              value={q}
+              onChange={(e) => (setQ(e.target.value), setError(null))}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                e.preventDefault();
+                void find();
+              }} placeholder="Phone number or email" autoComplete="off" autoCapitalize="off" aria-label="Phone number or email" className="h-14 min-w-0 flex-1 rounded-2xl border-2 border-line bg-bg px-4 text-xl outline-none focus:border-accent-line" />
+            <button type="button" onClick={() => void find()} disabled={busy || q.trim().length < 3} className="h-14 rounded-full bg-fg px-6 text-lg font-bold text-bg disabled:opacity-40">
               {busy ? "Looking…" : "Find me"}
             </button>
           </div>
-        </form>
+        </div>
       ) : (
         <div>
           <p className="text-2xl font-bold">
