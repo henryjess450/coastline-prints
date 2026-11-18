@@ -12,7 +12,10 @@ import { formatPickup } from "@/lib/pickup";
 import { orderMinDate, POS_BRANDS, type CustomLine, type PosBrand, type PosCartInput, type PosLineView, type PosOrderItem, type PosPayment, type PosPopup, type PosQuote, type PosReply, type PosSaleInput, type PosScreen } from "@/lib/pos/types";
 import { pickup } from "@config/pickup";
 import { cardFeeFor, cardFeeWhy, type CardFeeSettings } from "@/lib/pos/card-fee";
-import { choiceIds, needsVariant, optionLabel, photosFor, unitPrice, type ShopProductDto } from "@/lib/shop/types";
+import { choiceIds, dealPrice, needsVariant, optionLabel, photosFor, unitPrice, type ShopProductDto } from "@/lib/shop/types";
+import { markStaff, staffOn } from "@/lib/pos/staff";
+import { PriceCheck } from "./PriceCheck";
+import { StaffMode } from "./StaffMode";
 import { ChoiceSets } from "@/components/shop/ChoiceSets";
 import { AnimatedMoney, DrawnCheck, Modal, Qr, Thumb, useForceDark } from "./bits";
 import { CustomerScreen, type ReplyFn } from "./CustomerScreen";
@@ -25,11 +28,20 @@ type Done = { orderId: string; orderNumber: string; changeCents: number | null; 
 /** A sale rung up with no internet, kept on this iPad until the site takes it. */
 type QueuedSale = { body: PosSaleInput; label: string; totalCents: number; at: string; /** Why the site refused it (it's kept so nothing is lost). */ error?: string };
 
+/** Offline sales as saved on this iPad right now. */
+function readQueue(): QueuedSale[] {
+  try {
+    return JSON.parse(store.get("offline-queue") ?? "[]") as QueuedSale[];
+  } catch {
+    return [];
+  }
+}
+
 /** A sale or quote request with no answer in this long counts as offline. */
 const OFFLINE_AFTER_MS = 8000;
 const isNetworkError = (e: unknown) => e instanceof TypeError || (e as Error)?.name === "AbortError" || (e as Error)?.name === "TimeoutError";
 type PayLink = { linkId: string; url: string; orderId: string; amountCents: number };
-type Panel = null | "custom" | "print" | "codes" | "customer" | "send" | "order" | { product: ShopProductDto };
+type Panel = null | "custom" | "print" | "codes" | "customer" | "send" | "order" | "price" | "staff" | { product: ShopProductDto };
 /** Start order: who it's for, what they're ordering (until they fill in the form), and the day they need it. */
 type TakenOrder = { firstName: string; items: PosOrderItem[]; popupId: string; needBy: string | null };
 /** Markets the LightLab stand sells at: today's market days, then the receipt designs. `id` is the market's name. */
@@ -90,6 +102,8 @@ export function Register({ products, printOptions, links, markets }: { products:
   const [panel, setPanel] = useState<Panel>(null);
   const [pay, setPay] = useState<PayKind | null>(null);
   const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
+  /** Staff mode: locked to the register for a helper (settings and the admin menu hidden). Kept on this iPad. */
+  const [staff, setStaff] = useState(false);
 
   const [lines, setLines] = useState<ProductLine[]>([]);
   const [custom, setCustom] = useState<(CustomLine & { key: string })[]>([]);
@@ -149,6 +163,8 @@ export function Register({ products, printOptions, links, markets }: { products:
     setAskJoin(store.get("ask-join") !== "off");
     // A device that's never chosen starts with the receipt on; after that it remembers (even all off).
     setSaleSlips((store.get("slips") ?? "receipt").split(",").filter((x): x is Slip => x === "receipt" || x === "gift"));
+    setStaff(staffOn());
+    markStaff(staffOn());
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- once, on load
 
@@ -448,7 +464,8 @@ export function Register({ products, printOptions, links, markets }: { products:
     // Offline: keep it on this iPad and send it when the internet's back.
     const saveOffline = () => {
       const kept: PosSaleInput = { ...body, registerId: null, offline: { at: new Date().toISOString(), totalCents: shownQuote.totalCents } };
-      setQueue([...queue, { body: kept, label: shownQuote.lines.map((l) => `${l.quantity} × ${l.name}`).join(", "), totalCents: shownQuote.totalCents, at: kept.offline!.at }]);
+      // Added to what's saved right now (not this render's copy), so a send finishing at the same moment can't drop it.
+      setQueue([...readQueue(), { body: kept, label: shownQuote.lines.map((l) => `${l.quantity} × ${l.name}`).join(", "), totalCents: shownQuote.totalCents, at: kept.offline!.at }]);
       const change = payment === "CASH" && tenderedCents != null ? tenderedCents - shownQuote.totalCents : null;
       const thanks: PosScreen = { stage: "done", brand, lines: shownQuote.lines, totalCents: shownQuote.totalCents, payment, email: customer.email || undefined, popup: null };
       setPopup(null);
@@ -502,16 +519,11 @@ export function Register({ products, printOptions, links, markets }: { products:
   const syncing = useRef(false);
   const sync = useCallback(async () => {
     if (syncing.current) return;
-    const pending = (() => {
-      try {
-        return JSON.parse(store.get("offline-queue") ?? "[]") as QueuedSale[];
-      } catch {
-        return [];
-      }
-    })();
+    const pending = readQueue();
     if (!pending.some((q) => !q.error)) return;
     syncing.current = true;
-    let left = [...pending];
+    const done = new Set<string>();
+    const refused = new Map<string, string>();
     let sent = 0;
     try {
       for (const q of pending) {
@@ -520,11 +532,11 @@ export function Register({ products, printOptions, links, markets }: { products:
           const res = await fetch("/api/admin/pos/sale", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(q.body), signal: AbortSignal.timeout(20_000) });
           const out = await res.json().catch(() => ({}));
           if (res.ok) {
-            left = left.filter((x) => x !== q);
+            done.add(q.body.attemptId);
             sent++;
           } else if (res.status >= 400 && res.status < 500 && res.status !== 401 && res.status !== 429) {
             // The site said no: keep it, with why, for the cashier to look at.
-            left = left.map((x) => (x === q ? { ...x, error: out.error ?? "The site couldn't record this sale." } : x));
+            refused.set(q.body.attemptId, out.error ?? "The site couldn't record this sale.");
           } else break;
         } catch {
           setOffline(true);
@@ -533,7 +545,8 @@ export function Register({ products, printOptions, links, markets }: { products:
       }
     } finally {
       syncing.current = false;
-      setQueue(left);
+      // Sales rung up offline while this was sending were saved meanwhile: start from what's saved now, not the copy taken at the start.
+      setQueue(readQueue().flatMap((q) => (done.has(q.body.attemptId) ? [] : refused.has(q.body.attemptId) ? [{ ...q, error: refused.get(q.body.attemptId) }] : [q])));
       if (sent) {
         setOffline(false);
         say(`${sent} offline sale${sent === 1 ? "" : "s"} sent`);
@@ -668,7 +681,7 @@ export function Register({ products, printOptions, links, markets }: { products:
               </select>
             </label>
           )}
-          {brand === "lightlab" && (
+          {brand === "lightlab" && !staff && (
             <label className="flex items-center gap-2 text-sm text-muted" title="When a sale starts, the paired display asks the customer to join LightLab updates">
               <input
                 type="checkbox"
@@ -683,7 +696,18 @@ export function Register({ products, printOptions, links, markets }: { products:
             </label>
           )}
         </div>
-        <DisplayControl registerId={registerId} online={online} onPaired={(id) => { store.set("register", id); setRegisterId(id); lastPushed.current = ""; say("Display paired"); }} onUnpair={() => unpair()} onFlip={() => setFlip(true)} />
+        <div className="flex flex-wrap items-center gap-2">
+          <DisplayControl locked={staff} registerId={registerId} online={online} onPaired={(id) => { store.set("register", id); setRegisterId(id); lastPushed.current = ""; say("Display paired"); }} onUnpair={() => unpair()} onFlip={() => setFlip(true)} />
+          {staff ? (
+            <button type="button" onClick={() => setPanel("staff")} className="flex items-center gap-1.5 rounded-full border border-accent-line bg-accent-soft px-3 py-1.5 text-sm font-semibold">
+              🔒 Staff mode
+            </button>
+          ) : (
+            <Button variant="ghost" size="sm" onClick={() => setPanel("staff")}>
+              Staff mode
+            </Button>
+          )}
+        </div>
       </div>
 
       <AnimatePresence>
@@ -699,18 +723,19 @@ export function Register({ products, printOptions, links, markets }: { products:
           </motion.div>
         )}
       </AnimatePresence>
-      <OfflineBanner offline={offline} queue={queue} onSend={() => void sync()} onDrop={(i) => setQueue(queue.filter((_, j) => j !== i))} onRetry={(i) => setQueue(queue.map((q, j) => (j === i ? { ...q, error: undefined } : q)))} />
+      <OfflineBanner offline={offline} queue={queue} onSend={() => void sync()} onDrop={staff ? undefined : (i) => setQueue(queue.filter((_, j) => j !== i))} onRetry={(i) => setQueue(queue.map((q, j) => (j === i ? { ...q, error: undefined } : q)))} />
 
       <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
         {/* Tiles */}
         <div className="space-y-4">
-          <div className={cn("grid gap-3", brand === "coastline" ? "grid-cols-2 sm:grid-cols-6" : "grid-cols-2 sm:grid-cols-5")}>
+          <div className={cn("grid gap-3", brand === "coastline" ? "grid-cols-2 sm:grid-cols-7" : "grid-cols-2 sm:grid-cols-6")}>
             <ActionTile icon="📝" label={order ? `Order: ${order.firstName}` : "Start order"} active={!!order} onClick={() => setPanel("order")} />
             <ActionTile icon="＋" label="Custom item" onClick={() => setPanel("custom")} />
             {brand === "coastline" && <ActionTile icon="⬡" label="Print from file" badge={files.length || undefined} onClick={() => setPanel("print")} />}
             <ActionTile icon="🎟" label="Code or gift card" badge={codes.length || undefined} onClick={() => setPanel("codes")} />
             <ActionTile icon="👤" label={customer.name || customer.email ? (customer.name || customer.email).split("@")[0] : "Customer"} active={!!(customer.name || customer.email)} onClick={() => setPanel("customer")} />
             <ActionTile icon="📺" label="Send to display" active={!!popup} onClick={() => setPanel("send")} />
+            <ActionTile icon="🔍" label="Price check" onClick={() => setPanel("price")} />
           </div>
 
           {shopProducts.length ? (
@@ -738,11 +763,13 @@ export function Register({ products, printOptions, links, markets }: { products:
                     <div className="p-3">
                       <p className="truncate font-semibold">{p.name}</p>
                       <p className="text-sm text-muted">
-                        {money(p.priceCents)}
+                        {p.standDealCents ? <span className="mr-1 text-faint line-through">{money(p.priceCents)}</span> : null}
+                        <span className={cn(p.standDealCents && "font-semibold text-success")}>{money(dealPrice(p, p.priceCents))}</span>
                         {needsVariant(p) && " +"}
                         {left != null && <span className={cn("ml-1", left <= 2 && "text-warning")}>· {left} left</span>}
                       </p>
                     </div>
+                    {p.standDealCents ? <span className="absolute left-2 top-2 rounded-full bg-success px-2.5 py-0.5 text-xs font-bold text-white shadow">Today&apos;s deal</span> : null}
                     <AnimatePresence>
                       {n > 0 && (
                         <motion.span key={n} initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ type: "spring", stiffness: 600, damping: 18 }} className="absolute right-2 top-2 grid h-9 min-w-9 place-items-center rounded-full bg-accent px-2 font-bold text-accent-ink shadow-lg">
@@ -928,6 +955,37 @@ export function Register({ products, printOptions, links, markets }: { products:
         />
       </Modal>
 
+      <Modal open={panel === "price"} onClose={() => setPanel(null)} title="Price check" wide>
+        <PriceCheck
+          products={shopProducts}
+          staff={staff}
+          onAdd={(p) => {
+            setPanel(null);
+            addProduct(p);
+          }}
+          onDeal={async (p, offCents) => {
+            const res = await fetch("/api/admin/pos/deal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ productId: p.id, offCents }) }).catch(() => null);
+            if (!res?.ok) return ((await res?.json().catch(() => ({})))?.error as string | undefined) ?? "Couldn't save the deal. Check the internet.";
+            say(offCents ? `${p.name} is today's deal` : `Deal on ${p.name} ended`);
+            router.refresh();
+            return null;
+          }}
+        />
+      </Modal>
+
+      <Modal open={panel === "staff"} onClose={() => setPanel(null)} title={staff ? "Leave staff mode" : "Staff mode"}>
+        {panel === "staff" && (
+          <StaffMode
+            on={staff}
+            onChange={(on) => {
+              setStaff(on);
+              setPanel(null);
+              say(on ? "Locked to staff mode" : "Staff mode off");
+            }}
+          />
+        )}
+      </Modal>
+
       <Modal open={panel === "send"} onClose={() => setPanel(null)} title="Send to the display" wide>
         <SendPanel brand={brand} popup={popup} links={links} onSend={show} onClear={() => setPopup(null)} hasDisplay={!!registerId} source={source} />
       </Modal>
@@ -1014,7 +1072,7 @@ export function Register({ products, printOptions, links, markets }: { products:
       </Modal>
 
       <Modal open={!!done && !flip}>
-        {done && <SaleDone done={done} onNew={newSale} onShowThanks={() => setFlip(true)} />}
+        {done && <SaleDone done={done} staff={staff} onNew={newSale} onShowThanks={() => setFlip(true)} />}
       </Modal>
 
       {!pay && error && !done && (
@@ -1041,7 +1099,7 @@ export function Register({ products, printOptions, links, markets }: { products:
 }
 
 /** Paired display status, pairing by code, or "use this iPad". */
-function DisplayControl({ registerId, online, onPaired, onUnpair, onFlip }: { registerId: string | null; online: boolean; onPaired: (id: string) => void; onUnpair: () => void; onFlip: () => void }) {
+function DisplayControl({ locked, registerId, online, onPaired, onUnpair, onFlip }: { /** Staff mode: no pairing or unpairing. */ locked: boolean; registerId: string | null; online: boolean; onPaired: (id: string) => void; onUnpair: () => void; onFlip: () => void }) {
   const [pairing, setPairing] = useState(false);
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -1063,11 +1121,13 @@ function DisplayControl({ registerId, online, onPaired, onUnpair, onFlip }: { re
             <motion.span className={cn("h-2.5 w-2.5 rounded-full", online ? "bg-success" : "bg-danger")} animate={online ? { opacity: [1, 0.4, 1] } : {}} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} />
             {online ? "Display connected" : "Display not responding"}
           </span>
-          <button type="button" onClick={onUnpair} className="text-muted hover:text-fg">
-            Unpair
-          </button>
+          {!locked && (
+            <button type="button" onClick={onUnpair} className="text-muted hover:text-fg">
+              Unpair
+            </button>
+          )}
         </>
-      ) : (
+      ) : locked ? null : (
         <>
           <Button variant="secondary" size="sm" onClick={() => setPairing(true)}>
             Pair a display
@@ -1221,7 +1281,7 @@ function ProductOptions({ product: p, onAdd }: { product: ShopProductDto; onAdd:
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{v.name}</span>
                 <span className="text-muted">
-                  {money(unitPrice(p, v.id))}
+                  {money(dealPrice(p, unitPrice(p, v.id)))}
                   {v.stock != null && ` · ${v.stock} left`}
                 </span>
               </span>
@@ -1246,7 +1306,7 @@ function ProductOptions({ product: p, onAdd }: { product: ShopProductDto; onAdd:
           </button>
         </div>
         <Button size="lg" className="flex-1" disabled={!ok} onClick={() => onAdd(variant, text.trim(), qty, choices)}>
-          Add {money(unitPrice(p, variant, choices) * qty)}
+          Add {money(dealPrice(p, unitPrice(p, variant, choices)) * qty)}
         </Button>
       </div>
     </div>
@@ -1531,7 +1591,7 @@ function PayFooter({ opts, setOpts, hasEmail, isOrder, slips }: { opts: { handed
   );
 }
 
-function SaleDone({ done, onNew, onShowThanks }: { done: Done; onNew: () => void; onShowThanks: () => void }) {
+function SaleDone({ done, staff, onNew, onShowThanks }: { done: Done; staff: boolean; onNew: () => void; onShowThanks: () => void }) {
   return (
     <div className="py-2 text-center">
       <DrawnCheck className="mx-auto h-20 w-20 text-success" />
@@ -1539,7 +1599,7 @@ function SaleDone({ done, onNew, onShowThanks }: { done: Done; onNew: () => void
       {done.offline && <p className="mt-1 text-sm text-warning">No internet, so it&apos;s saved on this iPad. It&apos;s sent (with its receipts) as soon as you&apos;re back online.</p>}
       {done.screen.needBy && <p className="mt-1 text-sm text-muted">Ready by {formatPickup(done.screen.needBy, null, pickup)}. It&apos;s on the Orders board.</p>}
       <p className="mt-1 text-muted">
-        {done.offline ? (
+        {done.offline || staff ? (
           <span className="font-mono">{done.orderNumber}</span>
         ) : (
           <Link href={`/admin/orders/${done.orderId}`} className="font-mono text-accent-text hover:underline">
@@ -1616,7 +1676,8 @@ function offlineQuote(cart: PosCartInput, products: ShopProductDto[]): PosQuote 
   for (const [i, l] of (cart.products ?? []).entries()) {
     const p = products.find((x) => x.id === l.productId);
     if (!p) return { ...base, ok: false, error: "No internet, and a product in the cart isn't on this register. Reload once you're back online.", lines: [], totalCents: 0 };
-    const unit = unitPrice(p, l.variantId ?? null, choiceIds(p, l.choices));
+    // Today's deal, as the site would take it off.
+    const unit = dealPrice(p, unitPrice(p, l.variantId ?? null, choiceIds(p, l.choices)));
     const qty = l.quantity ?? 1;
     lines.push({ key: `product-${i}`, kind: "product", name: p.name, detail: [optionLabel(p, l.variantId ?? null, l.choices), l.customText && `"${l.customText}"`].filter(Boolean).join(" · ") || undefined, quantity: qty, cents: unit * qty, image: photosFor(p, l.variantId ?? null).images[0] });
   }
@@ -1625,7 +1686,7 @@ function offlineQuote(cart: PosCartInput, products: ShopProductDto[]): PosQuote 
 }
 
 /** Shows when the register is offline or has sales waiting to send, and any the site refused. */
-function OfflineBanner({ offline, queue, onSend, onDrop, onRetry }: { offline: boolean; queue: QueuedSale[]; onSend: () => void; onDrop: (i: number) => void; onRetry: (i: number) => void }) {
+function OfflineBanner({ offline, queue, onSend, onDrop, onRetry }: { offline: boolean; queue: QueuedSale[]; onSend: () => void; /** Missing in staff mode: only the owner removes a sale. */ onDrop?: (i: number) => void; onRetry: (i: number) => void }) {
   const waiting = queue.filter((q) => !q.error);
   const refused = queue.map((q, i) => ({ q, i })).filter(({ q }) => q.error);
   if (!offline && !queue.length) return null;
@@ -1657,9 +1718,11 @@ function OfflineBanner({ offline, queue, onSend, onDrop, onRetry }: { offline: b
                 <Button variant="secondary" size="sm" onClick={() => onRetry(i)}>
                   Try again
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => confirm("Remove this sale from the iPad? Ring it up again by hand if it was real.") && onDrop(i)}>
-                  Remove
-                </Button>
+                {onDrop && (
+                  <Button variant="ghost" size="sm" onClick={() => confirm("Remove this sale from the iPad? Ring it up again by hand if it was real.") && onDrop(i)}>
+                    Remove
+                  </Button>
+                )}
               </span>
             </li>
           ))}

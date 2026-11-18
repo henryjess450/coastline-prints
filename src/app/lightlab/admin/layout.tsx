@@ -5,6 +5,7 @@ import { LightLabAdminNav } from "@/components/lightlab/admin/AdminNav";
 import { LightLabLogo } from "@/components/lightlab/LightLabLogo";
 import { requireAdmin } from "@/lib/admin/auth";
 import { ShippingSwitch } from "@/components/lightlab/admin/ShippingSwitch";
+import { StaffGuard } from "@/components/pos/StaffGuard";
 import { shopShips } from "@/lib/shop/shipping-switch.server";
 
 export const metadata: Metadata = { title: { default: "Admin", template: `%s · LightLab admin` }, robots: { index: false, follow: false } };
@@ -15,6 +16,7 @@ export default async function LightLabAdminLayout({ children }: { children: Reac
   await requireAdmin("/lightlab/admin");
   return (
     <div className="mx-auto max-w-7xl px-4 pb-10 pt-6 sm:px-6">
+      <StaffGuard />
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <LightLabLogo className="h-10" />

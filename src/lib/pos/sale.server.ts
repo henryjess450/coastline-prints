@@ -15,10 +15,14 @@ import { orderMinDate, posSaleSchema } from "./types";
 import { createInvitedAccount, normalizeEmail } from "@/lib/account/auth";
 
 export class PosSaleError extends Error {
-  constructor(message: string, readonly quote?: PosQuote) {
+  /** `retry`: nothing's wrong with the sale, it's just mid-save elsewhere. Send it again shortly. */
+  constructor(message: string, readonly quote?: PosQuote, readonly retry = false) {
     super(message);
   }
 }
+
+/** A checkout with no order this long after it was made is a save that died, not one still going. */
+const STUCK_MS = 2 * 60_000;
 
 /**
  * Rings up a register sale: re-prices the cart, holds any gift card balance
@@ -32,15 +36,19 @@ export async function ringUpSale(raw: PosSaleInput) {
 
   const previous = await db.checkout.findUnique({ where: { idempotencyKey: sale.attemptId }, include: { order: true } });
   if (previous?.order) return { order: previous.order, emailed: false };
-  if (previous) throw new PosSaleError("This sale didn't go through. Start it again.");
+  if (previous) {
+    // Still being saved by another request (a double send, or the kiosk's poll and the admin page at once).
+    if (previous.status !== "FAILED" && Date.now() - previous.createdAt.getTime() < STUCK_MS) throw new PosSaleError("This sale is still being saved. One moment.", undefined, true);
+    // An earlier try failed: move it aside so this one can save the sale under the same id.
+    await releaseCodes(previous.id).catch((e) => logError("pos:release-stale", e));
+    await db.checkout.update({ where: { id: previous.id }, data: { idempotencyKey: `${sale.attemptId}:failed:${previous.id}`, status: "FAILED" } });
+  }
 
   const offline = sale.offline;
   if (offline && (sale.squarePaymentId || sale.cart.items.length || sale.cart.codes.length)) throw new PosSaleError("Offline sales can't have prints, codes or Square links.");
   // Kiosk orders are made later, so a lamp being out of stock right now doesn't stop them.
   const priced = await pricePos({ ...sale.cart, email: sale.customer.email }, { ignoreStock: !!offline || (sale.kiosk && !!sale.order) });
   if (!priced.ok) throw new PosSaleError(priced.error ?? "Something in the cart can't be sold.", publicQuote(priced));
-  if (!offline && priced.totalCents !== sale.expectedTotalCents) throw new PosSaleError(`The total changed to ${money(priced.totalCents)}. Check it with the customer.`, publicQuote(priced));
-  if (sale.payment === "CASH" && sale.tenderedCents != null && sale.tenderedCents < priced.totalCents) throw new PosSaleError("That's less cash than the total.");
   if (sale.order) {
     // Start order: paid now by cash or e-Transfer, made later, and they need an email for the account and updates.
     if (!sale.customer.email) throw new PosSaleError("An order needs the customer's email.");
@@ -49,38 +57,56 @@ export async function ringUpSale(raw: PosSaleInput) {
     if (sale.order.needBy < orderMinDate()) throw new PosSaleError("The day they need it by has to be at least a week away.");
   }
 
-  // Paid by Square link: the payment must be real, complete, for this total, and not already on an order.
+  // Paid by Square link: the payment must be real, complete and not already on an order.
   let squarePayment: PaymentFacts | null = null;
   if (sale.squarePaymentId) {
     if (await db.order.findUnique({ where: { squarePaymentId: sale.squarePaymentId } })) throw new PosSaleError("That Square payment is already on another order.");
     const { payment } = await getSquare().payments.get({ paymentId: sale.squarePaymentId });
     squarePayment = payment ? paymentFacts(payment) : null;
     if (!squarePayment || squarePayment.status !== "COMPLETED") throw new PosSaleError("Square hasn't finished that payment yet.");
-    if (squarePayment.amountCents !== priced.totalCents) throw new PosSaleError(`Square took ${money(squarePayment.amountCents)}, but the total is ${money(priced.totalCents)}. Check the sale.`);
   }
 
-  const change = sale.payment === "CASH" && sale.tenderedCents != null ? sale.tenderedCents - priced.totalCents : null;
+  /*
+   * What the customer actually handed over. Once money has changed hands (an
+   * offline sale, or a Square payment that went through) the sale is recorded
+   * at that amount even if prices or codes changed since, so the order matches
+   * the cash box and Square, and nobody pays without getting an order.
+   * Before payment, a changed total stops the sale for the cashier to check.
+   */
+  const collectedCents = offline ? offline.totalCents : squarePayment ? squarePayment.amountCents : priced.totalCents;
+  if (!offline && !squarePayment && priced.totalCents !== sale.expectedTotalCents) throw new PosSaleError(`The total changed to ${money(priced.totalCents)}. Check it with the customer.`, publicQuote(priced));
+  if (sale.payment === "CASH" && sale.tenderedCents != null && sale.tenderedCents < collectedCents) throw new PosSaleError("That's less cash than the total.");
+  const drift = collectedCents !== priced.totalCents;
+
+  const change = sale.payment === "CASH" && sale.tenderedCents != null ? sale.tenderedCents - collectedCents : null;
   const email = sale.customer.email;
-  const checkout = await db.checkout.create({
-    data: {
-      idempotencyKey: sale.attemptId,
-      source: sale.source,
-      firstSource: sale.source,
-      sourceDetail: JSON.stringify({ manual: true, pos: true, last: null, first: null }),
-      cart: JSON.stringify(priced.snapshot),
-      totalCents: priced.totalCents,
-      discountCents: priced.discountCents,
-      giftCardCents: priced.giftCardCents,
-      appliedCodes: JSON.stringify(priced.applied),
-      paymentMethod: squarePayment ? "CARD" : sale.payment,
-      customerName: sale.customer.name || "Walk-in customer",
-      customerEmail: email,
-      customerPhone: sale.customer.phone,
-      notes: sale.customer.notes || null,
-      fulfillment: "PICKUP",
-      pickupDate: sale.order?.needBy ?? null,
-    },
-  });
+  const checkout = await db.checkout
+    .create({
+      data: {
+        idempotencyKey: sale.attemptId,
+        source: sale.source,
+        firstSource: sale.source,
+        sourceDetail: JSON.stringify({ manual: true, pos: true, last: null, first: null }),
+        cart: JSON.stringify(priced.snapshot),
+        totalCents: collectedCents,
+        // Paid less than today's prices: the difference shows as a discount, so the order still adds up.
+        discountCents: priced.discountCents + Math.max(0, priced.totalCents - collectedCents),
+        giftCardCents: priced.giftCardCents,
+        appliedCodes: JSON.stringify(priced.applied),
+        paymentMethod: squarePayment ? "CARD" : sale.payment,
+        customerName: sale.customer.name || "Walk-in customer",
+        customerEmail: email,
+        customerPhone: sale.customer.phone,
+        notes: sale.customer.notes || null,
+        fulfillment: "PICKUP",
+        pickupDate: sale.order?.needBy ?? null,
+      },
+    })
+    .catch((err) => {
+      // Another request made this sale's checkout a moment ago: let that one finish.
+      if ((err as { code?: string }).code === "P2002") throw new PosSaleError("This sale is still being saved. One moment.", undefined, true);
+      throw err;
+    });
 
   try {
     await reserveCodes(checkout.id, priced.applied, priced.records);
@@ -103,7 +129,7 @@ export async function ringUpSale(raw: PosSaleInput) {
           sale.source,
           squarePayment ? "Paid by Square link" : paid,
           offline && `Rung up offline at ${new Date(offline.at).toLocaleTimeString("en-CA", { timeZone: "America/Vancouver", hour: "numeric", minute: "2-digit" })}, sent when back online`,
-          offline && offline.totalCents !== priced.totalCents && `Charged ${money(offline.totalCents)} offline; prices now add up to ${money(priced.totalCents)}`,
+          drift && `Took ${money(collectedCents)}${offline ? " offline" : ""}; prices now add up to ${money(priced.totalCents)}`,
         ]
           .filter(Boolean)
           .join(" · "),
@@ -115,11 +141,11 @@ export async function ringUpSale(raw: PosSaleInput) {
       },
     );
   } catch (err) {
-    await releaseCodes(checkout.id);
+    await failCheckout(checkout.id, err instanceof Error ? err.message : "finalize failed");
     throw err;
   }
   if (!result) {
-    await releaseCodes(checkout.id);
+    await failCheckout(checkout.id, "finalize returned nothing");
     throw new PosSaleError("Couldn't save the sale.");
   }
 
@@ -137,7 +163,7 @@ export async function ringUpSale(raw: PosSaleInput) {
       lines: priced.lines,
       fees: priced.fees,
       discounts: priced.discounts,
-      totalCents: priced.totalCents,
+      totalCents: collectedCents,
       payment: squarePayment ? "LINK" : sale.payment,
       tenderedCents: sale.tenderedCents,
       email: email || undefined,
@@ -149,6 +175,12 @@ export async function ringUpSale(raw: PosSaleInput) {
     }, { clearReply: true }).catch((e) => logError("pos:screen", e));
   }
   return { order: result.order, emailed, changeCents: change };
+}
+
+/** A save that failed: its codes go back, and it's marked so the next try can save the sale. */
+async function failCheckout(id: string, reason: string) {
+  await releaseCodes(id).catch((e) => logError("pos:release", e));
+  await db.checkout.updateMany({ where: { id, status: { not: "COMPLETED" } }, data: { status: "FAILED", failureReason: reason.slice(0, 200) } }).catch((e) => logError("pos:fail-checkout", e));
 }
 
 /**

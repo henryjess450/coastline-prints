@@ -4,6 +4,7 @@ import type { ShopId } from "@config/shops";
 import { db } from "@/lib/db";
 import { getSeason } from "@/lib/season";
 import { heldStock, withHolds } from "./holds.server";
+import { shopToday } from "./markets.server";
 import { shopImageUrl, type ShopProductDto, type ShopOptionSet, type ShopVariant } from "./types";
 
 function parse<T>(s: string, fallback: T): T {
@@ -45,6 +46,7 @@ export function toProductDto(p: ShopProduct): ShopProductDto {
     editionSize: p.editionSize,
     editionSold: p.editionSold,
     dropAt: p.dropAt?.toISOString() ?? null,
+    standDealCents: p.standDealCents && p.standDealDate === shopToday() ? p.standDealCents : null,
   };
 }
 

@@ -9,7 +9,8 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: "Kiosk", statusBarStyle: "black-translucent" },
 };
 // A kiosk shouldn't zoom when shoppers double-tap or pinch.
-export const viewport: Viewport = { width: "device-width", initialScale: 1, maximumScale: 1, userScalable: false };
+// Fills the screen under the iPad's status bar (the app keeps clear of it with safe-area padding).
+export const viewport: Viewport = { width: "device-width", initialScale: 1, maximumScale: 1, userScalable: false, viewportFit: "cover" };
 
 /** The self-checkout tablet at the LightLab stand. Pairs with LightLab admin > Kiosk. */
 export default function KioskPage() {

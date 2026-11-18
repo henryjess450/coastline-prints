@@ -27,7 +27,7 @@ const links = [
 export function AdminNav({ failedEmails, etransferReview = 0 }: { failedEmails: number; etransferReview?: number }) {
   const path = usePathname();
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    <div data-admin-chrome className="flex flex-wrap items-center justify-between gap-3">
       {/* Scrolls sideways on phones rather than wrapping */}
       <nav aria-label="Admin" className="-mx-4 flex w-[calc(100%+2rem)] gap-1 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:w-auto sm:rounded-full sm:border sm:border-line sm:bg-surface sm:p-1">
         {links.map((l) => {

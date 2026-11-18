@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { OneLineLamps } from "@/components/lightlab/hero/OneLineLamps";
 import type { DisplaySlides } from "@/lib/pos/types";
 import { Qr } from "./bits";
+import { closingIn, closingLine } from "@/lib/shop/closing";
 
 type Slide = { key: string; render: () => React.ReactNode };
 
@@ -30,7 +31,8 @@ export function IdleSlides({ slides: given, quick = false }: { slides?: DisplayS
 
   const order = useMemo<Slide[]>(() => {
     if (!data) return [{ key: "welcome", render: () => <Welcome /> }];
-    const out: Slide[] = [];
+    // Today's deals at the stand come first, whatever slides are picked.
+    const out: Slide[] = (data.deals ?? []).map((d, i) => ({ key: `deal-${i}`, render: () => <Deal d={d} /> }));
     for (const kind of data.slides) {
       if (kind === "welcome") out.push({ key: kind, render: () => <Welcome /> });
       if (kind === "lamps") data.products.forEach((p, i) => out.push({ key: `lamp-${i}`, render: () => <Lamp p={p} /> }));
@@ -66,6 +68,13 @@ export function IdleSlides({ slides: given, quick = false }: { slides?: DisplayS
   }, [quick]);
   const at = step % order.length;
   const slide = order[at];
+  // The last hour of the market: "We pack up at 3". Checked every 30 seconds.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const closing = closingIn(data?.closing ?? [], now);
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col" onClick={quick ? () => setStep((s) => s + 1) : undefined}>
@@ -80,6 +89,13 @@ export function IdleSlides({ slides: given, quick = false }: { slides?: DisplayS
         >
           {slide.render()}
         </motion.div>
+      </AnimatePresence>
+      <AnimatePresence>
+        {closing && (
+          <motion.p key="closing" className="mx-auto mt-4 rounded-full bg-[#ffd98a] px-[2.4vw] py-[1vh] text-center font-display text-[2.4vw] font-bold text-[#1a1408]" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }}>
+            {closingLine(closing.endTime)}
+          </motion.p>
+        )}
       </AnimatePresence>
       {order.length > 1 && (
         <div className="mx-auto mt-4 flex w-full max-w-xl gap-2" aria-hidden>
@@ -110,6 +126,26 @@ function Welcome() {
         <p className="font-display text-[9vw] font-bold leading-none tracking-tight">Hi there!</p>
         <p className="ll-accent mt-[2vh] text-[5vw] leading-tight">Ready to check out?</p>
         <p className="mt-[3vh] text-[2.2vw] text-fg/70">Bring your lamp to the counter and we&apos;ll ring it up.</p>
+      </div>
+    </div>
+  );
+}
+
+/** Today's deal: the lamp, its old price struck through, and the new one. */
+function Deal({ d }: { d: DisplaySlides["deals"][number] }) {
+  return (
+    <div className="mx-auto grid w-full max-w-[94vw] grid-cols-2 items-center gap-[4vw]">
+      <div className="h-[70vh] overflow-hidden rounded-[3vw] bg-surface">
+        {d.image && <motion.img src={d.image} alt="" className="h-full w-full object-cover" initial={{ scale: 1.08 }} animate={{ scale: 1 }} transition={{ duration: 9, ease: "easeOut" }} />}
+      </div>
+      <div>
+        <p className={kickerCls}>Today only</p>
+        <p className={`${headingCls} mt-[2vh]`}>{d.name}</p>
+        <p className={`${accentCls} mt-[2vh]`}>is today&apos;s deal!</p>
+        <p className="mt-[4vh] flex items-baseline gap-[1.6vw]">
+          <span className="font-display text-[3.4vw] font-bold text-fg/45 line-through">{d.was}</span>
+          <span className="inline-block rounded-full bg-[#ffd98a] px-[2.4vw] py-[1vh] font-display text-[4.4vw] font-bold text-[#1a1408]">{d.now}</span>
+        </p>
       </div>
     </div>
   );

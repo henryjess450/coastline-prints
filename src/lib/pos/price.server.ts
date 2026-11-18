@@ -8,6 +8,7 @@ import { getEffectiveConfig } from "@/lib/config/effective";
 import type { CartSnapshot } from "@/lib/orders/finalize";
 import { CartError, priceCart } from "@/lib/pricing/server-quote";
 import { db } from "@/lib/db";
+import { shopToday } from "@/lib/shop/markets.server";
 import { priceShopCart } from "@/lib/shop/price.server";
 import { shopImageUrl } from "@/lib/shop/types";
 import type { PosCartInput, PosLineView, PosQuote } from "./types";
@@ -25,7 +26,8 @@ export type PricedPos = PosQuote & {
  * The register's price, from the same pieces as online checkout: priceCart
  * for prints (with its order fee and minimum), priceShopCart for products,
  * plus custom lines at the price typed in. Then coupons and gift cards.
- * The site-wide sale is an online promotion and isn't applied here.
+ * The site-wide sale is an online promotion and isn't applied here; the
+ * stand's own deal of the day is, as money off before any codes.
  */
 export async function pricePos(raw: PosCartInput, opts: { ignoreStock?: boolean } = {}): Promise<PricedPos> {
   const cart = posCartSchema.parse(raw);
@@ -43,15 +45,23 @@ export async function pricePos(raw: PosCartInput, opts: { ignoreStock?: boolean 
   }
   if (shop && shop.shop !== cart.brand) return empty(`Those products are from the other shop. Switch the register to ${shop.shop === "lightlab" ? "LightLab" : "Coastline Prints"}.`);
 
-  // Each product's cover photo, for the thumbnails on the register and display.
+  // Each product's cover photo, for the thumbnails on the register and display, and today's deal on it.
+  const rows = shop ? await db.shopProduct.findMany({ where: { id: { in: shop.shopLines.map((l) => l.productId) } }, select: { id: true, images: true, standDealCents: true, standDealDate: true } }) : [];
   const covers = new Map(
-    shop
-      ? (await db.shopProduct.findMany({ where: { id: { in: shop.shopLines.map((l) => l.productId) } }, select: { id: true, images: true } })).map((p) => {
-          const first = (JSON.parse(p.images) as string[])[0];
-          return [p.id, first ? shopImageUrl(first) : undefined];
-        })
-      : [],
+    rows.map((p) => {
+      const first = (JSON.parse(p.images) as string[])[0];
+      return [p.id, first ? shopImageUrl(first) : undefined];
+    }),
   );
+  const today = shopToday();
+  const dealOff = new Map(rows.filter((p) => p.standDealCents && p.standDealDate === today).map((p) => [p.id, p.standDealCents!]));
+  // Deal of the day: so much off each one, never more than the lamp costs. One line per lamp.
+  const deals = new Map<string, number>();
+  for (const l of shop?.shopLines ?? []) {
+    const off = dealOff.get(l.productId);
+    if (off) deals.set(l.name, (deals.get(l.name) ?? 0) + Math.min(off, l.unitCents) * l.quantity);
+  }
+  const dealCents = [...deals.values()].reduce((a, b) => a + b, 0);
   const hexOf = (material: string, colorId: string) => config.materials.find((m) => m.id === material)?.colors.find((c) => c.id === colorId)?.hex;
   const lines: PosLineView[] = [
     ...(prints?.lines ?? []).map((l, i) => {
@@ -68,7 +78,7 @@ export async function pricePos(raw: PosCartInput, opts: { ignoreStock?: boolean 
 
   // Market-only coupons work at the LightLab register.
   const { records, errors } = await lookupCodes(cart.codes, new Date(), null, cart.email || null, { channel: cart.brand === "lightlab" ? "market" : "online" });
-  const discount = applyCodes(beforeCodes, records.map(toCodeInfo), 0, null);
+  const discount = applyCodes(beforeCodes - dealCents, records.map(toCodeInfo), 0, null);
 
   // Paying by Square link with the fee switched on: one more line covering Square's cut of what's left to pay.
   const feeSettings = cart.cardFee ? await getCardFee() : null;
@@ -97,13 +107,13 @@ export async function pricePos(raw: PosCartInput, opts: { ignoreStock?: boolean 
     error: !printsOk ? "One of the prints can't be printed." : rejected[0] ? `${rejected[0].code}: ${rejected[0].reason}` : undefined,
     lines,
     fees,
-    discounts: discount.applied.map((a) => ({ label: a.label, cents: a.amountCents })),
+    discounts: [...[...deals].map(([name, cents]) => ({ label: `Today's deal: ${name}`, cents })), ...discount.applied.map((a) => ({ label: a.label, cents: a.amountCents }))],
     rejected,
     totalCents: discount.totalCents + feeCents,
     snapshot,
     applied: discount.applied,
     records: usable,
-    discountCents: discount.discountCents,
+    discountCents: discount.discountCents + dealCents,
     giftCardCents: discount.giftCardCents,
   };
 }

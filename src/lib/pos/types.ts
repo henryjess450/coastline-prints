@@ -275,4 +275,8 @@ export type DisplaySlides = {
   giftBonus: string | null;
   /** From the site: "Coastline Prints is the Preferred 3D Printing Partner of LightLab | Victoria". */
   partnerLine: string;
+  /** Today's deals at the stand: shown first between sales. */
+  deals: { name: string; was: string; now: string; image: string | null }[];
+  /** Today's markets and when they end: "We pack up at 3" in the last hour. */
+  closing: { date: string; endTime: string }[];
 };

@@ -18,10 +18,15 @@ import { cardFeeFor } from "@/lib/pos/card-fee";
 import { Greeting, Steps, type KioskMode } from "./KioskBits";
 import { KioskShop } from "./KioskShop";
 import { KioskRewards, type FoundCustomer, type Redeemed } from "./KioskRewards";
+import { closingIn, closingLine, type Closing } from "@/lib/shop/closing";
+import { CardScanner } from "./CardScanner";
 
-type Hello = { paired: boolean; pairCode: string | null; name: string; mode: KioskMode; minDate: string; /** Square's card form, when card payments are set up. */ square: SquareConfig | null };
+type Hello = { paired: boolean; pairCode: string | null; name: string; mode: KioskMode; minDate: string; /** Square's card form, when card payments are set up. */ square: SquareConfig | null; /** Today's markets and when they end. */ closing?: Closing[] };
 type Stage = "welcome" | "shop" | "details" | "pay" | "done";
 type Done = { kind: "paid"; sale: KioskSaleView } | { kind: "problem"; sale: KioskSaleView };
+/** A scanned thank-you card: who it's for (when we know) and whether its discount went in the bag. */
+type CardHello = { firstName: string; name: string; maskedEmail: string | null; ref: string | null; code: string | null };
+type WelcomeBack = { firstName: string; discount: boolean } | { error: string };
 
 /** No touches for this long while shopping: "Still there?", then start over. */
 const IDLE_MS = 90_000;
@@ -34,9 +39,12 @@ const DONE_S = 8;
 const RECEIPT_ASK_S = 20;
 type ReceiptPick = "none" | "print" | "email";
 
-async function api<T>(url: string, init?: RequestInit): Promise<{ ok: true; data: T } | { ok: false; error: string; status: number }> {
+/** Every request gives up after `timeoutMs`, so a dropped connection never leaves a screen stuck on "One moment…". */
+async function api<T>(url: string, init?: RequestInit, timeoutMs = 20_000): Promise<{ ok: true; data: T } | { ok: false; error: string; status: number }> {
   try {
-    const res = await fetch(url, { cache: "no-store", ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
+    const timeout = AbortSignal.timeout(timeoutMs);
+    const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+    const res = await fetch(url, { cache: "no-store", ...init, signal, headers: { "Content-Type": "application/json", ...init?.headers } });
     const body = await res.json().catch(() => ({}));
     return res.ok ? { ok: true, data: body as T } : { ok: false, error: body.error ?? "Something went wrong.", status: res.status };
   } catch {
@@ -94,6 +102,17 @@ export function KioskApp() {
   const [gift, setGift] = useState(false);
   const [askLeft, setAskLeft] = useState(RECEIPT_ASK_S);
   const lastTouch = useRef(0);
+  // Thank-you cards: the camera, and the "welcome back" that follows a scan.
+  const [scanning, setScanning] = useState(false);
+  const [welcomeBack, setWelcomeBack] = useState<WelcomeBack | null>(null);
+  // The market's last hour: "We pack up at 3. Last chance today!" Checked every 30 seconds.
+  const [clockNow, setClockNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setClockNow(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const closing = closingIn(hello?.closing ?? [], clockNow);
+  const lastCall = closing ? closingLine(closing.endTime) : null;
   const mode: KioskMode = hello?.mode ?? "shop";
   // Hello comes back every minute as a new object: keep the same config so the card form isn't rebuilt (and wiped) mid-typing.
   const squareJson = JSON.stringify(hello?.square ?? null);
@@ -196,13 +215,14 @@ export function KioskApp() {
       const idle = Date.now() - lastTouch.current;
       // A problem sale stays up for staff to see (tap to finish), but not forever.
       if (stage === "done") return done?.kind === "problem" && idle > 120_000 && reset(false);
-      if (stage === "pay") return idle > PAY_IDLE_MS && reset();
+      // Never mid-charge: the card may be going through.
+      if (stage === "pay") return idle > PAY_IDLE_MS && !cardBusy && reset();
       if (!lines.length && stage === "shop") return idle > 45_000 && reset();
       if (idle > IDLE_MS + STILL_THERE_S * 1000) return reset();
       if (idle > IDLE_MS) setStillThere(Math.max(0, Math.ceil((IDLE_MS + STILL_THERE_S * 1000 - idle) / 1000)));
     }, 1000);
     return () => clearInterval(t);
-  }, [stage, lines.length, reset, done?.kind]);
+  }, [stage, lines.length, reset, done?.kind, cardBusy]);
 
   /** Paid (either way): on to the thank-you screen. */
   const finish = useCallback(
@@ -275,6 +295,53 @@ export function KioskApp() {
           ? "Pick the day you need it by."
           : null;
 
+  /** A thank-you card was scanned (camera or plug-in scanner): say hello, fill in who they are, and put its discount in the bag. */
+  const scanCard = useCallback(
+    async (text: string) => {
+      setScanning(false);
+      lastTouch.current = Date.now();
+      const r = await api<CardHello>("/api/kiosk/card", { method: "POST", body: JSON.stringify({ text }) });
+      if (!r.ok) return setWelcomeBack({ error: r.error });
+      const c = r.data;
+      if (c.ref && c.maskedEmail) setKnown({ maskedEmail: c.maskedEmail, ref: c.ref });
+      if (c.name) setDetails((d) => ({ ...d, name: d.name || c.name }));
+      if (c.code) setCodes((cs) => [...cs.filter((x) => x !== c.code), c.code!].slice(-2));
+      setWelcomeBack({ firstName: c.firstName, discount: !!c.code });
+      feedback("sparkle", 20);
+      setStage((st) => (st === "welcome" ? "shop" : st));
+    },
+    [feedback],
+  );
+
+  // A plug-in scanner types the card's link fast and presses Enter. Typing in a box (like the coupon box) is left alone.
+  useEffect(() => {
+    if (stage !== "welcome" && stage !== "shop") return;
+    let buf = "";
+    let at = 0;
+    const key = (e: KeyboardEvent) => {
+      const el = document.activeElement;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return;
+      const now = Date.now();
+      if (now - at > 120) buf = "";
+      at = now;
+      if (e.key === "Enter") {
+        if (buf.length >= 8) void scanCard(buf);
+        buf = "";
+        return;
+      }
+      if (e.key.length === 1) buf += e.key;
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [stage, scanCard]);
+
+  // The welcome back fades by itself.
+  useEffect(() => {
+    if (!welcomeBack) return;
+    const t = setTimeout(() => setWelcomeBack(null), 4500);
+    return () => clearTimeout(t);
+  }, [welcomeBack]);
+
   async function submitDetails() {
     if (detailsProblem) return setError(detailsProblem);
     if (cardFee?.on && coverFee == null) return setError("Please answer: cover the card fee, yes or no?");
@@ -326,11 +393,22 @@ export function KioskApp() {
       setCardBusy(false);
       return setCardError(err instanceof Error ? err.message : "Please check your card details.");
     }
-    const r = await api<KioskSaleView>(`/api/kiosk/sale?id=${sale.id}`, { method: "PUT", body: JSON.stringify({ sourceId: token }) });
-    setCardBusy(false);
+    const r = await api<KioskSaleView>(`/api/kiosk/sale?id=${sale.id}`, { method: "PUT", body: JSON.stringify({ sourceId: token }) }, 60_000);
     lastTouch.current = Date.now();
-    if (!r.ok) return setCardError(r.error);
-    finish(r.data);
+    if (r.ok) {
+      setCardBusy(false);
+      return finish(r.data);
+    }
+    // No clear answer (the connection dropped, or the server couldn't tell): ask whether it went through before offering another go.
+    if (r.status === 0 || r.status >= 500) {
+      const check = await api<KioskSaleView>(`/api/kiosk/sale?id=${sale.id}`);
+      if (check.ok && check.data.status !== "PENDING") {
+        setCardBusy(false);
+        return finish(check.data);
+      }
+    }
+    setCardBusy(false);
+    setCardError(r.error);
   }
 
   async function backFromPay() {
@@ -339,7 +417,7 @@ export function KioskApp() {
     setStage("details");
   }
 
-  const shell = "kiosk lightlab-theme fixed inset-0 z-[200] select-none overflow-hidden bg-bg text-fg [touch-action:manipulation]";
+  const shell = "kiosk lightlab-theme safe-pad fixed inset-0 z-[200] select-none overflow-hidden bg-bg text-fg [touch-action:manipulation]";
 
   if (!hello) return <div className={`${shell} grid place-items-center text-muted`}>{offline ? "Can't reach the server. Retrying…" : "Starting…"}</div>;
   if (!hello.paired)
@@ -364,19 +442,27 @@ export function KioskApp() {
     <div className={shell}>
       <AnimatePresence mode="wait" initial={false}>
         {stage === "welcome" && (
-          <motion.button key="welcome" type="button" onClick={() => (setStage("shop"), feedback("sparkle", 10))} className="relative grid h-full w-full place-items-center px-8 text-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 1.04 }} transition={{ duration: 0.4 }}>
-            <div className="relative flex flex-col items-center">
-              <LightLabLogo className="h-20 sm:h-28" />
-              <div className="mt-4 aspect-[4/5] w-56 sm:w-64">
-                <OneLineLamps />
+          <motion.div key="welcome" className="relative h-full w-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 1.04 }} transition={{ duration: 0.4 }}>
+            {/* The whole screen starts it; only the card button on top does something else. */}
+            <button type="button" aria-label="Tap to start" onClick={() => (setStage("shop"), feedback("sparkle", 10))} className="absolute inset-0" />
+            <div className="pointer-events-none relative grid h-full grid-cols-[1fr_1.1fr] items-center gap-10 px-16">
+              <div className="aspect-[4/5] h-[70vh] justify-self-center">
+                <OneLineLamps names={false} />
               </div>
-              <p className="ll-accent text-5xl">{order ? "order a lamp" : "self-checkout"}</p>
-              <motion.p className="mt-6 rounded-full bg-fg px-10 py-5 text-2xl font-bold text-bg shadow-[0_0_40px_rgb(255_217_138/0.25)]" animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}>
-                Tap to start
-              </motion.p>
-              <p className="mt-6 text-lg text-muted">{order ? "Pick your lamp and colours, choose when you need it, and pay on your phone. We make it for you." : "Pick your lamp here, then pay on your phone: card, Apple Pay or Google Pay."}</p>
+              <div>
+                <LightLabLogo className="h-12" />
+                <p className="mt-8 font-display text-8xl font-bold leading-none">Hi there!</p>
+                <p className="ll-accent mt-4 text-5xl">{order ? "Order a lamp, made just for you!" : "Use our all-new self-checkout!"}</p>
+                <motion.p className="mt-10 inline-block rounded-full bg-fg px-12 py-6 text-3xl font-bold text-bg shadow-[0_0_40px_rgb(255_217_138/0.25)]" animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}>
+                  Tap to start
+                </motion.p>
+                {lastCall && <p className="mt-6 w-fit rounded-full bg-[#ffd98a] px-6 py-2 text-xl font-bold text-[#1a1408]">{lastCall}</p>}
+                <button type="button" onClick={() => (setScanning(true), feedback("click"))} className="pointer-events-auto mt-6 flex items-center gap-3 py-2 text-lg font-semibold text-muted">
+                  <span aria-hidden>💌</span> Got a thank-you card? Scan it
+                </button>
+              </div>
             </div>
-          </motion.button>
+          </motion.div>
         )}
 
         {stage === "shop" && (
@@ -393,6 +479,7 @@ export function KioskApp() {
               onNext={() => (setError(null), setStage("details"))}
               onStartOver={() => reset()}
               feedback={feedback}
+              lastCall={lastCall}
             />
           </motion.div>
         )}
@@ -657,6 +744,34 @@ export function KioskApp() {
               <p className="mt-4 text-sm text-faint">No answer in {askLeft}s means no thanks</p>
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Thank-you card: the camera, then hello */}
+      <AnimatePresence>{scanning && <CardScanner onScan={(t) => void scanCard(t)} onClose={() => setScanning(false)} />}</AnimatePresence>
+      <AnimatePresence>
+        {welcomeBack && (
+          <motion.button type="button" onClick={() => setWelcomeBack(null)} className="fixed inset-0 z-[400] grid place-items-center bg-black/70 px-6 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div className="w-full max-w-lg rounded-[28px] border border-line bg-elev p-8 text-center" initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} transition={{ type: "spring", stiffness: 380, damping: 22 }}>
+              {"error" in welcomeBack ? (
+                <>
+                  <p className="text-5xl" aria-hidden>
+                    🤔
+                  </p>
+                  <p className="mt-3 font-display text-2xl font-bold">{welcomeBack.error}</p>
+                </>
+              ) : (
+                <>
+                  <div className="mx-auto w-fit text-[#ffd98a]">
+                    <TinyLamp on size={96} />
+                  </div>
+                  <p className="ll-accent mt-2 text-5xl">welcome back{welcomeBack.firstName ? `, ${welcomeBack.firstName}` : ""}!</p>
+                  <p className="mt-3 text-xl text-muted">{welcomeBack.discount ? "Your thank-you card's discount is in your bag." : "That card's already been used, but it's lovely to see you again."}</p>
+                </>
+              )}
+              <p className="mt-6 text-sm text-faint">Tap to carry on</p>
+            </motion.div>
+          </motion.button>
         )}
       </AnimatePresence>
 

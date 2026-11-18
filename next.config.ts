@@ -22,6 +22,8 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
+      // The self-checkout kiosk reads thank-you cards with its own camera. (A later match overrides the same header.)
+      { source: "/kiosk", headers: [{ key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(), payment=(self)" }] },
       // The service worker must never be cached, so app updates reach phones straight away.
       {
         source: "/sw.js",

@@ -541,6 +541,10 @@ model ShopProduct {
   editionSold    Int      @default(0)
   /// Drop date: shown with a countdown and can't be bought before this. Null = on sale now.
   dropAt         DateTime?
+  /// Deal of the day at the stand: this much off each one, on `standDealDate` ("YYYY-MM-DD", shop time zone) only.
+  /// Register and kiosk only; the website price doesn't change.
+  standDealCents Int?
+  standDealDate  String?
   sortOrder      Int      @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

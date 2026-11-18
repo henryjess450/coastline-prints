@@ -66,18 +66,19 @@ function useLoop(seconds: number) {
 /**
  * LightLab's lamps in line. With `only`, that lamp loops on its own; otherwise
  * they take turns. `tone="blue"` draws the line itself in the logo blue.
+ * `names={false}` leaves out each lamp's name under it (the kiosk keeps it simple).
  */
-export function OneLineLamps({ only, tone = "line" }: { only?: LampId; tone?: "line" | "blue" }) {
+export function OneLineLamps({ only, tone = "line", names = true }: { only?: LampId; tone?: "line" | "blue"; names?: boolean }) {
   const lamps = only ? LAMPS.filter((l) => l.id === only) : LAMPS;
   const p = useLoop(PER_LAMP * lamps.length);
   // Reduced motion: the first lamp, drawn, still.
   const k = p == null ? 0.65 : p * lamps.length;
   const lamp = lamps[Math.floor(k) % lamps.length];
-  return <LampFrame key={lamp.id} lamp={lamp} t={k - Math.floor(k)} tone={tone} />;
+  return <LampFrame key={lamp.id} lamp={lamp} t={k - Math.floor(k)} tone={tone} names={names} />;
 }
 
 /** One lamp at a moment t (0 → 1) of its turn. */
-function LampFrame({ lamp, t, tone }: { lamp: Lamp; t: number; tone: "line" | "blue" }) {
+function LampFrame({ lamp, t, tone, names }: { lamp: Lamp; t: number; tone: "line" | "blue"; names: boolean }) {
   const [bx, by, bw, bh] = lamp.box;
   const scale = Math.min(AREA.w / bw, AREA.h / bh);
   const ox = AREA.x + (AREA.w - bw * scale) / 2 - bx * scale;
@@ -122,9 +123,11 @@ function LampFrame({ lamp, t, tone }: { lamp: Lamp; t: number; tone: "line" | "b
         {parts}
         {tip && <circle cx={tip.x} cy={tip.y} r={3.2 / scale} fill={BLUE} opacity={penFade} />}
       </g>
-      <text x="160" y="374" textAnchor="middle" className="ll-accent" style={{ fontSize: 30 }} fill={BLUE} opacity={named} transform={`translate(0 ${(1 - named) * 6})`}>
-        {lamp.name}
-      </text>
+      {names && (
+        <text x="160" y="374" textAnchor="middle" className="ll-accent" style={{ fontSize: 30 }} fill={BLUE} opacity={named} transform={`translate(0 ${(1 - named) * 6})`}>
+          {lamp.name}
+        </text>
+      )}
     </svg>
   );
 }

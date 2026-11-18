@@ -39,7 +39,7 @@ export function CustomerScreen({ screen, onReply, corner, slides, quick }: { scr
   const lightlab = screen.brand === "lightlab";
   return (
     <MotionConfig reducedMotion="user">
-      <div className={cn("fixed inset-0 z-[200] flex flex-col overflow-hidden bg-bg text-fg", lightlab && "lightlab-theme")}>
+      <div className={cn("safe-pad fixed inset-0 z-[200] flex flex-col overflow-hidden bg-bg text-fg", lightlab && "lightlab-theme")}>
         <header className="relative z-10 flex items-center justify-between px-8 pt-6">
           {lightlab ? <LightLabLogo className="h-12" /> : <Logo />}
           {corner}

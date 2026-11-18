@@ -65,7 +65,12 @@ export type ShopProductDto = {
   editionSold: number;
   /** ISO time it goes on sale. Null = on sale now. */
   dropAt: string | null;
+  /** Deal of the day at the stand: this much off each one today (register and kiosk only). Null = no deal today. */
+  standDealCents: number | null;
 };
+
+/** A stand price after today's deal (never below zero). */
+export const dealPrice = (p: Pick<ShopProductDto, "standDealCents">, cents: number) => Math.max(0, cents - (p.standDealCents ?? 0));
 
 /** Not out yet: a drop date still to come. */
 export const notDropped = (p: Pick<ShopProductDto, "dropAt">, now = Date.now()) => !!p.dropAt && new Date(p.dropAt).getTime() > now;

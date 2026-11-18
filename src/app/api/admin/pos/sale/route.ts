@@ -13,7 +13,8 @@ export async function POST(req: Request) {
     const { order, emailed, changeCents } = await ringUpSale(await req.json().catch(() => null));
     return NextResponse.json({ orderId: order.id, orderNumber: order.orderNumber, emailed, changeCents: changeCents ?? null });
   } catch (err) {
-    if (err instanceof PosSaleError) return apiError(409, err.message, { quote: err.quote });
+    // A retry error means it's mid-save elsewhere: 503 so the offline queue sends it again later instead of parking it.
+    if (err instanceof PosSaleError) return apiError(err.retry ? 503 : 409, err.message, { quote: err.quote });
     if (err instanceof ZodError) return apiError(400, err.issues[0]?.message ?? "Some details are missing.");
     logError("pos:sale", err);
     return apiError(500, "Couldn't ring up the sale.");

@@ -525,3 +525,17 @@ body {
   transition: background-size 0.3s ease;
 }
 .lightlab-theme .ll-link:hover { background-size: 100% 1px; }
+
+/* Staff mode on the register (src/lib/pos/staff.ts): the admin menu is hidden on this iPad. */
+html[data-staff] [data-admin-chrome] {
+  display: none !important;
+}
+
+/*
+ * Full-screen tablet apps added to the iPad home screen (kiosk, customer display):
+ * the page runs under the status bar (black-translucent), so keep everything
+ * inside the safe area or the clock and battery sit on top of the header.
+ */
+.safe-pad {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}

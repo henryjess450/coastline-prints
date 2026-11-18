@@ -4,7 +4,8 @@ import { db } from "@/lib/db";
 import { appUrl } from "@/lib/email/data";
 import { getPrintSettings } from "@/lib/receipt/settings";
 import { dayParts, hours } from "@/lib/shop/markets";
-import { shopToday, upcomingMarkets } from "@/lib/shop/markets.server";
+import { shopToday, todaysClosings, upcomingMarkets } from "@/lib/shop/markets.server";
+import { dealPrice } from "@/lib/shop/types";
 import { getGiftBonus } from "@/lib/giftcards/bonus.server";
 import { lightlab } from "@config/lightlab";
 import { listProducts } from "@/lib/shop/products.server";
@@ -26,7 +27,7 @@ export async function saveDisplaySettings(input: unknown) {
 /** What the LightLab customer display cycles through between sales. Links scanned from it are tagged as from the display. */
 export async function loadDisplaySlides(override?: DisplaySettings): Promise<DisplaySlides> {
   const s = override ?? (await getDisplaySettings());
-  const [all, markets, printing] = await Promise.all([listProducts({ shop: "lightlab" }), upcomingMarkets(6), getPrintSettings()]);
+  const [all, markets, printing, closing] = await Promise.all([listProducts({ shop: "lightlab" }), upcomingMarkets(6), getPrintSettings(), todaysClosings()]);
   const dollars = (c: number) => `$${(c / 100).toFixed(c % 100 ? 2 : 0)}`;
   const tag = (path: string) => `${appUrl()}${path}${path.includes("?") ? "&" : "?"}utm_source=market&utm_medium=display`;
   return {
@@ -49,6 +50,13 @@ export async function loadDisplaySlides(override?: DisplaySettings): Promise<Dis
     comebackPercent: printing.comeback.on ? printing.comeback.percent : null,
     giftBonus: bonusLine(await getGiftBonus()),
     partnerLine: lightlab.partnerLine,
+    deals: all
+      .filter((p) => p.standDealCents)
+      .map((p) => {
+        const low = Math.min(p.priceCents, ...p.variants.map((v) => v.priceCents ?? p.priceCents));
+        return { name: p.name, was: dollars(low), now: dollars(dealPrice(p, low)), image: p.images[0] ?? null };
+      }),
+    closing,
   };
 }
 

@@ -128,14 +128,27 @@ export async function startKioskSale(kioskId: string, rawCart: z.input<typeof ki
   return view(sale);
 }
 
-/** Paid yet? If Square says so, ring it up (once) like a register sale. */
+/** Paid yet? If Square says so (by the QR, or a card typed on the tablet), ring it up (once) like a register sale. */
 export async function checkKioskSale(kioskId: string, id: string): Promise<KioskSaleView | null> {
   const sale = await db.kioskSale.findUnique({ where: { id } });
   if (!sale || sale.kioskId !== kioskId) return null;
-  if (sale.status !== "PENDING") return view(sale);
+  if (sale.status !== "PENDING" || charging.has(id)) return view(sale);
   const status = await payLinkStatus(sale.squareOrder);
-  if (!status.paid) return view(sale);
-  return ringUpKioskSale(sale, status.paymentId);
+  if (status.paid) return ringUpKioskSale(sale, status.paymentId);
+  const card = cardTried.has(id) ? await cardPaymentFor(sale) : null;
+  return card ? ringUpKioskSale(sale, card) : view(sale);
+}
+
+/** Sales whose card is being charged right now: one charge at a time, and nothing cancels them mid-charge. */
+const charging = new Set<string>();
+/** Sales that have had a card charge tried on the tablet (it may have gone through even if the answer never arrived). */
+const cardTried = new Set<string>();
+
+/** A completed card payment Square already has for this sale (found by its reference), so a retry never charges twice. */
+async function cardPaymentFor(sale: SaleRow): Promise<string | null> {
+  const page = await getSquare().payments.list({ beginTime: new Date(sale.createdAt.getTime() - 60_000).toISOString(), locationId: squareLocationId(), limit: 100 });
+  for await (const p of page) if (p.referenceId === sale.id.slice(0, 40) && p.status === "COMPLETED" && p.id) return p.id;
+  return null;
 }
 
 type SaleRow = NonNullable<Awaited<ReturnType<typeof db.kioskSale.findUnique>>>;
@@ -143,29 +156,45 @@ type SaleRow = NonNullable<Awaited<ReturnType<typeof db.kioskSale.findUnique>>>;
 /** Paid (by the link or by card): save it once, like a register sale. */
 async function ringUpKioskSale(sale: SaleRow, paymentId: string): Promise<KioskSaleView> {
   const id = sale.id;
-  try {
-    const { order } = await ringUpSale({
-      attemptId: sale.id,
-      cart: JSON.parse(sale.cart) as PosCartInput,
-      expectedTotalCents: sale.totalCents,
-      payment: "CARD",
-      squarePaymentId: paymentId,
-      source: KIOSK_SOURCE,
-      customer: { name: sale.customerName, email: sale.email, phone: sale.phone, notes: sale.notes },
-      // Take-home sales are handed over; orders are made by the day they picked.
-      handedOver: !sale.needBy,
-      order: sale.needBy ? { needBy: sale.needBy } : null,
-      kiosk: true,
-      // Take-home sales: no receipt unless they ask for one on the thank-you popup (orders always get their email).
-      emailCustomer: false,
-    });
-    return view(await db.kioskSale.update({ where: { id }, data: { status: "DONE", orderNumber: order.orderNumber } }));
-  } catch (err) {
-    // They've paid but the sale couldn't be saved (stock or price changed): the owner sorts it out.
-    logError("kiosk:ring-up", err);
-    const problem = err instanceof Error ? err.message : "Couldn't save the sale.";
-    return view(await db.kioskSale.update({ where: { id }, data: { status: "PROBLEM", problem } }));
+  // Another request may be saving this same sale right now: give it a few seconds, then use its order.
+  for (let tries = 0; ; tries++) {
+    try {
+      return await ringUpOnce(sale, paymentId);
+    } catch (err) {
+      if (err instanceof PosSaleError && err.retry) {
+        if (tries < 5) {
+          await new Promise((r) => setTimeout(r, 1000));
+          continue;
+        }
+        return view((await db.kioskSale.findUnique({ where: { id } })) ?? sale);
+      }
+      // They've paid but the sale couldn't be saved: the owner sorts it out. Never over a sale that did save.
+      logError("kiosk:ring-up", err);
+      const problem = `${err instanceof Error ? err.message : "Couldn't save the sale."} (Square payment ${paymentId})`;
+      await db.kioskSale.updateMany({ where: { id, status: { in: ["PENDING", "CANCELLED"] } }, data: { status: "PROBLEM", problem } });
+      return view((await db.kioskSale.findUnique({ where: { id } })) ?? sale);
+    }
   }
+}
+
+async function ringUpOnce(sale: SaleRow, paymentId: string): Promise<KioskSaleView> {
+  const id = sale.id;
+  const { order } = await ringUpSale({
+    attemptId: sale.id,
+    cart: JSON.parse(sale.cart) as PosCartInput,
+    expectedTotalCents: sale.totalCents,
+    payment: "CARD",
+    squarePaymentId: paymentId,
+    source: KIOSK_SOURCE,
+    customer: { name: sale.customerName, email: sale.email, phone: sale.phone, notes: sale.notes },
+    // Take-home sales are handed over; orders are made by the day they picked.
+    handedOver: !sale.needBy,
+    order: sale.needBy ? { needBy: sale.needBy } : null,
+    kiosk: true,
+    // Take-home sales: no receipt unless they ask for one on the thank-you popup (orders always get their email).
+    emailCustomer: false,
+  });
+  return view(await db.kioskSale.update({ where: { id }, data: { status: "DONE", orderNumber: order.orderNumber, problem: null } }));
 }
 
 /**
@@ -174,12 +203,28 @@ async function ringUpKioskSale(sale: SaleRow, paymentId: string): Promise<KioskS
  * can pay twice; a decline leaves the link working.
  */
 export async function payKioskSaleByCard(kioskId: string, id: string, sourceId: string): Promise<KioskSaleView> {
+  if (charging.has(id)) throw new PosSaleError("Your payment is still going through. One moment.");
+  charging.add(id);
+  try {
+    return await chargeCard(kioskId, id, sourceId);
+  } finally {
+    charging.delete(id);
+  }
+}
+
+async function chargeCard(kioskId: string, id: string, sourceId: string): Promise<KioskSaleView> {
   const sale = await db.kioskSale.findUnique({ where: { id } });
   if (!sale || sale.kioskId !== kioskId) throw new PosSaleError("This payment has expired. Please start again.");
   if (sale.status !== "PENDING") return view(sale);
   // Already paid on a phone? Then that's the payment.
   const link = await payLinkStatus(sale.squareOrder);
   if (link.paid) return ringUpKioskSale(sale, link.paymentId);
+  // An earlier try whose answer got lost on the way back may have charged the card already.
+  if (cardTried.has(id)) {
+    const earlier = await cardPaymentFor(sale);
+    if (earlier) return ringUpKioskSale(sale, earlier);
+  }
+  cardTried.add(id);
 
   let paymentId: string;
   try {
@@ -221,7 +266,7 @@ export async function payKioskSaleByCard(kioskId: string, id: string, sourceId: 
 /** The shopper went back or walked away: the link stops working. */
 export async function cancelKioskSale(kioskId: string, id: string) {
   const sale = await db.kioskSale.findUnique({ where: { id } });
-  if (!sale || sale.kioskId !== kioskId || sale.status !== "PENDING") return;
+  if (!sale || sale.kioskId !== kioskId || sale.status !== "PENDING" || charging.has(id)) return;
   // Paid in the last few seconds? Then ring it up instead of cancelling.
   const done = await checkKioskSale(kioskId, id).catch(() => null);
   if (done && done.status !== "PENDING") return;

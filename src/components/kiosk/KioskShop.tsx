@@ -11,7 +11,7 @@ import { flyToCart } from "@/lib/feel/fly";
 import { cn } from "@/lib/cn";
 import { money } from "@/lib/format";
 import type { PosQuote } from "@/lib/pos/types";
-import { CUSTOM_TEXT_MAX, choiceIds, inStock, unitPrice, type ShopProductDto } from "@/lib/shop/types";
+import { CUSTOM_TEXT_MAX, choiceIds, dealPrice, inStock, unitPrice, type ShopProductDto } from "@/lib/shop/types";
 import { ChoiceSets } from "@/components/shop/ChoiceSets";
 import { addLine, type KioskLine } from "./kiosk-cart";
 import { Steps, type KioskMode } from "./KioskBits";
@@ -45,6 +45,7 @@ export function KioskShop({
   onNext,
   onStartOver,
   feedback,
+  lastCall,
 }: {
   mode: KioskMode;
   products: ShopProductDto[];
@@ -57,6 +58,8 @@ export function KioskShop({
   onNext: () => void;
   onStartOver: () => void;
   feedback: (kind: "click" | "pop" | "chime" | "sparkle", buzzMs?: number) => void;
+  /** "We pack up at 3. Last chance today!" in the market's last hour. */
+  lastCall: string | null;
 }) {
   const order = mode === "order";
   const [open, setOpen] = useState<ShopProductDto | null>(null);
@@ -96,6 +99,7 @@ export function KioskShop({
       return;
     }
     const choices = choiceIds(p);
+    // The bag shows list prices; today's deal comes off as its own line, from the server.
     const price = unitPrice(p, variantId, choices);
     const max = order ? null : inStock(p, variantId);
     feedback("pop", 15);
@@ -125,6 +129,7 @@ export function KioskShop({
             <Steps mode={mode} at={0} />
           </div>
           <div className="flex items-center gap-2">
+            {lastCall && <span className="rounded-full bg-[#ffd98a] px-4 py-2 text-sm font-bold text-[#1a1408]">{lastCall}</span>}
             <button type="button" onClick={onStartOver} className="h-11 rounded-full border border-line px-5 text-sm font-semibold text-muted">
               Start over
             </button>
@@ -160,6 +165,7 @@ export function KioskShop({
                     <div data-tile-photo className="relative aspect-square overflow-hidden rounded-2xl border border-line bg-surface">
                       {p.images[0] && <FadeImg src={p.images[0]} alt={p.name} className="h-full w-full object-cover" />}
                       {!order && (out || (n != null && n <= 3)) && <span className="ll-flicker absolute left-2 top-2 rounded-full bg-bg/85 px-2.5 py-0.5 text-xs font-semibold backdrop-blur">{out ? "Sold out" : `Only ${n} left`}</span>}
+                      {p.standDealCents ? <span className="absolute bottom-2 left-2 rounded-full bg-success px-2.5 py-0.5 text-xs font-bold text-white shadow">Today&apos;s deal</span> : null}
                       {order && p.personalize && <span className="absolute left-2 top-2 rounded-full bg-bg/85 px-2.5 py-0.5 text-xs font-semibold backdrop-blur">Add a name</span>}
                       <AnimatePresence>
                         {full === p.id && (
@@ -176,7 +182,10 @@ export function KioskShop({
                     </div>
                     <div className="mt-2 flex items-start justify-between gap-2">
                       <p className="font-display text-base font-semibold leading-tight">{p.name}</p>
-                      <p className="shrink-0 font-mono text-sm">{money(from)}</p>
+                      <p className="shrink-0 text-right font-mono text-sm">
+                        {p.standDealCents ? <span className="block text-xs text-faint line-through">{money(from)}</span> : null}
+                        <span className={cn(p.standDealCents && "font-bold text-success")}>{money(dealPrice(p, from))}</span>
+                      </p>
                     </div>
                   </motion.button>
                 </motion.li>
@@ -309,7 +318,8 @@ function ProductSheet({ p, order, editing, onClose, onAdd, inBag }: { p: ShopPro
   const [needText, setNeedText] = useState(false);
   const photo = useRef<HTMLDivElement>(null);
   const variant = p.variants.find((v) => v.id === variantId) ?? null;
-  const price = unitPrice(p, variantId, choices);
+  const listPrice = unitPrice(p, variantId, choices);
+  const price = dealPrice(p, listPrice);
   const stock = order ? null : inStock(p, variantId);
   const room = Math.min(20, stock ?? 20) - (order ? 0 : inBag(variantId));
   const quantity = Math.max(1, Math.min(qty, room));
@@ -333,8 +343,10 @@ function ProductSheet({ p, order, editing, onClose, onAdd, inBag }: { p: ShopPro
             </button>
           </div>
           {p.tagline && <p className="ll-accent mt-2 text-3xl">{p.tagline}</p>}
-          <motion.p key={price} initial={{ y: -6, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="mt-4 font-display text-3xl font-bold tabular-nums">
-            {money(price)}
+          <motion.p key={price} initial={{ y: -6, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="mt-4 flex items-baseline gap-3 font-display text-3xl font-bold tabular-nums">
+            {p.standDealCents ? <span className="text-xl text-faint line-through">{money(listPrice)}</span> : null}
+            <span className={cn(p.standDealCents && "text-success")}>{money(price)}</span>
+            {p.standDealCents ? <span className="rounded-full bg-success px-3 py-1 font-sans text-sm text-white">Today&apos;s deal</span> : null}
           </motion.p>
           {p.variants.length > 0 && (
             <div className="mt-6 flex flex-wrap gap-3">
@@ -370,7 +382,7 @@ function ProductSheet({ p, order, editing, onClose, onAdd, inBag }: { p: ShopPro
               whileTap={{ scale: 0.96 }}
               onClick={() => {
                 if (personal && !text.trim()) return setNeedText(true);
-                onAdd(variantId, quantity, price, stock, personal ? text.trim() : "", photo.current, choices);
+                onAdd(variantId, quantity, listPrice, stock, personal ? text.trim() : "", photo.current, choices);
               }}
               className="h-16 flex-1 rounded-full bg-fg text-lg font-bold text-bg disabled:opacity-40"
             >

@@ -9,6 +9,11 @@ export const shopToday = (now = new Date()) => new Intl.DateTimeFormat("en-CA", 
 const pick = (m: MarketDto): MarketDto => ({ id: m.id, name: m.name, place: m.place, address: m.address, date: m.date, startTime: m.startTime, endTime: m.endTime, note: m.note, url: m.url });
 
 /** Markets from today on, soonest first. Past ones drop off by themselves. */
+/** Today's markets and when each ends, for "we pack up at 3" on the kiosk and display. */
+export async function todaysClosings(): Promise<{ date: string; endTime: string }[]> {
+  return db.market.findMany({ where: { date: shopToday() }, select: { date: true, endTime: true } });
+}
+
 export async function upcomingMarkets(limit = 8) {
   const rows = await db.market.findMany({ where: { date: { gte: shopToday() } }, orderBy: [{ date: "asc" }, { startTime: "asc" }], take: limit });
   return rows.map(pick);

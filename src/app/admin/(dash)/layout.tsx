@@ -1,6 +1,7 @@
 import { requireAdmin } from "@/lib/admin/auth";
 import { db } from "@/lib/db";
 import { AdminNav } from "@/components/admin/AdminNav";
+import { StaffGuard } from "@/components/pos/StaffGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
     // Clipped sideways so full-width sea pages (Today) don't scroll the window.
     <div className="overflow-x-clip">
       <div className="mx-auto max-w-7xl px-4 pb-10 pt-6 sm:px-6">
+        <StaffGuard />
         <AdminNav failedEmails={failedEmails} etransferReview={etransferReview} />
         <div className="mt-6">{children}</div>
       </div>
