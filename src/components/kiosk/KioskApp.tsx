@@ -17,6 +17,7 @@ import { PaymentMethods, type PaymentMethodsHandle, type SquareConfig } from "@/
 import { cardFeeFor } from "@/lib/pos/card-fee";
 import { Greeting, Steps, type KioskMode } from "./KioskBits";
 import { KioskShop } from "./KioskShop";
+import { KioskRewards, type Redeemed } from "./KioskRewards";
 
 type Hello = { paired: boolean; pairCode: string | null; name: string; mode: KioskMode; minDate: string; /** Square's card form, when card payments are set up. */ square: SquareConfig | null };
 type Stage = "welcome" | "shop" | "details" | "pay" | "done";
@@ -82,6 +83,8 @@ export function KioskApp() {
   const payRef = useRef<PaymentMethodsHandle>(null);
   const [cardBusy, setCardBusy] = useState(false);
   const [cardError, setCardError] = useState<string | null>(null);
+  // Rewards points spent on this sale (a one-use coupon in `codes`). Undone if the sale doesn't happen.
+  const [redeemed, setRedeemed] = useState<Redeemed | null>(null);
   const [doneLeft, setDoneLeft] = useState(DONE_S);
   // After paying: "Want your receipt?" then "A gift receipt?" (both assumed no).
   const [ask, setAsk] = useState<"receipt" | "gift" | null>(null);
@@ -147,6 +150,9 @@ export function KioskApp() {
   const reset = useCallback(
     async (cancel = true) => {
       if (cancel && sale?.status === "PENDING") void api(`/api/kiosk/sale?id=${sale.id}`, { method: "DELETE" });
+      // Points spent on a sale that never happened go back (the server ignores a coupon that was used).
+      if (redeemed) void api(`/api/kiosk/rewards?code=${encodeURIComponent(redeemed.code)}`, { method: "DELETE" });
+      setRedeemed(null);
       setLines([]);
       setCodes([]);
       setQuote(null);
@@ -164,7 +170,7 @@ export function KioskApp() {
       setStage("welcome");
       loadProducts();
     },
-    [sale, loadProducts],
+    [sale, loadProducts, redeemed],
   );
 
   // Idle: any touch counts as activity.
@@ -403,6 +409,20 @@ export function KioskApp() {
                 void submitDetails();
               }}
             >
+              <KioskRewards
+                redeemed={redeemed}
+                onRedeem={(r) => {
+                  feedback("sparkle", 20);
+                  setRedeemed(r);
+                  setCodes([...codes.filter((c) => c !== r.code), r.code].slice(-2));
+                }}
+                onUndo={() => {
+                  if (redeemed) setCodes(codes.filter((c) => c !== redeemed.code));
+                  setRedeemed(null);
+                }}
+                onFound={(firstName, email) => setDetails((d) => ({ ...d, name: d.name || firstName, email: d.email || email || "" }))}
+              />
+              <div className="mt-8" />
               <Greeting name={details.name} />
               <h1 className="mt-1 font-display text-3xl font-bold">{order ? "Tell us about your order" : "Where should we send your receipt?"}</h1>
               <div className="mt-6 grid gap-4 sm:grid-cols-2">

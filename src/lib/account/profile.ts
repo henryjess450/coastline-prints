@@ -92,7 +92,7 @@ export async function finishEmailChange(account: Account, newEmail: string, code
  * account-update job, which never makes a duplicate). Only with production or
  * sandbox keys, like the first sync.
  */
-async function queueSquareUpdate(customerId: string) {
+export async function queueSquareUpdate(customerId: string) {
   if (!squareSyncEnabled()) return;
   // One pending update per account is enough: it reads the latest details when it runs.
   const pending = await db.outboxJob.findFirst({ where: { kind: "square", template: "account-update", status: "PENDING", payload: { contains: customerId } } });

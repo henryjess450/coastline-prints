@@ -16,6 +16,7 @@ import { choiceIds, needsVariant, optionLabel, photosFor, unitPrice, type ShopPr
 import { ChoiceSets } from "@/components/shop/ChoiceSets";
 import { AnimatedMoney, DrawnCheck, Modal, Qr, Thumb, useForceDark } from "./bits";
 import { CustomerScreen, type ReplyFn } from "./CustomerScreen";
+import { RegisterRewards, type RegisterRedeemed } from "./RegisterRewards";
 
 type ProductLine = { key: string; productId: string; variantId: string | null; quantity: number; customText: string; /** Picked choice ids of the product's option sets (cord colour...). */ choices: string[] };
 type PayKind = PosPayment | "LINK";
@@ -95,6 +96,8 @@ export function Register({ products, printOptions, links, markets }: { products:
   const [files, setFiles] = useState<FileLine[]>([]);
   const [codes, setCodes] = useState<string[]>([]);
   const [customer, setCustomer] = useState({ name: "", email: "", phone: "", notes: "" });
+  // Rewards points spent on this sale (a one-use coupon in `codes`); undone if the sale is cleared unpaid.
+  const [redeemed, setRedeemed] = useState<RegisterRedeemed | null>(null);
   const [popup, setPopup] = useState<PosPopup | null>(null);
   const [tendered, setTendered] = useState("");
   const [opts, setOpts] = useState({ handedOver: true, printTicket: false, emailCustomer: true });
@@ -385,6 +388,9 @@ export function Register({ products, printOptions, links, markets }: { products:
 
   function newSale() {
     if (link) cancelLink(link);
+    // The server only gives the points back if the coupon wasn't used.
+    if (redeemed) fetch(`/api/admin/pos/rewards?code=${encodeURIComponent(redeemed.code)}`, { method: "DELETE" }).catch(() => undefined);
+    setRedeemed(null);
     setLines([]);
     setCustom([]);
     setFiles([]);
@@ -870,6 +876,19 @@ export function Register({ products, printOptions, links, markets }: { products:
 
       <Modal open={panel === "customer"} onClose={() => setPanel(null)} title="Customer" footer={<Button className="w-full" onClick={() => setPanel(null)}>Done</Button>}>
         <div className="grid gap-3">
+          <RegisterRewards
+            redeemed={redeemed}
+            onUse={(p) => setCustomer((c) => ({ ...c, name: p.name || c.name, email: p.email, phone: p.phone || c.phone }))}
+            onRedeem={(r) => {
+              setDone(null);
+              setRedeemed(r);
+              setCodes((cs) => [...cs.filter((c) => c !== r.code), r.code]);
+            }}
+            onUndo={() => {
+              if (redeemed) setCodes((cs) => cs.filter((c) => c !== redeemed.code));
+              setRedeemed(null);
+            }}
+          />
           <Field label="Name">
             <input className={input} value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} />
           </Field>

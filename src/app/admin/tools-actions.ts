@@ -1,5 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import type { ActionState } from "@/app/admin/actions";
 import { createInvitedAccount } from "@/lib/account/auth";
@@ -10,6 +11,8 @@ import { queueBroadcast } from "@/lib/broadcast";
 import { db } from "@/lib/db";
 import { saveGiftBonus } from "@/lib/giftcards/bonus.server";
 import { sendNotificationsSoon } from "@/lib/notify/kick";
+import { queueSquareUpdate } from "@/lib/account/profile";
+import { CustomerEditError, deleteCustomer, updateCustomer } from "@/lib/admin/customers";
 
 /*
  * Admin tools: customers (invite, points), announcements, site-wide sales and
@@ -58,6 +61,51 @@ export async function adjustPointsAction(_: ActionState, form: FormData): Promis
   await db.pointsEntry.create({ data: { email, points, kind: "ADJUST" } });
   revalidatePath(`/admin/customers/${encodeURIComponent(email)}`);
   return { ok: true, message: points > 0 ? `Added ${points} points.` : `Took away ${-points} points.` };
+}
+
+const customerEdit = z.object({
+  oldEmail: z.string().trim().toLowerCase().email(),
+  email: z.string().trim().toLowerCase().email("That email doesn't look right.").max(200),
+  name: z.string().trim().max(100),
+  phone: z.string().trim().max(30),
+  news: z.boolean(),
+});
+
+/** Fix someone's name, email, phone or news setting. A new email moves their points and orders with it. */
+export async function updateCustomerAction(_: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const parsed = customerEdit.safeParse({ oldEmail: form.get("oldEmail"), email: form.get("email"), name: form.get("name") ?? "", phone: form.get("phone") ?? "", news: form.get("news") === "on" });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the details." };
+  let moved: string;
+  try {
+    const r = await updateCustomer(parsed.data.oldEmail, parsed.data);
+    moved = r.email;
+    await queueSquareUpdate(r.id);
+    sendNotificationsSoon("admin-customer-edit");
+  } catch (err) {
+    if (err instanceof CustomerEditError) return { error: err.message };
+    logError("admin:customer-edit", err);
+    return { error: "That didn't save. Try again." };
+  }
+  revalidatePath("/admin/customers");
+  if (moved !== parsed.data.oldEmail) redirect(`/admin/customers/${encodeURIComponent(moved)}`);
+  revalidatePath(`/admin/customers/${encodeURIComponent(moved)}`);
+  return { ok: true, message: "Saved." };
+}
+
+/** Delete someone's account and points. Their orders stay. */
+export async function deleteCustomerAction(_: ActionState, form: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const email = String(form.get("email") ?? "").trim().toLowerCase();
+  if (!email) return { error: "Missing email." };
+  try {
+    await deleteCustomer(email);
+  } catch (err) {
+    logError("admin:customer-delete", err);
+    return { error: "That didn't delete. Try again." };
+  }
+  revalidatePath("/admin/customers");
+  redirect("/admin/customers");
 }
 
 export async function createAnnouncementAction(_: ActionState, form: FormData): Promise<ActionState> {

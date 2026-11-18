@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { printReceiptAction } from "@/app/admin/actions";
-import { adjustPointsAction, inviteCustomerAction } from "@/app/admin/tools-actions";
+import { adjustPointsAction, inviteCustomerAction, updateCustomerAction } from "@/app/admin/tools-actions";
+import { DeleteCustomer } from "@/components/admin/DeleteCustomer";
 import { PrintButton } from "@/components/admin/PrintButton";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { field, Field, ToolForm } from "@/components/admin/ToolForm";
@@ -28,7 +29,8 @@ export default async function CustomerPage({ params }: { params: Promise<{ email
     rewardsSummary(email),
     row.account ? walletFor(row.account.id) : Promise.resolve([]),
   ]);
-  const phone = orders[0]?.customerPhone;
+  const account = row.account ? await db.customer.findUnique({ where: { id: row.account.id } }) : null;
+  const phone = account?.phone || orders[0]?.customerPhone;
 
   return (
     <div className="space-y-6">
@@ -136,6 +138,39 @@ export default async function CustomerPage({ params }: { params: Promise<{ email
               </ul>
             )}
           </Card>
+
+          {account && (
+            <Card className="p-5">
+              <h2 className="font-display text-lg font-semibold">Details</h2>
+              <p className="mt-1 text-sm text-muted">A new email moves their points and orders with it, and updates them in Square.</p>
+              <ToolForm action={updateCustomerAction} submit="Save" className="mt-4">
+                <input type="hidden" name="oldEmail" value={email} />
+                <Field label="Name">
+                  <input name="name" defaultValue={account.name ?? row.name} maxLength={100} className={field} />
+                </Field>
+                <Field label="Email">
+                  <input name="email" type="email" required defaultValue={account.email} maxLength={200} className={field} />
+                </Field>
+                <Field label="Phone">
+                  <input name="phone" type="tel" defaultValue={account.phone ?? orders[0]?.customerPhone ?? ""} maxLength={30} className={field} />
+                </Field>
+                <label className="flex items-center gap-2 text-sm">
+                  <input name="news" type="checkbox" defaultChecked={!account.emailOptOut} /> Gets news and promotions
+                </label>
+              </ToolForm>
+            </Card>
+          )}
+
+          {(account || points.balance !== 0) && (
+            <Card className="p-5">
+              <h2 className="font-display text-lg font-semibold">{account ? "Delete account" : "Clear points"}</h2>
+              <p className="mt-1 mb-4 text-sm text-muted">
+                {account ? "Removes their account, sign-ins and points, and switches off coupons saved to it. " : "Removes their points. "}
+                Their orders stay for your records, and their Square customer isn&apos;t touched.
+              </p>
+              <DeleteCustomer email={email} points={points.balance} hasAccount={!!account} />
+            </Card>
+          )}
 
           {wallet.length > 0 && (
             <Card className="p-5">
