@@ -15,11 +15,16 @@ import { cardFeeFor, cardFeeWhy, type CardFeeSettings } from "@/lib/pos/card-fee
 import { choiceIds, dealPrice, needsVariant, optionLabel, photosFor, unitPrice, type ShopProductDto } from "@/lib/shop/types";
 import { markStaff, staffOn } from "@/lib/pos/staff";
 import { PriceCheck } from "./PriceCheck";
-import { StaffMode } from "./StaffMode";
+import { NO_STAFF, StaffMode, type StaffDraft } from "./StaffMode";
 import { ChoiceSets } from "@/components/shop/ChoiceSets";
 import { AnimatedMoney, DrawnCheck, Modal, Qr, Thumb, useForceDark } from "./bits";
 import { CustomerScreen, type ReplyFn } from "./CustomerScreen";
 import { RegisterRewards, type RegisterRedeemed } from "./RegisterRewards";
+import { StandDeck, type DeckActions } from "./StandDeck";
+import { RegisterLock, type LockState } from "./RegisterLock";
+import { forgetLock, lockedOn, lockNow, lockPinSet, setPinAndLock, unlock } from "@/lib/pos/lock";
+import { printStandSlipAction } from "@/app/admin/receipt-actions";
+import { centsTyped, type DeckPanelName, type DeckState, type RecentSale } from "@/lib/pos/deck";
 
 type ProductLine = { key: string; productId: string; variantId: string | null; quantity: number; customText: string; /** Picked choice ids of the product's option sets (cord colour...). */ choices: string[] };
 type PayKind = PosPayment | "LINK";
@@ -131,6 +136,34 @@ export function Register({ products, printOptions, links, markets }: { products:
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState<Done | null>(null);
+  /** The last few sales rung up on this device, for reprinting from the Stream Deck. */
+  const [recent, setRecent] = useState<RecentSale[]>([]);
+  /** The customer popup was opened from the Stream Deck: put the cursor in the lookup box. */
+  const [lookupFocus, setLookupFocus] = useState(false);
+  // What's typed in the popups, shared with the Stream Deck (each starts fresh when its popup opens).
+  const [customDraft, setCustomDraft] = useState<CustomDraft>(NO_CUSTOM);
+  const [codeDraft, setCodeDraft] = useState<CodeDraft>(NO_CODE);
+  const [orderDraft, setOrderDraft] = useState<OrderDraft>(NO_ORDER);
+  const [staffDraft, setStaffDraft] = useState<StaffDraft>(NO_STAFF);
+  const [priceQ, setPriceQ] = useState("");
+  const [priceFocus, setPriceFocus] = useState<string | null>(null);
+  const openedPanel = typeof panel === "string" ? panel : null;
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- a popup opens empty */
+    if (openedPanel === "custom") setCustomDraft(NO_CUSTOM);
+    if (openedPanel === "codes") setCodeDraft(NO_CODE);
+    if (openedPanel === "order") setOrderDraft(NO_ORDER);
+    if (openedPanel === "staff") setStaffDraft(NO_STAFF);
+    if (openedPanel === "price") {
+      setPriceQ("");
+      setPriceFocus(null);
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [openedPanel]);
+  /** The register lock (PIN pad over everything). */
+  const [lock, setLock] = useState<LockState>({ mode: "off", pin: "", first: "", error: null });
+  /** The Stream Deck's number pad for the customer lookup. */
+  const [lookup, setLookup] = useState<{ q: string; enter: number; status: "idle" | "busy" | "found" | "missing"; name: string | null }>({ q: "", enter: 0, status: "idle", name: null });
   const [link, setLink] = useState<PayLink | null>(null);
   const [order, setOrder] = useState<TakenOrder | null>(null);
   // For the reply handler, which is set up once.
@@ -161,6 +194,10 @@ export function Register({ products, printOptions, links, markets }: { products:
     const m = store.get("market");
     setMarketId(m && markets.some((x) => x.id === m) ? m : null);
     setAskJoin(store.get("ask-join") !== "off");
+    if (lockedOn()) setLock({ mode: "locked", pin: "", first: "", error: null });
+    try {
+      setRecent(JSON.parse(store.get("recent") ?? "[]"));
+    } catch {}
     // A device that's never chosen starts with the receipt on; after that it remembers (even all off).
     setSaleSlips((store.get("slips") ?? "receipt").split(",").filter((x): x is Slip => x === "receipt" || x === "gift"));
     setStaff(staffOn());
@@ -501,6 +538,11 @@ export function Register({ products, printOptions, links, markets }: { products:
       setPay(null);
       setLink(null);
       setDone({ orderId: out.orderId, orderNumber: out.orderNumber, changeCents: out.changeCents, emailed: out.emailed, screen: thanks });
+      setRecent((r) => {
+        const next = [{ orderId: out.orderId, orderNumber: out.orderNumber, totalCents: shownQuote.totalCents, at: new Date().toISOString() }, ...r.filter((x) => x.orderId !== out.orderId)].slice(0, 5);
+        store.set("recent", JSON.stringify(next));
+        return next;
+      });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -659,6 +701,208 @@ export function Register({ products, printOptions, links, markets }: { products:
   const quoteLine = (key: string): PosLineView | undefined => shownQuote?.lines.find((l) => l.key === key);
   const itemCount = lines.reduce((n, l) => n + l.quantity, 0) + custom.reduce((n, c) => n + c.quantity, 0) + files.reduce((n, f) => n + f.quantity, 0);
 
+  // ----- Register lock -----
+  function startLock() {
+    if (lockPinSet()) {
+      lockNow();
+      setLock({ mode: "locked", pin: "", first: "", error: null });
+    } else setLock({ mode: "set", pin: "", first: "", error: null });
+  }
+  const lockBusy = useRef(false);
+  async function lockKey(k: string) {
+    if (lockBusy.current || lock.mode === "off") return;
+    if (k === "cancel") return lock.mode !== "locked" && setLock({ mode: "off", pin: "", first: "", error: null });
+    if (k === "clear" || k === "back") return setLock((l) => ({ ...l, pin: k === "clear" ? "" : l.pin.slice(0, -1), error: null }));
+    if (!/^\d$/.test(k)) return;
+    const pin = lock.pin + k;
+    if (pin.length < 4) return setLock((l) => ({ ...l, pin, error: null }));
+    lockBusy.current = true;
+    try {
+      if (lock.mode === "set") setLock({ mode: "again", pin: "", first: pin, error: null });
+      else if (lock.mode === "again") {
+        if (pin !== lock.first) setLock({ mode: "set", pin: "", first: "", error: "Didn't match. Try again." });
+        else {
+          await setPinAndLock(pin);
+          setLock({ mode: "locked", pin: "", first: "", error: null });
+        }
+      } else {
+        const err = await unlock(pin, staff);
+        setLock(err ? { mode: "locked", pin: "", first: "", error: err } : { mode: "off", pin: "", first: "", error: null });
+        if (!err) say("Register unlocked");
+      }
+    } finally {
+      lockBusy.current = false;
+    }
+  }
+  // Typing the PIN on a keyboard works too.
+  useEffect(() => {
+    if (lock.mode === "off") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (/^\d$/.test(e.key)) void lockKey(e.key);
+      else if (e.key === "Backspace") void lockKey("back");
+      else if (e.key === "Escape") void lockKey("cancel");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  // ----- Stream Deck -----
+  const canPay = total != null && !(order && !order.needBy);
+  const deckState: DeckState = {
+    products: shopProducts.map((p) => {
+      const left = p.variants.some((v) => v.stock != null) ? null : p.stock;
+      return {
+        id: p.id,
+        name: p.name,
+        priceCents: dealPrice(p, p.priceCents),
+        image: p.images[0] ?? null,
+        soldOut: left === 0 || (needsVariant(p) && p.variants.every((v) => v.stock === 0)),
+        inSale: productCount(p.id),
+        variants: p.variants.map((v) => ({ id: v.id, name: v.name, hex: v.hex, cents: dealPrice(p, unitPrice(p, v.id)), soldOut: v.stock === 0 })),
+        optionSets: p.optionSets.map((set) => ({ id: set.id, name: set.name, choices: set.choices.map((c) => ({ id: c.id, name: c.name, hex: c.hex, cents: c.extraCents, soldOut: false })) })),
+        personalize: !!p.personalize,
+      };
+    }),
+    itemCount,
+    totalCents: shownQuote?.ok ? shownQuote.totalCents : null,
+    canPay,
+    pay: done ? null : pay,
+    saving,
+    tenderedCents: tenderedCents != null && !Number.isNaN(tenderedCents) ? tenderedCents : null,
+    linkPaid: popup?.kind === "card-link" && !!popup.paid,
+    done: done ? { orderId: done.orderId, orderNumber: done.orderNumber, changeCents: done.changeCents, offline: !!done.offline } : null,
+    panelOpen: panel !== null,
+    customer: customer.name.trim().split(" ")[0] || customer.email.split("@")[0] || null,
+    codes: codes.length,
+    order: order?.firstName ?? null,
+    payLinks: links.payLinks && !offline,
+    etransfer: true,
+    recent,
+    panel: panel === null ? null : typeof panel === "object" || panel === "print" ? "other" : (panel as DeckPanelName),
+    lookup: { open: panel === "customer", q: lookup.q, status: lookup.status, name: lookup.name },
+    custom: { cents: Number.isNaN(dollars(customDraft.price) ?? NaN) ? null : dollars(customDraft.price), qty: customDraft.qty, named: !!customDraft.name.trim() },
+    code: { code: codeDraft.code.replace(/\s/g, ""), pin: codeDraft.pin.replace(/^CP/i, ""), field: codeDraft.field },
+    priceFocus,
+    orderDraft: { qty: orderDraft.qty, named: !!orderDraft.name.trim() },
+    sendTiles: sendTiles(brand, links, source).map((t) => ({ id: t.id, title: t.deck[0], sub: t.deck[1] })),
+    showing: tileShowing(sendTiles(brand, links, source), popup),
+    staff: { on: staff, step: staff || staffDraft.pin.length < 4 ? "pin" : "again", digits: staff || staffDraft.pin.length < 4 ? staffDraft.pin.length : staffDraft.again.length, error: staffDraft.error },
+    feeAsk: pay === "LINK" && !!links.cardFee && coverFee == null && !done,
+    lock: { mode: lock.mode, digits: lock.pin.length, error: lock.error },
+  };
+  const deckActions: DeckActions = {
+    addProduct: (id, picked) => {
+      const p = productOf(id);
+      if (!p || pay) return;
+      if (done) newSale();
+      if (picked) addProduct(p, picked.variantId, "", 1, picked.choices);
+      else addProduct(p);
+    },
+    openPanel: (p) => {
+      if (!pay) setPanel(p);
+    },
+    openLookup: () => {
+      if (pay) return;
+      setLookup({ q: "", enter: 0, status: "idle", name: null });
+      setLookupFocus(true);
+      setPanel("customer");
+    },
+    lookupType: (k) =>
+      setLookup((l) => ({ ...l, status: "idle", q: k === "clear" ? "" : k === "back" ? l.q.slice(0, -1) : (l.q + k).slice(0, 15) })),
+    lookupFind: () => setLookup((l) => (l.q.replace(/\D/g, "").length >= 3 ? { ...l, enter: l.enter + 1 } : l)),
+    closePanel: () => setPanel(null),
+    lock: () => lock.mode === "off" && !saving && startLock(),
+    lockType: (k) => void lockKey(k),
+    undoLast: () => {
+      if (lines.length) {
+        const last = lines[lines.length - 1];
+        setLines((ls) => (last.quantity > 1 ? ls.map((l) => (l.key === last.key ? { ...l, quantity: l.quantity - 1 } : l)) : ls.filter((l) => l.key !== last.key)));
+      } else if (custom.length) setCustom((cs) => cs.slice(0, -1));
+      else if (files.length) setFiles((fs) => fs.slice(0, -1));
+    },
+    pay: (kind) => {
+      if (!canPay || pay) return;
+      setPanel(null);
+      void openPay(kind);
+    },
+    tender: (cents) => setTendered(cents == null ? "" : (cents / 100).toFixed(2)),
+    customType: (k) =>
+      setCustomDraft((d) => {
+        const c = centsTyped(dollars(d.price), k);
+        return { ...d, price: c == null ? "" : (c / 100).toFixed(2) };
+      }),
+    customQty: () => setCustomDraft((d) => ({ ...d, qty: d.qty >= 9 ? 1 : d.qty + 1 })),
+    customAdd: () => {
+      const cents = dollars(customDraft.price);
+      if (!customDraft.name.trim() || cents == null || Number.isNaN(cents)) return;
+      setDone(null);
+      setCustom((l) => [...l, { name: customDraft.name.trim(), unitCents: cents, quantity: customDraft.qty, key: crypto.randomUUID() }]);
+      setPanel(null);
+    },
+    codeType: (k) =>
+      setCodeDraft((d) => {
+        const field = d.field === "pin" ? d.pin.replace(/^CP/i, "") : d.code;
+        const next = k === "clear" ? "" : k === "back" ? field.slice(0, -1) : (field + k).slice(0, d.field === "pin" ? 5 : 16);
+        return d.field === "pin" ? { ...d, pin: next ? `CP${next}` : "" } : { ...d, code: next };
+      }),
+    codeField: () => setCodeDraft((d) => ({ ...d, field: d.field === "pin" ? "code" : "pin" })),
+    codeApply: () => {
+      if (!codeDraft.code.trim() || codes.length >= 4) return;
+      setCodes(withCode(codes, codeDraft.code, codeDraft.pin));
+      setCodeDraft(NO_CODE);
+    },
+    priceFocus: (id) => {
+      setPriceFocus(id);
+      setPriceQ(id ? (productOf(id)?.name ?? "") : "");
+    },
+    orderBump: (id) => setOrderDraft((d) => bumpOrder(d, id, 1)),
+    orderUndo: () =>
+      setOrderDraft((d) => {
+        const last = d.taps[d.taps.length - 1];
+        return last ? { ...bumpOrder(d, last, -1), taps: d.taps.slice(0, -1) } : d;
+      }),
+    orderSend: () => {
+      const picks = orderPicks(shopProducts, orderDraft);
+      if (picks.length && orderDraft.name.trim()) startOrder(orderDraft.name.trim().split(/\s+/)[0], picks);
+    },
+    send: (id) => {
+      const t = sendTiles(brand, links, source).find((x) => x.id === id);
+      if (t) show(t.popup());
+    },
+    sendClear: () => setPopup(null),
+    staffType: (k) =>
+      setStaffDraft((d) => {
+        const picking = !staff && d.pin.length >= 4;
+        const field = picking ? d.again : d.pin;
+        const next = k === "clear" ? "" : k === "back" ? field.slice(0, -1) : /^\d$/.test(k) ? (field + k).slice(0, 4) : field;
+        const out = picking ? { ...d, again: next, error: null } : { ...d, pin: next, error: null };
+        // All typed: check it (unlocking needs 4, picking a new one needs it twice).
+        const ready = staff ? out.pin.length === 4 : out.pin.length === 4 && out.again.length === 4;
+        return ready && next !== field ? { ...out, submit: out.submit + 1 } : out;
+      }),
+    fee: (cover) => answerFee(cover),
+    finish: () => {
+      if (pay && pay !== "LINK" && !saving) void completeSale(pay);
+    },
+    cancelPay: () => {
+      if (!saving) closePay();
+    },
+    newSale,
+    reprint: async (orderId, slip) => {
+      const form = new FormData();
+      form.set("orderId", orderId);
+      form.set("slip", slip);
+      try {
+        await printStandSlipAction(form);
+        say(`${slip === "gift" ? "Gift receipt" : slip === "claim" ? "Order ticket" : "Receipt"} sent to the printer`);
+        return null;
+      } catch {
+        say("Couldn't reach the printer. Check the internet.");
+        return "failed";
+      }
+    },
+  };
+
   return (
     <div className="space-y-4">
       {/* Top bar */}
@@ -697,6 +941,10 @@ export function Register({ products, printOptions, links, markets }: { products:
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <StandDeck state={deckState} actions={deckActions} />
+          <Button variant="ghost" size="sm" onClick={startLock}>
+            Lock
+          </Button>
           <DisplayControl locked={staff} registerId={registerId} online={online} onPaired={(id) => { store.set("register", id); setRegisterId(id); lastPushed.current = ""; say("Display paired"); }} onUnpair={() => unpair()} onFlip={() => setFlip(true)} />
           {staff ? (
             <button type="button" onClick={() => setPanel("staff")} className="flex items-center gap-1.5 rounded-full border border-accent-line bg-accent-soft px-3 py-1.5 text-sm font-semibold">
@@ -733,7 +981,7 @@ export function Register({ products, printOptions, links, markets }: { products:
             <ActionTile icon="＋" label="Custom item" onClick={() => setPanel("custom")} />
             {brand === "coastline" && <ActionTile icon="⬡" label="Print from file" badge={files.length || undefined} onClick={() => setPanel("print")} />}
             <ActionTile icon="🎟" label="Code or gift card" badge={codes.length || undefined} onClick={() => setPanel("codes")} />
-            <ActionTile icon="👤" label={customer.name || customer.email ? (customer.name || customer.email).split("@")[0] : "Customer"} active={!!(customer.name || customer.email)} onClick={() => setPanel("customer")} />
+            <ActionTile icon="👤" label={customer.name || customer.email ? (customer.name || customer.email).split("@")[0] : "Customer"} active={!!(customer.name || customer.email)} onClick={() => (setLookupFocus(false), setPanel("customer"))} />
             <ActionTile icon="📺" label="Send to display" active={!!popup} onClick={() => setPanel("send")} />
             <ActionTile icon="🔍" label="Price check" onClick={() => setPanel("price")} />
           </div>
@@ -882,9 +1130,13 @@ export function Register({ products, printOptions, links, markets }: { products:
         </div>
       </div>
 
+      <RegisterLock lock={lock} onKey={(k) => void lockKey(k)} onCancel={() => void lockKey("cancel")} onForgot={forgetLock} />
+
       {/* ----- Popups ----- */}
       <Modal open={panel === "custom"} onClose={() => setPanel(null)} title="Custom item">
         <CustomForm
+          draft={customDraft}
+          setDraft={setCustomDraft}
           onAdd={(c) => {
             setDone(null);
             setCustom((l) => [...l, { ...c, key: crypto.randomUUID() }]);
@@ -898,12 +1150,14 @@ export function Register({ products, printOptions, links, markets }: { products:
       </Modal>
 
       <Modal open={panel === "codes"} onClose={() => setPanel(null)} title="Coupon or gift card">
-        <CodesForm codes={codes} rejected={shownQuote?.rejected ?? []} onChange={setCodes} />
+        <CodesForm codes={codes} rejected={shownQuote?.rejected ?? []} onChange={setCodes} draft={codeDraft} setDraft={setCodeDraft} />
       </Modal>
 
-      <Modal open={panel === "customer"} onClose={() => setPanel(null)} title="Customer" footer={<Button className="w-full" onClick={() => setPanel(null)}>Done</Button>}>
+      <Modal open={panel === "customer"} onClose={() => (setPanel(null), setLookupFocus(false))} title="Customer" footer={<Button className="w-full" onClick={() => setPanel(null)}>Done</Button>}>
         <div className="grid gap-3">
           <RegisterRewards
+            autoFocus={lookupFocus}
+            pad={{ q: lookup.q, setQ: (q) => setLookup((l) => ({ ...l, q, status: "idle" })), enter: lookup.enter, onResult: (r) => setLookup((l) => ({ ...l, status: r.status, name: r.name ?? null })) }}
             redeemed={redeemed}
             onUse={(p) => setCustomer((c) => ({ ...c, name: p.name || c.name, email: p.email, phone: p.phone || c.phone }))}
             onRedeem={(r) => {
@@ -944,6 +1198,8 @@ export function Register({ products, printOptions, links, markets }: { products:
 
       <Modal open={panel === "order"} onClose={() => setPanel(null)} title="Start an order" wide>
         <StartOrder
+          draft={orderDraft}
+          setDraft={setOrderDraft}
           products={shopProducts}
           current={order}
           hasDisplay={!!registerId}
@@ -957,6 +1213,7 @@ export function Register({ products, printOptions, links, markets }: { products:
 
       <Modal open={panel === "price"} onClose={() => setPanel(null)} title="Price check" wide>
         <PriceCheck
+          search={{ q: priceQ, setQ: (q) => (setPriceQ(q), setPriceFocus(null)) }}
           products={shopProducts}
           staff={staff}
           onAdd={(p) => {
@@ -976,6 +1233,8 @@ export function Register({ products, printOptions, links, markets }: { products:
       <Modal open={panel === "staff"} onClose={() => setPanel(null)} title={staff ? "Leave staff mode" : "Staff mode"}>
         {panel === "staff" && (
           <StaffMode
+            draft={staffDraft}
+            setDraft={setStaffDraft}
             on={staff}
             onChange={(on) => {
               setStaff(on);
@@ -1194,11 +1453,19 @@ function TicketRow({ line, onQty, onRemove }: { line: PosLineView; onQty: (q: nu
  * Start order, the cashier's half: what they're ordering and their first
  * name. The customer chooses colours and the rest on the display.
  */
-function StartOrder({ products, current, hasDisplay, onStart, onCancel }: { products: ShopProductDto[]; current: TakenOrder | null; hasDisplay: boolean; onStart: (firstName: string, picks: { product: ShopProductDto; quantity: number }[]) => void; onCancel: () => void }) {
-  const [qty, setQty] = useState<Record<string, number>>({});
-  const [name, setName] = useState("");
-  const picks = products.filter((p) => qty[p.id]).map((p) => ({ product: p, quantity: qty[p.id] }));
-  const bump = (id: string, by: number) => setQty((q) => ({ ...q, [id]: Math.max(0, Math.min(20, (q[id] ?? 0) + by)) }));
+type OrderDraft = { qty: Record<string, number>; name: string; /** Product ids in the order they were tapped, for the deck's Undo. */ taps: string[] };
+const NO_ORDER: OrderDraft = { qty: {}, name: "", taps: [] };
+const bumpOrder = (d: OrderDraft, id: string, by: number): OrderDraft => {
+  const n = Math.max(0, Math.min(20, (d.qty[id] ?? 0) + by));
+  return { ...d, qty: { ...d.qty, [id]: n }, taps: by > 0 && n > (d.qty[id] ?? 0) ? [...d.taps, id] : d.taps };
+};
+const orderPicks = (products: ShopProductDto[], d: OrderDraft) => products.filter((p) => d.qty[p.id]).map((p) => ({ product: p, quantity: d.qty[p.id] }));
+
+function StartOrder({ products, current, hasDisplay, onStart, onCancel, draft, setDraft }: { products: ShopProductDto[]; current: TakenOrder | null; hasDisplay: boolean; onStart: (firstName: string, picks: { product: ShopProductDto; quantity: number }[]) => void; onCancel: () => void; /** Shared with the Stream Deck, where lamps can be tapped in. */ draft: OrderDraft; setDraft: (f: (d: OrderDraft) => OrderDraft) => void }) {
+  const { qty, name } = draft;
+  const setName = (name: string) => setDraft((d) => ({ ...d, name }));
+  const picks = orderPicks(products, draft);
+  const bump = (id: string, by: number) => setDraft((d) => bumpOrder(d, id, by));
   if (!products.length) return <p className="pb-4 text-muted">No products in this shop yet. Add some in the shop admin first.</p>;
   return (
     <div className="space-y-5 pb-2">
@@ -1314,10 +1581,14 @@ function ProductOptions({ product: p, onAdd }: { product: ShopProductDto; onAdd:
 }
 
 /** "Custom keychain, $12", with a number pad feel for the price. */
-function CustomForm({ onAdd }: { onAdd: (c: CustomLine) => void }) {
-  const [name, setName] = useState("");
-  const [price, setPrice] = useState("");
-  const [qty, setQty] = useState(1);
+type CustomDraft = { name: string; price: string; qty: number };
+const NO_CUSTOM: CustomDraft = { name: "", price: "", qty: 1 };
+
+function CustomForm({ draft, setDraft, onAdd }: { /** Shared with the Stream Deck, which types the price. */ draft: CustomDraft; setDraft: (f: (d: CustomDraft) => CustomDraft) => void; onAdd: (c: CustomLine) => void }) {
+  const { name, price, qty } = draft;
+  const setName = (name: string) => setDraft((d) => ({ ...d, name }));
+  const setPrice = (price: string) => setDraft((d) => ({ ...d, price }));
+  const setQty = (qty: number) => setDraft((d) => ({ ...d, qty }));
   const cents = dollars(price);
   const ok = name.trim().length > 0 && cents != null && !Number.isNaN(cents) && cents >= 0;
   return (
@@ -1360,9 +1631,19 @@ function CustomForm({ onAdd }: { onAdd: (c: CustomLine) => void }) {
 }
 
 /** Coupons and gift cards. Gift cards need their PIN. */
-function CodesForm({ codes, rejected, onChange }: { codes: string[]; rejected: { code: string; reason: string }[]; onChange: (c: string[]) => void }) {
-  const [code, setCode] = useState("");
-  const [pin, setPin] = useState("");
+type CodeDraft = { code: string; pin: string; field: "code" | "pin" };
+const NO_CODE: CodeDraft = { code: "", pin: "", field: "code" };
+
+/** The codes with one more added. A thank-you card's QR scanned with the barcode scanner types its whole link: keep just the code. */
+function withCode(codes: string[], code: string, pin: string) {
+  const typed = code.trim().match(/[?&]code=(\d{8,16})/)?.[1] ?? code.trim();
+  return [...codes, pin.trim() ? `${typed}:${pin.trim()}` : typed];
+}
+
+function CodesForm({ codes, rejected, onChange, draft, setDraft }: { codes: string[]; rejected: { code: string; reason: string }[]; onChange: (c: string[]) => void; /** Shared with the Stream Deck's number pad. */ draft: CodeDraft; setDraft: (f: (d: CodeDraft) => CodeDraft) => void }) {
+  const { code, pin } = draft;
+  const setCode = (code: string) => setDraft((d) => ({ ...d, code }));
+  const setPin = (pin: string) => setDraft((d) => ({ ...d, pin }));
   const shown = (c: string) => c.split(":")[0];
   const problem = (c: string) => rejected.find((r) => r.code.replace(/[\s-]/g, "").toUpperCase() === shown(c).replace(/[\s-]/g, "").toUpperCase())?.reason;
   return (
@@ -1387,11 +1668,8 @@ function CodesForm({ codes, rejected, onChange }: { codes: string[]; rejected: {
           onSubmit={(e) => {
             e.preventDefault();
             if (!code.trim()) return;
-            // A thank-you card's QR scanned with the barcode scanner types its whole link: keep just the code.
-            const typed = code.trim().match(/[?&]code=(\d{8,16})/)?.[1] ?? code.trim();
-            onChange([...codes, pin.trim() ? `${typed}:${pin.trim()}` : typed]);
-            setCode("");
-            setPin("");
+            onChange(withCode(codes, code, pin));
+            setDraft(() => NO_CODE);
           }}
           className="space-y-3"
         >
@@ -1411,17 +1689,34 @@ function CodesForm({ codes, rejected, onChange }: { codes: string[]; rejected: {
 }
 
 /** Things to put on the customer's screen. */
+type SendTile = { id: string; icon: string; label: string; /** Two short lines for a Stream Deck key. */ deck: [string, string]; hint: string; popup: () => PosPopup; show: boolean };
+
+/** What "Send to display" can put in front of the customer (the popup and the Stream Deck share these). */
+function sendTiles(brand: PosBrand, links: RegisterLinks, source: string): SendTile[] {
+  const tiles: SendTile[] = [
+    { id: "email", icon: "✉️", label: "Receipt email", deck: ["Receipt", "email"], hint: "They type their email", popup: () => ({ id: popupId(), kind: "email" }), show: true },
+    { id: "join", icon: "💌", label: "Join LightLab updates", deck: ["Join", "updates"], hint: "Name and email for news", popup: () => ({ id: popupId(), kind: "join", source }), show: brand === "lightlab" },
+    { id: "account", icon: "⭐", label: "Join rewards", deck: ["Join", "rewards"], hint: "Makes their account", popup: () => ({ id: popupId(), kind: "account" }), show: true },
+    { id: "instagram", icon: "📸", label: "Follow on Instagram", deck: ["Instagram", "QR code"], hint: "QR to @coastline.printz", popup: () => ({ id: popupId(), kind: "qr", title: "Follow along on Instagram", text: "New prints, behind the scenes and giveaways.", url: links.instagram }), show: brand === "coastline" },
+    { id: "review", icon: "💬", label: "Leave a review", deck: ["Review", "QR code"], hint: "QR to Google reviews", popup: () => ({ id: popupId(), kind: "qr", title: "Enjoyed it? Leave a review", text: "It really helps a small local shop.", url: links.review ?? "" }), show: brand === "coastline" && !!links.review },
+    { id: "shop", icon: "🛒", label: "Shop online", deck: ["Shop", "QR code"], hint: `QR to the ${brand === "lightlab" ? "LightLab" : "Coastline"} shop`, popup: () => ({ id: popupId(), kind: "qr", title: "Shop online any time", text: brand === "lightlab" ? "Every lamp, with shipping across Canada." : "Upload a file or shop ready-made prints.", url: `https://coastlineprints.ca${brand === "lightlab" ? "/lightlab" : "/shop"}` }), show: true },
+  ];
+  return tiles.filter((t) => t.show);
+}
+
+/** Which tile a popup on the display came from, if any. */
+function tileShowing(tiles: SendTile[], popup: PosPopup | null) {
+  if (!popup) return null;
+  return tiles.find((t) => {
+    const p = t.popup();
+    return p.kind === popup.kind && (p.kind !== "qr" || (popup.kind === "qr" && p.title === popup.title));
+  })?.id ?? null;
+}
+
 function SendPanel({ brand, popup, links, onSend, onClear, hasDisplay, source }: { brand: PosBrand; popup: PosPopup | null; links: RegisterLinks; onSend: (p: PosPopup) => void; onClear: () => void; hasDisplay: boolean; source: string }) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
-  const tiles: { icon: string; label: string; hint: string; popup: () => PosPopup; show: boolean }[] = [
-    { icon: "✉️", label: "Receipt email", hint: "They type their email", popup: () => ({ id: popupId(), kind: "email" }), show: true },
-    { icon: "💌", label: "Join LightLab updates", hint: "Name and email for news", popup: () => ({ id: popupId(), kind: "join", source }), show: brand === "lightlab" },
-    { icon: "⭐", label: "Join rewards", hint: "Makes their account", popup: () => ({ id: popupId(), kind: "account" }), show: true },
-    { icon: "📸", label: "Follow on Instagram", hint: "QR to @coastline.printz", popup: () => ({ id: popupId(), kind: "qr", title: "Follow along on Instagram", text: "New prints, behind the scenes and giveaways.", url: links.instagram }), show: brand === "coastline" },
-    { icon: "💬", label: "Leave a review", hint: "QR to Google reviews", popup: () => ({ id: popupId(), kind: "qr", title: "Enjoyed it? Leave a review", text: "It really helps a small local shop.", url: links.review ?? "" }), show: brand === "coastline" && !!links.review },
-    { icon: "🛒", label: "Shop online", hint: `QR to the ${brand === "lightlab" ? "LightLab" : "Coastline"} shop`, popup: () => ({ id: popupId(), kind: "qr", title: "Shop online any time", text: brand === "lightlab" ? "Every lamp, with shipping across Canada." : "Upload a file or shop ready-made prints.", url: `https://coastlineprints.ca${brand === "lightlab" ? "/lightlab" : "/shop"}` }), show: true },
-  ];
+  const tiles = sendTiles(brand, links, source);
   return (
     <div className="space-y-5">
       {!hasDisplay && <p className="rounded-2xl bg-surface p-3 text-sm text-muted">No display paired: this iPad will turn to the customer. Hold the ⌂ button to come back.</p>}
@@ -1436,9 +1731,7 @@ function SendPanel({ brand, popup, links, onSend, onClear, hasDisplay, source }:
         </div>
       )}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {tiles
-          .filter((t) => t.show)
-          .map((t) => (
+        {tiles.map((t) => (
             <motion.button key={t.label} type="button" whileTap={{ scale: 0.93 }} whileHover={{ y: -2 }} onClick={() => onSend(t.popup())} className="flex min-h-28 flex-col justify-between rounded-3xl border border-line bg-surface p-4 text-left hover:border-accent-line">
               <span className="text-2xl" aria-hidden>
                 {t.icon}

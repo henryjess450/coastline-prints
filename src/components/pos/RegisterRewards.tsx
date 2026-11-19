@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Field, fieldInput as input } from "@/components/admin/PrintFiles";
 import { Button } from "@/components/ui/Button";
 
@@ -18,8 +18,14 @@ async function call<T>(method: string, body?: object, query = ""): Promise<{ ok:
 }
 
 /** The register's customer lookup: phone or email → their details and points, and spend points on this sale. */
-export function RegisterRewards({ redeemed, onUse, onRedeem, onUndo }: { redeemed: RegisterRedeemed | null; onUse: (p: RewardsProfile) => void; onRedeem: (r: RegisterRedeemed) => void; onUndo: () => void }) {
-  const [q, setQ] = useState("");
+export function RegisterRewards({ redeemed, onUse, onRedeem, onUndo, autoFocus, pad }: {
+  /** Opened from the Stream Deck: type straight away. */ autoFocus?: boolean;
+  /** The Stream Deck's number pad: what it typed, a count that goes up each time Enter is pressed, and where the result goes. */
+  pad?: { q: string; setQ: (q: string) => void; enter: number; onResult: (r: { status: "busy" | "found" | "missing"; name?: string }) => void };
+  redeemed: RegisterRedeemed | null; onUse: (p: RewardsProfile) => void; onRedeem: (r: RegisterRedeemed) => void; onUndo: () => void }) {
+  const [ownQ, setOwnQ] = useState("");
+  const q = pad ? pad.q : ownQ;
+  const setQ = pad ? pad.setQ : setOwnQ;
   const [found, setFound] = useState<RewardsProfile | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,12 +34,25 @@ export function RegisterRewards({ redeemed, onUse, onRedeem, onUndo }: { redeeme
     if (q.trim().length < 3) return;
     setBusy(true);
     setError(null);
+    pad?.onResult({ status: "busy" });
     const r = await call<RewardsProfile>("POST", { q });
     setBusy(false);
-    if (!r.ok) return (setFound(null), setError(r.error));
+    if (!r.ok) {
+      pad?.onResult({ status: "missing" });
+      return (setFound(null), setError(r.error));
+    }
     setFound(r.data);
     onUse(r.data);
+    pad?.onResult({ status: "found", name: (r.data.name || r.data.email).split(/[ @]/)[0] });
   }
+
+  // Enter on the Stream Deck.
+  const lastEnter = useRef(pad?.enter ?? 0);
+  useEffect(() => {
+    if (!pad || pad.enter === lastEnter.current) return;
+    lastEnter.current = pad.enter;
+    void find();
+  }, [pad?.enter]); // eslint-disable-line react-hooks/exhaustive-deps -- only when Enter is pressed
 
   async function redeem(p: Prize) {
     if (!found || busy) return;
@@ -67,7 +86,7 @@ export function RegisterRewards({ redeemed, onUse, onRedeem, onUndo }: { redeeme
         }}
       >
         <Field label="Find customer (phone or email)">
-          <input className={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder="250 555 0101" autoComplete="off" />
+          <input className={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder="250 555 0101" autoComplete="off" autoFocus={autoFocus} />
         </Field>
         <Button type="submit" variant="secondary" disabled={busy || q.trim().length < 3}>
           {busy ? "…" : "Find"}

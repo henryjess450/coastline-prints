@@ -14,8 +14,10 @@ const slugFrom = (s: string) => s.trim().match(/\/lightlab\/([a-z0-9-]+)/i)?.[1]
  * price tag, see the price and what's left of each option. The owner can
  * also make a lamp today's deal here (not in staff mode).
  */
-export function PriceCheck({ products, staff, onAdd, onDeal }: { products: ShopProductDto[]; staff: boolean; onAdd: (p: ShopProductDto) => void; onDeal: (p: ShopProductDto, offCents: number | null) => Promise<string | null> }) {
-  const [q, setQ] = useState("");
+export function PriceCheck({ products, staff, onAdd, onDeal, search }: { products: ShopProductDto[]; staff: boolean; onAdd: (p: ShopProductDto) => void; onDeal: (p: ShopProductDto, offCents: number | null) => Promise<string | null>; /** Shared with the Stream Deck: tapping a lamp there searches for it here. */ search?: { q: string; setQ: (q: string) => void } }) {
+  const [ownQ, setOwnQ] = useState("");
+  const q = search ? search.q : ownQ;
+  const setQ = search ? search.setQ : setOwnQ;
   const slug = slugFrom(q);
   const words = q.trim().toLowerCase();
   const found = slug ? products.filter((p) => p.slug === slug) : words ? products.filter((p) => `${p.name} ${p.category} ${p.slug}`.toLowerCase().includes(words)) : products;

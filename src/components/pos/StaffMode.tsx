@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { fieldInput as input } from "@/components/admin/PrintFiles";
 import { cn } from "@/lib/cn";
@@ -7,18 +7,28 @@ import { endStaff, startStaff } from "@/lib/pos/staff";
 
 const pinOk = (s: string) => /^\d{4}$/.test(s);
 
-/** Turning staff mode on (pick a PIN, twice) or off (type it). */
-export function StaffMode({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
-  const [pin, setPin] = useState("");
-  const [again, setAgain] = useState("");
-  const [error, setError] = useState<string | null>(null);
+export type StaffDraft = { pin: string; again: string; error: string | null; /** Goes up when the Stream Deck's pad has all 4 digits (or 8 when picking a PIN). */ submit: number };
+export const NO_STAFF: StaffDraft = { pin: "", again: "", error: null, submit: 0 };
+
+/** Turning staff mode on (pick a PIN, twice) or off (type it). The PIN can be typed here or on the Stream Deck. */
+export function StaffMode({ on, onChange, draft, setDraft }: { on: boolean; onChange: (on: boolean) => void; draft: StaffDraft; setDraft: (f: (d: StaffDraft) => StaffDraft) => void }) {
+  const { pin, again, error } = draft;
+  const setPin = (pin: string) => setDraft((d) => ({ ...d, pin }));
+  const setAgain = (again: string) => setDraft((d) => ({ ...d, again }));
+  const setError = (error: string | null) => setDraft((d) => ({ ...d, error }));
+  const lastSubmit = useRef(draft.submit);
+  useEffect(() => {
+    if (draft.submit === lastSubmit.current) return;
+    lastSubmit.current = draft.submit;
+    void submit();
+  }, [draft.submit]); // eslint-disable-line react-hooks/exhaustive-deps -- only when the deck sends it
   const [busy, setBusy] = useState(false);
   const pinField = (value: string, set: (v: string) => void, label: string, autoFocus = false) => (
     <input autoFocus={autoFocus} type="password" inputMode="numeric" autoComplete="off" maxLength={4} className={cn(input, "h-16 text-center font-mono text-3xl tracking-[0.5em]")} value={value} onChange={(e) => (set(e.target.value.replace(/\D/g, "").slice(0, 4)), setError(null))} aria-label={label} placeholder="••••" />
   );
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submit(e?: React.FormEvent) {
+    e?.preventDefault();
     if (!pinOk(pin)) return setError("Type 4 digits.");
     setBusy(true);
     if (on) {

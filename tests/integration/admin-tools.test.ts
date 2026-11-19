@@ -54,14 +54,15 @@ describe("announcements and sales", () => {
   it("shows an announcement only between its dates", async () => {
     await db.announcement.updateMany({ data: { active: false } });
     const day = 86_400_000;
-    const now = Date.now();
+    // A day in June: outside the holiday gift card bonus, whose own bar would show otherwise.
+    const now = Date.parse("2031-06-15T12:00:00Z");
     await db.announcement.create({ data: { message: "Later", startsAt: new Date(now + day) } });
     await db.announcement.create({ data: { message: "Over", endsAt: new Date(now - day) } });
     clearAnnouncementCache();
-    expect(await liveAnnouncement()).toBeNull();
-    await db.announcement.create({ data: { message: "Closed Dec 24 to 27", endsAt: new Date(now + day) } });
+    expect(await liveAnnouncement(new Date(now))).toBeNull();
+    await db.announcement.create({ data: { message: "Closed Dec 24 to 27", startsAt: new Date(now - day), endsAt: new Date(now + day) } });
     clearAnnouncementCache();
-    expect((await liveAnnouncement())?.message).toBe("Closed Dec 24 to 27");
+    expect((await liveAnnouncement(new Date(now)))?.message).toBe("Closed Dec 24 to 27");
     await db.announcement.updateMany({ data: { active: false } });
     clearAnnouncementCache();
   });

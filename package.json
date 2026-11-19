@@ -17,6 +17,7 @@
     "backup": "node scripts/backup.mjs"
   },
   "dependencies": {
+    "@elgato-stream-deck/webhid": "^7.9.0",
     "@prisma/adapter-better-sqlite3": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "@react-email/components": "^1.0.12",
